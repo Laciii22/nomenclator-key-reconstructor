@@ -1,17 +1,7 @@
 import React, { useMemo } from 'react';
+import type { Column, KeyTableProps, OTChar, Pair, ZTToken } from '../types';
 
-export type OTChar = { id: string; ch: string };
-export type ZTToken = { id: string; text: string; locked?: boolean };
 
-export type KeyTableProps = {
-  otRows: OTChar[][];
-  ztTokens: ZTToken[];
-  rowGroups?: number[][];
-};
-
-type Pair = { ot: string; zt: string };
-
-type Column = { ot: OTChar | null; zt: ZTToken[] };
 
 function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[], cursor: { i: number }): Column[] {
   const otCells = otRow.filter(c => c.ch !== '');

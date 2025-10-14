@@ -1,23 +1,14 @@
 import React, { useMemo } from 'react';
-import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
+import { DndContext, type DragEndEvent } from '@dnd-kit/core';
+import type { Column, MappingTableProps, OTChar, ZTToken } from '../types';
+import OTCell from './OTCell';
 
-export type OTChar = { id: string; ch: string };
-export type ZTToken = { id: string; text: string; locked?: boolean };
-
-export type MappingTableProps = {
-  otRows: OTChar[][];       // riadky OT podľa zvolenej dĺžky
-  ztTokens: ZTToken[];      // všetky ZT tokeny (flat)
-  rowGroups?: number[][];   // voliteľne počty ZT tokenov na každú OT bunku [riadok][stĺpec]
-  onMoveZTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
-};
-
-type Column = { ot: OTChar | null; zt: ZTToken[] };
 
 function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[], cursor: { i: number }): Column[] {
   const otCells = otRow.filter(c => c.ch !== '');
   const oc = otCells.length;
   if (oc === 0) {
-    // nič na priradenie – preskoč alebo zobraz prázdno
+    // nothing to distribute to
     return [];
   }
   const base = Math.floor(ztRowCount / oc);
@@ -36,7 +27,7 @@ function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[],
 }
 
 const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups, onMoveZTToken }) => {
-  // Rozdeľ ZT tokeny podľa rowGroups, ak sú dané; inak použijeme proporčné rozdelenie
+  // Divide ZT tokens into rows and columns based on OT structure and rowGroups
   const rows = useMemo(() => {
     const totalOT = otRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
     const totalZT = ztTokens.length;
@@ -66,7 +57,7 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
       return result;
     }
 
-    // fallback: proporcionálne rozdelenie, ak rowGroups nie sú
+    // fallback: proportional distribution if rowGroups are not provided
     const ratio = totalZT / totalOT;
     const rowInfos = otRows.map(r => ({ otCount: r.filter(c => c.ch !== '').length, frac: 0, alloc: 0 }));
     let allocated = 0;
@@ -103,53 +94,31 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
     return { row: Number(m[1]), col: Number(m[2]) };
   }
 
-  function DraggableZTToken({ token, tokenIndex, row, col }: { token: ZTToken; tokenIndex: number; row: number; col: number }) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ 
-      id: `zt-${token.id}`, 
-      data: { type: 'zt', token, tokenIndex, row, col } 
-    });
-    
-    return (
-      <span
-        ref={setNodeRef}
-        {...attributes}
-        {...listeners}
-        className={`inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 cursor-move select-none font-mono ${isDragging ? 'opacity-50' : ''}`}
-        title="Presuň ZT token do inej bunky"
-        style={{ touchAction: 'none' }}
-      >
-        {token.text}
-      </span>
-    );
-  }
-
-  function DroppableCell({ id, children }: { id: string; children: React.ReactNode }) {
-    const { setNodeRef, isOver } = useDroppable({ id });
-    return (
-      <div 
-        ref={setNodeRef} 
-        className={`border border-gray-200 rounded p-3 shadow-sm bg-white transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
-      >
-        {children}
-      </div>
-    );
-  }
+  // precompute cell starting indices to avoid O(n^2) when rendering tokens
+  const cellStarts: number[][] = useMemo(() => {
+    const starts: number[][] = [];
+    let idx = 0;
+    for (let r = 0; r < rows.length; r++) {
+      starts[r] = [];
+      for (let c = 0; c < rows[r].length; c++) {
+        starts[r][c] = idx;
+        idx += rows[r][c].zt.length;
+      }
+    }
+    return starts;
+  }, [rows]);
 
   function onDragEnd(evt: DragEndEvent) {
     console.log('DragEnd event:', evt);
     const dragData = evt.active.data.current as { type: 'zt'; token?: ZTToken; tokenIndex?: number; row: number; col: number } | undefined;
     const dropData = parseCellId(evt.over?.id ?? null);
     
-    console.log('Drag data:', dragData);
-    console.log('Drop data:', dropData);
     
     if (!dragData || !dropData) {
-      console.log('Missing drag or drop data');
       return;
     }
     
     if (dragData.type === 'zt' && onMoveZTToken && dragData.tokenIndex !== undefined) {
-      console.log('Moving ZT token');
       onMoveZTToken(dragData.tokenIndex, dropData.row, dropData.col);
     }
   }
@@ -164,47 +133,14 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
                 <div className="text-gray-400 text-sm">(prázdny riadok)</div>
               ) : (
                 cols.map((col, cIdx) => (
-                  <DroppableCell key={cIdx} id={`cell-${rIdx}-${cIdx}`}>
-                    <div className="text-center font-mono text-base mb-2">
-                      {col.ot ? (
-                        <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-800 border border-green-300 font-mono text-lg font-bold">
-                          {col.ot.ch}
-                        </span>
-                      ) : (
-                        '·'
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {col.zt.length === 0 ? (
-                        <span className="text-gray-300">—</span>
-                      ) : (
-                        col.zt.map((t, i) => {
-                          // calculate global token index
-                          let globalIndex = 0;
-                          for (let r = 0; r < rIdx; r++) {
-                            for (const c of rows[r]) {
-                              globalIndex += c.zt.length;
-                            }
-                          }
-                          for (let c = 0; c < cIdx; c++) {
-                            globalIndex += rows[rIdx][c].zt.length;
-                          }
-                          globalIndex += i;
-                          
-                          return (
-                            <DraggableZTToken 
-                              key={`${t.id}-${i}`} 
-                              token={t} 
-                              tokenIndex={globalIndex}
-                              row={rIdx} 
-                              col={cIdx} 
-                            />
-                          );
-                        })
-                      )}
-                    </div>
-                    {/* šípky odstránené – použite drag & drop po jednom tokene */}
-                  </DroppableCell>
+                  <OTCell
+                    key={cIdx}
+                    ot={col.ot ?? null}
+                    tokens={col.zt}
+                    row={rIdx}
+                    col={cIdx}
+                    startIndex={cellStarts[rIdx]?.[cIdx] ?? 0}
+                  />
                 ))
               )}
             </div>
