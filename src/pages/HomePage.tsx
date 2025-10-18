@@ -8,7 +8,7 @@ const HomePage: React.FC = () => {
     const [otRaw, setOtRaw] = useState("");
     const [ztRaw, setZtRaw] = useState("");
 
-    // Helper: read a text file as UTF-8 and return its content
+    // TODO this will go to a utility file
     async function readTextFile(file: File): Promise<string> {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -25,13 +25,13 @@ const HomePage: React.FC = () => {
     }, [otRaw]);
 
     const ztTokens = useMemo(() => {
-        // If there are spaces, split by whitespace; otherwise, by individual characters
+        // If there are spaces, split by whitespaces, otherwise calculete by yourself
         const s = ztRaw.trim();
         const parts = /\s/.test(s) ? s.split(/\s+/).filter(Boolean) : Array.from(s);
         return parts.map((t, i) => ({ id: `zt_${i}`, text: t }));
     }, [ztRaw]);
 
-    const COLS = 12; // default number of columns for OT display
+    const COLS = 12; // default number of columns for OT display //TODO make it more this is not big enouggh
     const otRows = useMemo(() => {
         const rows: { id: string; ch: string }[][] = [];
         for (let i = 0; i < otChars.length; i += COLS) {
@@ -98,11 +98,8 @@ const HomePage: React.FC = () => {
 
         // Instead of reordering tokens, we redistribute them between cells
         // by modifying the rowGroups allocation
-
         if (!rowGroups[toRow]) return;
-
         const newGroups = rowGroups.map(row => [...row]);
-
         // Find source cell of the token
         let sourceRow = -1;
         let sourceCol = -1;

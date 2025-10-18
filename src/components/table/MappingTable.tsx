@@ -11,6 +11,7 @@ function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[],
     // nothing to distribute to
     return [];
   }
+  //number of tokens divided by number of OT cells
   const base = Math.floor(ztRowCount / oc);
   let rem = ztRowCount % oc;
   const cols: Column[] = [];
@@ -47,7 +48,6 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
         for (let c = 0; c < otRow.length; c++) {
           const take = Math.max(0, Math.min(totalZT - cursor.i, sizes[c]));
           const group = ztTokens.slice(cursor.i, cursor.i + take);
-          console.log(`  Col ${c} (${otRow[c]?.ch}): take=${take}, tokens=[${group.map(t => t.text).join(',')}]`);
           cursor.i += take;
           cols.push({ ot: otRow[c], zt: group });
         }
@@ -109,7 +109,6 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
   }, [rows]);
 
   function onDragEnd(evt: DragEndEvent) {
-    console.log('DragEnd event:', evt);
     const dragData = evt.active.data.current as { type: 'zt'; token?: ZTToken; tokenIndex?: number; row: number; col: number } | undefined;
     const dropData = parseCellId(evt.over?.id ?? null);
     
@@ -130,7 +129,7 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
           <div key={rIdx} className="mb-4">
             <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(cols.length, 1)}, minmax(0, 1fr))` }}>
               {cols.length === 0 ? (
-                <div className="text-gray-400 text-sm">(prázdny riadok)</div>
+                <div className="text-gray-400 text-sm">(prázdny riadok)</div> 
               ) : (
                 cols.map((col, cIdx) => (
                   <OTCell
