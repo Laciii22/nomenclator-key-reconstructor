@@ -1,73 +1,40 @@
-# React + TypeScript + Vite
+# Nomenclator Key Reconstructor
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite app for semi-automatic reconstruction of nomenclator keys.
 
-Currently, two official plugins are available:
+## Scripts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Dev app: `npm run dev`
+- Build app: `npm run build`
+- Lint: `npm run lint`
+- Preview build: `npm run preview`
+- Storybook (UI docs): `npm run storybook`
+- Build Storybook: `npm run build-storybook`
 
-## React Compiler
+## Storybook
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+This project includes Storybook configuration and example stories for the core UI components:
 
-## Expanding the ESLint configuration
+- MappingTable (OT grid + ZT distribution + DnD)
+- KeyTable (aggregated OT → ZT keys with locks and violations)
+- OTCell (single grid cell)
+- ZTToken (draggable cipher token)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Install Storybook and run it locally (Windows PowerShell):
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```powershell
+npm install -D storybook @storybook/react-vite @storybook/react @storybook/addon-essentials @storybook/addon-actions @storybook/addon-interactions
+npm run storybook
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Build a static Storybook site:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```powershell
+npm run build-storybook
 ```
+
+## Notes
+
+- Drag-and-drop uses @dnd-kit/core; stories show static distributions only.
+- Some stories depend on rowGroups to simulate allocations identical to the app behavior.
+    - KeyTable (aggregated OT → ZT keys with locks and violations)
