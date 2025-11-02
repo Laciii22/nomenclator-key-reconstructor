@@ -27,7 +27,15 @@ function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[],
   return cols;
 }
 
-const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups, onMoveZTToken }) => {
+/**
+ * MappingTable renders the OT grid and distributes ZT tokens into cells.
+ *
+ * Responsibilities:
+ * - Given OT layout (rows of characters) and ZT tokens, it groups tokens into columns per OT cell.
+ * - Optionally respects an explicit allocation matrix (rowGroups) for exact counts per cell.
+ * - Integrates drag-and-drop for ZT tokens and emits onMoveZTToken with flat token index and target cell.
+ */
+const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups, onMoveZTToken, onLockOT, onUnlockOT, lockedKeys }) => {
   // Divide ZT tokens into rows and columns based on OT structure and rowGroups
   const rows = useMemo(() => {
     const totalOT = otRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
@@ -139,6 +147,9 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
                     row={rIdx}
                     col={cIdx}
                     startIndex={cellStarts[rIdx]?.[cIdx] ?? 0}
+                    onLockOT={onLockOT}
+                    onUnlockOT={onUnlockOT}
+                    lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
                   />
                 ))
               )}

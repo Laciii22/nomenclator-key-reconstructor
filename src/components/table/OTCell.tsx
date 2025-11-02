@@ -1,20 +1,43 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import type { OTCellProps, OTChar, ZTToken } from '../types';
+import type { OTCellProps } from '../types';
 import ZTTokenComp from './ZTToken';
 
 
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, row, col, startIndex }) => {
+/**
+ * OTCell renders a single OT grid cell with its assigned ZT tokens.
+ *
+ * Props:
+ * - ot: The OT character metadata (or null for empty placeholders).
+ * - tokens: List of ZT tokens currently allocated to this cell.
+ * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
+ * - startIndex: Flat index into the ZT token stream for the first token in this cell.
+ */
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, row, col, startIndex, onLockOT, onUnlockOT, lockedValue }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}` });
 
-  return (
+return (
     <div
       ref={setNodeRef}
-      className={`border border-gray-200 rounded p-3 shadow-sm bg-white transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
+      className={`border border-gray-200 rounded p-1 shadow-sm bg-white transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
     >
-      <div className="text-center font-mono text-base mb-2">
+      <div className="text-center font-mono text-base mb-1">
         {ot ? (
-          <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-800 border border-green-300 font-mono text-lg font-bold">
+          <span
+            className={` ${lockedValue ? 'bg-green-200 text-neutral-950' : ''} inline-block px-1 rounded bg-green-100 text-green-800 border border-green-300 font-mono text-md font-bold cursor-pointer select-none`}
+            onClick={() => {
+              // If currently locked, clicking unlocks; otherwise it locks to this cell's ZT group
+              if (lockedValue) {
+                if (onUnlockOT) onUnlockOT(ot.ch);
+                return;
+              }
+              if (!onLockOT) return;
+              const groupStr = tokens.map(t => t.text).join('');
+              if (groupStr) onLockOT(ot.ch, groupStr);
+            }}
+            title={lockedValue ? `OT: ${ot.ch} — click to unlock (${lockedValue})` : `OT: ${ot.ch} — click to lock to this cell's ZT group`}
+
+          >
             {ot.ch}
           </span>
         ) : (

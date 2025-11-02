@@ -22,7 +22,14 @@ function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[],
   return cols;
 }
 
-const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups }) => {
+/**
+ * KeyTable displays the reconstructed nomenclator key pairs OT → ZT.
+ *
+ * - Computes pairs by walking the same allocation that MappingTable uses (rowGroups or proportional fallback).
+ * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
+ * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
+ */
+const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT }) => {
   const pairs = useMemo(() => {
     const totalOT = otRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
     const totalZT = ztTokens.length;
@@ -78,24 +85,35 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups }) => {
     return out;
   }, [otRows, ztTokens, rowGroups]);
 
-  // Aggregate by OT character: each OT appears once with unique ZT tokens combined
+  // Aggregate by OT character: collect ZT groups
   const aggregated = useMemo(() => {
-    const map = new Map<string, { list: string[]; set: Set<string> }>();
+    const map = new Map<string, { allSet: Set<string>; displayList: string[] }>();
     const order: string[] = [];
     for (const p of pairs) {
       if (!map.has(p.ot)) {
-        map.set(p.ot, { list: [], set: new Set() });
+        map.set(p.ot, { allSet: new Set(), displayList: [] });
         order.push(p.ot);
       }
       const entry = map.get(p.ot)!;
-      const group = p.zt; // already concatenated string like '11' or '12'
-      if (!entry.set.has(group)) {
-        entry.set.add(group);
-        entry.list.push(group);
+      const group = p.zt;
+      // Track full unique set regardless of mode
+      if (!entry.allSet.has(group)) {
+        entry.allSet.add(group);
+      }
+      // Display logic depends on mode
+      if (keysPerOTMode === 'single') {
+        if (entry.displayList.length === 0) {
+          entry.displayList.push(group);
+        }
+      } else {
+        // multiple
+        if (!entry.displayList.includes(group)) {
+          entry.displayList.push(group);
+        }
       }
     }
-    return order.map(ot => ({ ot, ztList: map.get(ot)!.list }));
-  }, [pairs]);
+    return order.map(ot => ({ ot, ztList: map.get(ot)!.displayList, uniqueCount: map.get(ot)!.allSet.size }));
+  }, [pairs, keysPerOTMode]);
 
   if (aggregated.length === 0) return <div className="text-sm text-gray-500">(žiadne páry)</div>;
 
@@ -106,17 +124,57 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups }) => {
           <tr>
             <th className="text-left px-3 py-2">OT</th>
             <th className="text-left px-3 py-2">ZT</th>
+            <th className="text-left px-3 py-2 w-24">&nbsp;</th>
           </tr>
         </thead>
         <tbody>
-          {aggregated.map((row) => (
-            <tr key={row.ot} className="border-t border-gray-100">
-              <td className="px-3 py-2 font-mono">{row.ot}</td>
-              <td className="px-3 py-2 font-mono">{row.ztList.join(' ')}</td>
-            </tr>
-          ))}
+          {aggregated.map((row) => {
+            // violation rules for keysPerOTMode='single': more than one unique or lock mismatch
+            const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
+            const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
+            const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
+            const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
+            const trClass = (isViolationSingle || lockedMismatch) ? 'bg-red-50' : '';
+            return (
+              <tr key={row.ot} className={`border-t border-gray-100 ${trClass}`}>
+                <td className="px-3 py-2 font-mono">{row.ot}</td>
+                <td className="px-3 py-2 font-mono">
+                  <span>{row.ztList.join(' ') || '—'}</span>
+                  {isViolationSingle && <span className="ml-2 text-red-600">(viac kľúčov)</span>}
+                  {lockedMismatch && <span className="ml-2 text-red-600">(nesúlad so zámkom)</span>}
+                </td>
+                <td className="px-3 py-2">
+                  {onLockOT || onUnlockOT ? (
+                    isLocked ? (
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                        onClick={() => onUnlockOT && onUnlockOT(row.ot)}
+                        title={`Odomknúť ${row.ot}`}
+                      >
+                        Odomknúť
+                      </button>
+                    ) : (
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200"
+                        onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
+                        disabled={row.ztList.length === 0}
+                        title={row.ztList.length ? `Zamknúť ${row.ot} = ${row.ztList[0]}` : 'Nie je čo zamknúť'}
+                      >
+                        Zamknúť
+                      </button>
+                    )
+                  ) : null}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      <p>TODO QUESTION? <br/>
+         how it should be realiigned when locked? what if AHOJA is 12 3 4 51 2 locking A should realing it to 12 or lock for A 12 and also 2?
+         <br/>
+         OR should i make input fields in the table and type there the keys and only there lock it and it will try to realign itself?
+      </p>
     </div>
   );
 };

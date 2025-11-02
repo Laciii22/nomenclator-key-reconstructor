@@ -4,6 +4,15 @@ import type { ZTTokenProps } from '../types';
 
 
 
+/**
+ * ZTTokenComp renders a draggable token representing a piece of the cipher text (ZT).
+ *
+ * Drag payload includes:
+ * - type: 'zt'
+ * - token: the token data
+ * - tokenIndex: flat index in the ZT stream
+ * - row/col: source cell coordinates
+ */
 const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `zt-${token.id}`,
@@ -15,7 +24,7 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col }) =>
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`inline-block px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 cursor-move select-none font-mono ${isDragging ? 'opacity-50' : ''}`}
+      className={`inline-block text-xs px-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 cursor-move select-none font-mono ${isDragging ? 'opacity-50' : ''}`}
       title="Move ZT token to another cell"
       style={{ touchAction: 'none' }}
     >

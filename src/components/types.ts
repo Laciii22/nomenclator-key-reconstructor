@@ -4,32 +4,42 @@ export type TokenCellProps = {
   onClick?: () => void;
 };
 
-export type OTChar = { id: string; ch: string };
-export type ZTToken = { id: string; text: string; locked?: boolean };
+export type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
+import type { OTChar as _OTChar, ZTToken as _ZTToken, KeysPerOTMode as _KeysPerOTMode } from '../types/domain';
 
 export type KeyTableProps = {
-  otRows: OTChar[][];
-  ztTokens: ZTToken[];
+  otRows: _OTChar[][];
+  ztTokens: _ZTToken[];
   rowGroups?: number[][];
+  keysPerOTMode?: _KeysPerOTMode;
+  lockedKeys?: Record<string, string>;
+  onLockOT?: (ot: string, lockValue: string) => void;
+  onUnlockOT?: (ot: string) => void;
 };
 
 export type MappingTableProps = {
-  otRows: OTChar[][];       
-  ztTokens: ZTToken[];      
+  otRows: _OTChar[][];       
+  ztTokens: _ZTToken[];      
   rowGroups?: number[][];   
   onMoveZTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
+  onLockOT?: (ot: string, lockValue: string) => void;
+  onUnlockOT?: (ot: string) => void;
+  lockedKeys?: Record<string, string>;
 };
 
 export type OTCellProps = {
-  ot: OTChar | null;
-  tokens: ZTToken[];
+  ot: _OTChar | null;
+  tokens: _ZTToken[];
   row: number;
   col: number;
   startIndex: number;
+  onLockOT?: (otChar: string, lockValue: string) => void;
+  onUnlockOT?: (otChar: string) => void;
+  lockedValue?: string;
 };
 
 export type ZTTokenProps = {
-  token: ZTToken;
+  token: _ZTToken;
   tokenIndex: number;
   row: number;
   col: number;
@@ -37,4 +47,4 @@ export type ZTTokenProps = {
 
 export type Pair = { ot: string; zt: string };
 
-export type Column = { ot: OTChar | null; zt: ZTToken[] };
+export type Column = { ot: _OTChar | null; zt: _ZTToken[] };
