@@ -9,6 +9,8 @@ export type LocalSettings = {
   maxTokensPerCell: number;
   keysPerOTMode: KeysPerOTMode;
   lockedKeys: LockedKeys;
+  otRaw: string;
+  ztRaw: string;
 };
 
 const KEY = 'nkr_settings';
@@ -28,6 +30,8 @@ export function useLocalSettings(initial?: Partial<LocalSettings>) {
     maxTokensPerCell: 3,
     keysPerOTMode: 'multiple',
     lockedKeys: {},
+    otRaw: '',
+    ztRaw: '',
     ...initial,
   });
 
@@ -39,7 +43,6 @@ export function useLocalSettings(initial?: Partial<LocalSettings>) {
         setSettings(prev => ({ ...prev, ...parsed }));
       }
     } catch { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
