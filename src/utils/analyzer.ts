@@ -58,29 +58,6 @@ function flattenOT(otRows: OTChar[][]) {
   return flat;
 }
 
-// Given rowGroups, derive for each cell the single token assigned (if count>=1),
-// by following the sequential assignment order through ztTokens.
-// Keep a reference implementation for potential weighting; currently unused
-// function cellPrimaryToken(
-//   rowGroups: number[][],
-//   ztTokens: ZTToken[]
-// ): (string | null)[] {
-//   const primary: (string | null)[] = [];
-//   let cursor = 0;
-//   for (const row of rowGroups) {
-//     for (const cnt of row) {
-//       const k = Math.max(0, cnt || 0);
-//       if (k > 0 && cursor < ztTokens.length) {
-//         primary.push(ztTokens[cursor]?.text ?? null);
-//       } else {
-//         primary.push(null);
-//       }
-//       cursor += k;
-//     }
-//   }
-//   return primary;
-// }
-
 // Compute flat start index for each cell into the ZT stream
 function cellStartIndices(rowGroups: number[][]): number[] {
   const starts: number[] = [];
@@ -94,37 +71,89 @@ function cellStartIndices(rowGroups: number[][]): number[] {
   return starts;
 }
 
-// Compress consecutive identical ZT tokens into runs
-function computeRuns(ztTokens: ZTToken[]): { token: string; length: number; str: string }[] {
-  const runs: { token: string; length: number; str: string }[] = [];
-  if (ztTokens.length === 0) return runs;
-  let cur = ztTokens[0].text;
-  let len = 1;
-  for (let i = 1; i < ztTokens.length; i++) {
-    const t = ztTokens[i].text;
-    if (t === cur) {
-      len++;
-    } else {
-      runs.push({ token: cur, length: len, str: cur.repeat(len) });
-      cur = t;
-      len = 1;
+// NOTE: Run-based heuristics removed by request.
+
+// Compute all contiguous segments of length 1..K from the ZT stream, concatenated as strings.
+function computeSegments(ztTokens: ZTToken[], K: number): Map<string, { count: number; len: number }> {
+  const segs = new Map<string, { count: number; len: number }>();
+  for (let i = 0; i < ztTokens.length; i++) {
+    let acc = '';
+    for (let k = 1; k <= K && i + k <= ztTokens.length; k++) {
+      acc += ztTokens[i + k - 1].text;
+      const e = segs.get(acc);
+      if (e) e.count += 1; else segs.set(acc, { count: 1, len: k });
     }
   }
-  runs.push({ token: cur, length: len, str: cur.repeat(len) });
-  return runs;
+  return segs;
 }
 
 export function analyze(
   otRows: OTChar[][],
   ztTokens: ZTToken[],
   rowGroups: number[][],
-  options: AnalysisOptions
+  _options: AnalysisOptions,
+  lockedKeys?: Record<string, string>
 ): AnalysisResult {
   // Multi-length token sequence heuristic (per-character best sequence of up to K tokens)
   const flatOT = flattenOT(otRows);
-  // Derived but not used in the current multi-length heuristic; kept for potential future weighting
-  // const primary = cellPrimaryToken(rowGroups, ztTokens);
-  const starts = cellStartIndices(rowGroups);
+  const KMAX = 3; // configurable upper bound
+  // Precompute all short segments for length inference and candidate augmentation
+  const allSegsTop = computeSegments(ztTokens, KMAX);
+
+  // If there are incoming locked keys, adjust rowGroups to honor their lengths before computing starts
+  let workingGroups: number[][] = clone2D(rowGroups);
+  if (lockedKeys && Object.keys(lockedKeys).length > 0) {
+    // derive locked lengths per char from observed segments if possible
+    const lockedLenIncoming: Record<string, number> = {};
+    for (const [ch, seq] of Object.entries(lockedKeys)) {
+      const len = allSegsTop.get(seq)?.len ?? Math.min(KMAX, Math.max(1, seq.length));
+      lockedLenIncoming[ch] = len;
+    }
+
+    // apply lengths to matching cells and preserve total count by adjusting unlocked cells
+    const cells = flattenGroups(workingGroups);
+    const flatOT2 = flatOT;
+    let total = 0;
+    for (const cell of cells) total += cell.count;
+    for (let i = 0; i < cells.length; i++) {
+      const ch = flatOT2[i]?.ch;
+      if (!ch) continue;
+      if (lockedLenIncoming[ch] != null) {
+        const { row, col } = cells[i];
+        workingGroups[row][col] = lockedLenIncoming[ch];
+      }
+    }
+    // balance
+    let sumNow = 0;
+    for (const row of workingGroups) for (const v of row) sumNow += (v || 0);
+    let delta = total - sumNow; // >0 add tokens; <0 remove tokens
+    const cells2 = flattenGroups(workingGroups);
+    for (let i = 0; i < cells2.length && delta !== 0; i++) {
+      const ch = flatOT2[i]?.ch;
+      const { row, col } = cells2[i];
+      const isLocked = ch ? lockedLenIncoming[ch] != null : false;
+      if (isLocked) continue;
+      if (delta > 0) { workingGroups[row][col] = (workingGroups[row][col] || 0) + 1; delta -= 1; }
+      else if (delta < 0) {
+        const cur = workingGroups[row][col] || 0;
+        if (cur > 0) { workingGroups[row][col] = cur - 1; delta += 1; }
+      }
+    }
+    if (delta !== 0) {
+      for (let i = 0; i < cells2.length && delta < 0; i++) {
+        const { row, col } = cells2[i];
+        const cur = workingGroups[row][col] || 0;
+        if (cur > 0) { workingGroups[row][col] = cur - 1; delta += 1; }
+      }
+      for (let i = 0; i < cells2.length && delta > 0; i++) {
+        const { row, col } = cells2[i];
+        workingGroups[row][col] = (workingGroups[row][col] || 0) + 1; delta -= 1;
+      }
+    }
+  }
+
+  // Compute starts from (possibly) adjusted groups
+  const starts = cellStartIndices(workingGroups);
 
   // Count occurrences per char and per token
   const charPositions: Record<string, number[]> = {};
@@ -134,23 +163,12 @@ export function analyze(
     (charPositions[ch] ||= []).push(i);
   }
 
-  const suggestions: CharSuggestion[] = [];
-  const locks: Record<string, string> = {};
+  // Suggestions and auto-locks removed; only user-supplied locks are respected.
   const candidatesByChar: Record<string, Candidate[]> = {};
 
   // For variable-length mapping, evaluate candidate lengths 1..KMAX
-  const KMAX = 3; // configurable upper bound
-  const lockedLen: Record<string, number> = {};
+  // Build candidates from current starts only (no run-based heuristics)
   for (const [ch, positions] of Object.entries(charPositions)) {
-    // Even if a character occurs only once, we still want to compute its candidates
-    // so the UI can offer options like "22" or "234". However, suggestions/locks
-    // are only meaningful when we have multiple occurrences to infer from.
-    const computeSuggestion = positions.length >= 2;
-
-    let bestSeq = '';
-    let bestLen = 1;
-    let bestCount = 0;
-    let bestDenom = positions.length;
     const cand: Candidate[] = [];
 
     for (let k = 1; k <= KMAX; k++) {
@@ -164,33 +182,10 @@ export function analyze(
           hist.set(seq, (hist.get(seq) || 0) + 1);
         }
       }
-  if (denom === 0) continue;
+      if (denom === 0) continue;
       for (const [seq, count] of hist) {
         const score = count / denom;
         cand.push({ token: seq, length: k, support: count, occurrences: denom, score });
-      }
-      // track best-by-score to produce a suggestion when applicable
-      if (computeSuggestion) {
-        // pick top sequence for this k
-        let topSeq = '';
-        let topCount = 0;
-        for (const [seq, c] of hist) {
-          if (c > topCount) {
-            topCount = c;
-            topSeq = seq;
-          }
-        }
-        const topScore = topCount / denom;
-        const curBestScore = bestDenom > 0 ? bestCount / bestDenom : -1;
-        if (
-          topScore > curBestScore ||
-          (Math.abs(topScore - curBestScore) < 1e-9 && (topCount > bestCount || (topCount === bestCount && k > bestLen)))
-        ) {
-          bestSeq = topSeq;
-          bestLen = k;
-          bestCount = topCount;
-          bestDenom = denom;
-        }
       }
     }
 
@@ -208,124 +203,27 @@ export function analyze(
       }
       candidatesByChar[ch] = dedup;
     }
-
-    // Emit an auto suggestion only when we have enough evidence (>=2 occurrences)
-    if (computeSuggestion && bestSeq) {
-      const occurrences = bestDenom; // positions that had sufficient tokens for bestLen
-      const score = occurrences > 0 ? bestCount / occurrences : 0;
-      const lockRecommended = options.keysPerOTMode === 'single' && bestCount >= 2 && score >= 0.8;
-      suggestions.push({
-        id: `sg_${ch}`,
-        type: 'char',
-        otChar: ch,
-        token: bestSeq,
-        support: bestCount,
-        occurrences,
-        score,
-        lockRecommended,
-      });
-      if (lockRecommended) {
-        locks[ch] = bestSeq;
-        lockedLen[ch] = bestLen;
-      }
-    }
   }
+  // Augmentation: keep only segment-based candidates (no run-based heuristics).
 
-  // Run-length alignment heuristic: if number of runs matches number of OT cells, align 1 run per cell
-  const flatOTCells = flatOT.filter(x => x && x.ch !== '');
-  const runs = computeRuns(ztTokens);
-  // Global run histogram across entire ZT stream (token^length)
-  const runHist = new Map<string, { count: number; len: number }>();
-  for (const r of runs) {
-    const key = r.str;
-    const entry = runHist.get(key);
-    if (entry) entry.count += 1; else runHist.set(key, { count: 1, len: r.length });
-  }
-  if (runs.length === flatOTCells.length && flatOTCells.length > 0) {
-    const perCharCounts = new Map<string, Map<string, number>>();
-    for (let i = 0; i < runs.length; i++) {
-      const ch = flatOTCells[i]!.ch;
-      const seq = runs[i].str;
-      if (!perCharCounts.has(ch)) perCharCounts.set(ch, new Map());
-      const m = perCharCounts.get(ch)!;
-      m.set(seq, (m.get(seq) || 0) + 1);
-    }
-    for (const [ch, counts] of perCharCounts) {
-      const positions = charPositions[ch] || [];
-      if (positions.length < 2) continue;
-      // pick best by count; occurrences equals positions.length
-      let topSeq = '';
-      let topCount = 0;
-      for (const [seq, c] of counts) {
-        if (c > topCount) { topCount = c; topSeq = seq; }
-      }
-      const occurrences = positions.length;
-      const score = occurrences > 0 ? topCount / occurrences : 0;
-      const lockRecommended = options.keysPerOTMode === 'single' && topCount >= 2 && score >= 0.8;
-      // add/merge candidate into candidatesByChar
-      const len = topSeq.length;
-      const list = candidatesByChar[ch] || [];
-      list.push({ token: topSeq, length: len, support: topCount, occurrences, score });
-  list.sort((a, b) => b.score - a.score || b.support - a.support || b.length - a.length);
-      candidatesByChar[ch] = list;
-      // if this beats existing suggestion, replace and set lock
-      const existingIdx = suggestions.findIndex(s => s.otChar === ch);
-      if (existingIdx >= 0) {
-        const cur = suggestions[existingIdx];
-        const better = (score > cur.score) || (Math.abs(score - cur.score) < 1e-9 && topCount > cur.support);
-        if (better) {
-          suggestions[existingIdx] = { id: cur.id, type: 'char', otChar: ch, token: topSeq, support: topCount, occurrences, score, lockRecommended };
-          if (lockRecommended) { locks[ch] = topSeq; lockedLen[ch] = len; }
-        }
-      } else {
-        suggestions.push({ id: `sg_rl_${ch}`, type: 'char', otChar: ch, token: topSeq, support: topCount, occurrences, score, lockRecommended });
-        if (lockRecommended) { locks[ch] = topSeq; lockedLen[ch] = len; }
-      }
-    }
-  }
-
-  // Global run-based candidates fallback: only apply if a character ended with no candidates
-  // This avoids polluting all characters with an irrelevant "most common run" token.
-  for (const [ch, positions] of Object.entries(charPositions)) {
-    if (positions.length === 0) continue;
-    if (candidatesByChar[ch] && candidatesByChar[ch].length > 0) continue;
-    let topSeq = '';
-    let topCount = 0;
-    let topLen = 1;
-    for (const [seq, { count, len }] of runHist) {
-      if (count > topCount) { topCount = count; topSeq = seq; topLen = len; }
-    }
-    if (!topSeq) continue;
-    const occurrences = positions.length;
-    const support = Math.min(topCount, occurrences);
-    const score = occurrences > 0 ? support / occurrences : 0;
-    const list = candidatesByChar[ch] || [];
-    list.push({ token: topSeq, length: topLen, support, occurrences, score });
-  list.sort((a, b) => b.score - a.score || b.support - a.support || b.length - a.length || a.token.localeCompare(b.token));
-    candidatesByChar[ch] = list;
-  }
-
-  // Augment: add repeated-token run sequences (like "22", "333") as candidates for all chars
-  // if they exist in the ZT stream and length <= KMAX. This enables selecting patterns like 22
-  // even when current starts do not show them for that char yet.
+  // Augment: add all short ZT segments (length <= KMAX) observed anywhere in ZT to each char's candidates
+  // This ensures options like "23" exist even if current cell starts don't point to them yet.
   for (const [ch, positions] of Object.entries(charPositions)) {
     if (positions.length === 0) continue;
     const occurrences = positions.length;
     const list = candidatesByChar[ch] || [];
     const have = new Set(list.map(c => c.token));
-    for (const [seq, info] of runHist) {
+    for (const [seq, info] of allSegsTop) {
       if (info.len > KMAX) continue;
-      // runHist keys are built as token.repeat(len), thus represent repeated-token sequences
-      if (have.has(seq)) continue;
       const support = Math.min(info.count, occurrences);
       const score = occurrences > 0 ? support / occurrences : 0;
-      list.push({ token: seq, length: info.len, support, occurrences, score });
+      if (!have.has(seq)) list.push({ token: seq, length: info.len, support, occurrences, score });
     }
     list.sort((a, b) => b.score - a.score || b.support - a.support || b.length - a.length || a.token.localeCompare(b.token));
     candidatesByChar[ch] = list;
   }
 
-  // Build proposed rowGroups: set locked chars to exactly 1 token per cell
+  // Build proposed rowGroups honoring incoming lockedKeys only (no auto locks)
   const proposed = clone2D(rowGroups);
   const cells = flattenGroups(proposed);
   const flatOT2 = flatOT; // alias
@@ -336,8 +234,9 @@ export function analyze(
   for (let i = 0; i < cells.length; i++) {
     const ch = flatOT2[i]?.ch;
     if (!ch) continue;
-    if (locks[ch]) {
-      const k = lockedLen[ch] || 1;
+    if (lockedKeys && lockedKeys[ch]) {
+      const seq = lockedKeys[ch];
+      const k = seq ? (allSegsTop.get(seq)?.len ?? Math.min(KMAX, Math.max(1, seq.length))) : 1;
       const { row, col } = cells[i];
       const cur = proposed[row][col] || 0;
       if (cur !== k) proposed[row][col] = k;
@@ -353,7 +252,7 @@ export function analyze(
   for (let i = 0; i < cells.length && delta !== 0; i++) {
     const ch = flatOT2[i]?.ch;
     const { row, col } = cells[i];
-    const locked = ch ? Boolean(locks[ch]) : false;
+  const locked = ch ? Boolean(lockedKeys && lockedKeys[ch]) : false;
     if (locked) continue;
     if (delta > 0) {
       proposed[row][col] = (proposed[row][col] || 0) + 1;
@@ -385,8 +284,8 @@ export function analyze(
   }
 
   return {
-    suggestions: suggestions.sort((a, b) => b.score - a.score),
-    proposedLocks: locks,
+    suggestions: [],
+    proposedLocks: { ...(lockedKeys || {}) },
     proposedRowGroups: proposed,
     candidatesByChar,
   };
@@ -478,8 +377,3 @@ export function locksFromSelections(selections: SelectionMap): Record<string, st
   }
   return out;
 }
-
-// Generate candidates for a single OT character based on current allocation (rowGroups)
-// Evaluates sequences of length 1..KMAX starting at each occurrence's start index
-// getCandidatesForChar was used by the removed "Lock one OT" UI; that UI is gone, and
-// per-char candidates are already available in analyze() via candidatesByChar.

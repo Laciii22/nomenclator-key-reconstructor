@@ -18,9 +18,9 @@ const NomenklatorPage: React.FC = () => {
   const [rowGroups, setRowGroups] = useState<number[][]>([]);
   
   const [validationMsg, setValidationMsg] = useState<string>('');
-  const [copied, setCopied] = useState<boolean>(false);
   const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
+  const [showAllCandidates, setShowAllCandidates] = useState<boolean>(false);
   
 
   const otChars = useMemo(() => {
@@ -87,7 +87,8 @@ const NomenklatorPage: React.FC = () => {
   }, [baselineGroups]);
 
   function runAnalysis() {
-    const res = analyze(otRows, ztTokens, rowGroups.length ? rowGroups : baselineGroups, { keysPerOTMode });
+    // Pass current locks so analyzer first honors them when computing starts/candidates
+    const res = analyze(otRows, ztTokens, rowGroups.length ? rowGroups : baselineGroups, { keysPerOTMode }, lockedKeys);
     // Populate candidates and default selections (only high-confidence pre-selected)
     setCandidatesByChar(res.candidatesByChar);
     const nextSel: SelectionMap = {};
@@ -445,7 +446,7 @@ const NomenklatorPage: React.FC = () => {
                 value={keysPerOTMode}
                 onChange={(e) => setKeysPerOTMode(e.target.value as KeysPerOTMode)}
               >
-                <option value="single">Jeden kľúč na znak</option>
+                <option value="single">Jeden OT znak na jednu sadu znakov</option>
                 <option value="multiple" disabled>Viac kľúčov na znak (pripravuje sa)</option>
               </select>
               <button
@@ -454,15 +455,23 @@ const NomenklatorPage: React.FC = () => {
                 disabled={otChars.length === 0 || ztTokens.length === 0}
                 title="Spustiť analýzu a návrhy zámkov"
               >
-                Analyze
+                Spustiť analýzu
               </button>
             </div>
 
             {Object.keys(candidatesByChar).length > 0 && (
               <div className="border border-gray-200 rounded p-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Suggestions</h3>
+                  <h3 className="font-semibold">Návrhy</h3>
                   <div className="flex gap-2">
+                      <label className="flex items-center gap-1 text-xs mr-2 select-none" title="Zobraziť aj kandidátov, ktorí sa nedajú správne zaradiť (pre pokročilé ladenie)">
+                        <input
+                          type="checkbox"
+                          checked={showAllCandidates}
+                          onChange={(e) => setShowAllCandidates(e.target.checked)}
+                        />
+                        Zobraziť všetkých kandidátov
+                      </label>
                       <button
                         className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                         onClick={() => {
@@ -473,21 +482,9 @@ const NomenklatorPage: React.FC = () => {
                         }}
                         title="Vymazať všetky zámky a výbery"
                       >
-                        Reset
+                        Vymazať
                       </button>
-                      <button
-                        className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(JSON.stringify(lockedKeys, null, 2));
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 1500);
-                          } catch { /* ignore clipboard errors */ }
-                        }}
-                        title="Skopírovať aktuálne zámky do schránky"
-                      >
-                        Copy locks
-                      </button>
+                      
                     <button
                       className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                       onClick={() => {
@@ -502,7 +499,7 @@ const NomenklatorPage: React.FC = () => {
                         setValidationMsg(res.ok ? '' : res.message);
                       }}
                     >
-                      Preview selections
+                      Náhľad výberu
                     </button>
                     <button
                       className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white"
@@ -523,7 +520,7 @@ const NomenklatorPage: React.FC = () => {
                         setLockedKeys(prev => ({ ...newLocks, ...prev }));
                       }}
                     >
-                      Apply selections
+                      Aplikovať výber
                     </button>
                   </div>
                 </div>
@@ -532,11 +529,7 @@ const NomenklatorPage: React.FC = () => {
                     {validationMsg}
                   </div>
                 )}
-                {copied && (
-                  <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded p-2">
-                    Zámky skopírované do schránky.
-                  </div>
-                )}
+                
                 <div className="space-y-2">
                   {Object.entries(candidatesByChar).sort((a,b)=> a[0].localeCompare(b[0])).map(([ch, list]) => (
                     <div key={ch} className="flex items-center gap-3">
@@ -551,7 +544,7 @@ const NomenklatorPage: React.FC = () => {
                           setSelections(prev => ({ ...prev, [ch]: val === '' ? null : val }));
                         }}
                       >
-                        <option value="">None (do not lock)</option>
+                        <option value="">Žiadne (nezamknúť)</option>
                         {list.map((c, idx) => {
                           let required = 0;
                           // include locked keys
@@ -573,10 +566,33 @@ const NomenklatorPage: React.FC = () => {
                           const occCh = occurrencesByChar[ch] || 0;
                           required += occCh * c.length;
                           const overBudget = required > ztTokens.length;
-                          const reason = overBudget ? ` (disabled: vyžaduje ${required}/${ztTokens.length})` : '';
+                          // Alignment pre-check: build effective selection with this option applied (ignore locked ones duplicatively)
+                          let alignOk = true;
+                          let alignMsg: string | undefined = undefined;
+                          if (!overBudget) {
+                            const effSel: SelectionMap = {};
+                            // include ALL locked keys as hard constraints
+                            for (const [lk, lseq] of Object.entries(lockedKeys)) {
+                              if (lseq) effSel[lk] = lseq;
+                            }
+                            // include other current selections except the char being evaluated (unless it's locked already)
+                            for (const [sch, seq] of Object.entries(selections)) {
+                              if (seq && sch !== ch && !lockedKeys[sch]) effSel[sch] = seq;
+                            }
+                            // apply this candidate for current char if not locked; if locked, keep locked
+                            if (!lockedKeys[ch]) effSel[ch] = c.token;
+                            const base = rowGroups.length ? rowGroups : baselineGroups;
+                            const res = validateSelections(effSel, candidatesByChar, base);
+                            alignOk = res.ok;
+                            alignMsg = res.ok ? undefined : res.message || 'Nezaraditeľný výber';
+                          }
+                          const disabled = overBudget || (!alignOk && !showAllCandidates);
+                          const title = overBudget
+                            ? `Výber by prekročil dostupné tokeny (${required} > ${ztTokens.length}).`
+                            : (!alignOk ? (alignMsg || 'Zarovnanie nezodpovedá výberu') : undefined);
                           return (
-                            <option key={idx} value={c.token} disabled={overBudget} title={overBudget ? `Výber by prekročil dostupné tokeny (${required} > ${ztTokens.length}).` : undefined}>
-                              {c.token} (k {c.length}){reason}
+                            <option key={idx} value={c.token} disabled={disabled} title={title}>
+                              {c.token} (k {c.length})
                             </option>
                           );
                         })}

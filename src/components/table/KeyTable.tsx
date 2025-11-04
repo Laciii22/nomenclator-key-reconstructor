@@ -170,11 +170,6 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPe
           })}
         </tbody>
       </table>
-      <p>TODO QUESTION? <br/>
-         how it should be realiigned when locked? what if AHOJA is 12 3 4 51 2 locking A should realing it to 12 or lock for A 12 and also 2?
-         <br/>
-         OR should i make input fields in the table and type there the keys and only there lock it and it will try to realign itself?
-      </p>
     </div>
   );
 };
