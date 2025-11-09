@@ -1,20 +1,20 @@
 import React, { useMemo } from 'react';
-import type { Column, KeyTableProps, OTChar, Pair, ZTToken } from '../types';
+import type { Column, KeyTableProps, OTChar, Pair } from '../types';
 
 
 
-function distributeRow(otRow: OTChar[], ztRowCount: number, takeFrom: ZTToken[], cursor: { i: number }): Column[] {
+function distributeRow(otRow: OTChar[], ztRowIndices: number[], cursor: { i: number }): Column[] {
   const otCells = otRow.filter(c => c.ch !== '');
   const oc = otCells.length;
   if (oc === 0) return [];
-  const base = Math.floor(ztRowCount / oc);
-  let rem = ztRowCount % oc;
+  const base = Math.floor(ztRowIndices.length / oc);
+  let rem = ztRowIndices.length % oc;
   const cols: Column[] = [];
   for (let k = 0; k < oc; k++) {
     const groupSize = base + (rem > 0 ? 1 : 0);
     const start = cursor.i;
     const end = start + groupSize;
-    const group = takeFrom.slice(start, end);
+    const group = ztRowIndices.slice(start, end);
     cursor.i = end;
     if (rem > 0) rem--;
     cols.push({ ot: otCells[k], zt: group });
@@ -36,16 +36,13 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPe
     if (totalOT === 0) return [] as Pair[];
     const cursor = { i: 0 };
     const out: Pair[] = [];
-    if (rowGroups && rowGroups.length) {
+    if (rowGroups && rowGroups.length > 0) {
       for (let r = 0; r < otRows.length; r++) {
         const otRow = otRows[r].filter(c => c.ch !== '');
-        const sizes = (rowGroups[r] || []).slice(0, otRow.length);
-        while (sizes.length < otRow.length) sizes.push(0);
+        const row = rowGroups[r] || [];
         for (let c = 0; c < otRow.length; c++) {
-          const take = Math.max(0, Math.min(totalZT - cursor.i, sizes[c]));
-          const group = ztTokens.slice(cursor.i, cursor.i + take);
-          cursor.i += take;
-          if (!otRow[c]) continue;
+          const indices = row[c] || [];
+          const group = indices.map((i: number) => ztTokens[i]).filter((z): z is typeof ztTokens[number] => z !== undefined && z !== null);
           const zt = group.map(z => z.text).join('');
           out.push({ ot: otRow[c].ch, zt });
         }
@@ -74,10 +71,13 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPe
       for (let r = 0; r < otRows.length; r++) {
         const otRow = otRows[r];
         const countForRow = Math.max(0, Math.min(totalZT - cursor.i, rowInfos[r].alloc));
-        const cols = distributeRow(otRow, countForRow, ztTokens, cursor);
+        const ztRowIndices = Array.from({length: countForRow}, (_, i) => cursor.i + i);
+        cursor.i += countForRow;
+        const cols = distributeRow(otRow, ztRowIndices, {i: 0});
         for (const col of cols) {
           if (!col.ot) continue;
-          const zt = col.zt.map(z => z.text).join('');
+          const group = col.zt.map(z => ztTokens[z]).filter((z): z is typeof ztTokens[number] => z !== undefined && z !== null);
+          const zt = group.map(z => z.text).join('');
           out.push({ ot: col.ot.ch, zt });
         }
       }

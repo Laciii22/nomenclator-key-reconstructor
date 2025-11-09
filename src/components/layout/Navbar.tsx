@@ -9,7 +9,6 @@ const Navbar: React.FC = () => {
                 </h1>
                 <div className="flex gap-4">
                     <a href="/" className="text-white hover:underline">Domov</a>
-                    <a href="/nomenklator" className="text-white hover:underline">Nomenklator</a>
                 </div>
             </div>
         </nav>

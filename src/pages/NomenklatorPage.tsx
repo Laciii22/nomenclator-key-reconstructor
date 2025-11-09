@@ -1,10 +1,11 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { DndContext, type DragEndEvent, useDroppable } from '@dnd-kit/core';
+import type { KeysPerOTMode } from '../components/types';
+import type { OTChar, ZTToken } from '../types/domain';
 import AppLayout from '../components/layout/AppLayout';
 import MappingTable from '../components/table/MappingTable';
 import KeyTable from '../components/table/KeyTable';
-import type { KeysPerOTMode } from '../components/types';
-import type { OTChar, ZTToken } from '../types/domain';
-import { analyze, type Candidate, type SelectionMap, locksFromSelections } from '../utils/analyzer';
+import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';
 import { useLocalSettings } from '../hooks/useLocalSettings';
 
@@ -13,14 +14,45 @@ const NomenklatorPage: React.FC = () => {
   const hydrated = useRef(false);
   const [otRaw, setOtRaw] = useState('');
   const [ztRaw, setZtRaw] = useState('');
+  const [ztParseMode, setZtParseMode] = useState<'separator' | 'fixedLength'>('separator');
+  const [separator, setSeparator] = useState<string>(' ');
+  const [fixedLength, setFixedLength] = useState<number>(1);
   const [keysPerOTMode, setKeysPerOTMode] = useState<KeysPerOTMode>('single');
   const [lockedKeys, setLockedKeys] = useState<Record<string, string>>({});
-  const [rowGroups, setRowGroups] = useState<number[][]>([]);
-  
-  const [validationMsg, setValidationMsg] = useState<string>('');
+  const getCounts = (rg: number[][][]) => rg.map(row => row.map(list => list.length));
+  // Indices (v pôvodnom ZT) presunuté do zátvoriek (klamač)
+  const [bracketedIndices, setBracketedIndices] = useState<number[]>([]);
+  const [bracketWarning, setBracketWarning] = useState<string | null>(null);
+
+  const convertCountsToLists = (counts: number[][]): number[][][] => {
+    const groups: number[][][] = [];
+    let start = 0;
+    for (let r = 0; r < counts.length; r++) {
+      const row: number[][] = [];
+      for (let c = 0; c < counts[r].length; c++) {
+        const count = counts[r][c];
+        row.push(Array.from({length: count}, (_, i) => start + i));
+        start += count;
+      }
+      groups.push(row);
+    }
+    return groups;
+  };
+
+  // row groups used for analysis (full token set)
+  const [analysisRowGroups, setAnalysisRowGroups] = useState<number[][][]>([]);
+  // row groups used for display (may exclude bracketed tokens)
+  const [displayRowGroups, setDisplayRowGroups] = useState<number[][][]>([]);
+  // Status related to (potential) klamáč identification
+  // none: not enough data or no analysis yet
+  // needsKlamac: more ZT tokens than OT chars (suspected klamáč present)
+  // ok: counts aligned (either no klamáč needed or selected set balances)
+  // invalid: OT > ZT (after removal) => removed too many tokens / damaged text
+  const [klamacStatus, setKlamacStatus] = useState<'none' | 'needsKlamac' | 'ok' | 'invalid'>('none');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
-  const [showAllCandidates, setShowAllCandidates] = useState<boolean>(false);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   
 
   const otChars = useMemo(() => {
@@ -30,9 +62,39 @@ const NomenklatorPage: React.FC = () => {
 
   const ztTokens = useMemo(() => {
     const s = ztRaw.trim();
-    const parts = /\s/.test(s) ? s.split(/\s+/).filter(Boolean) : Array.from(s);
+    let parts: string[];
+    if (ztParseMode === 'separator') {
+      parts = s.split(separator).filter(Boolean);
+    } else {
+      // fixedLength
+      parts = [];
+      for (let i = 0; i < s.length; i += fixedLength) {
+        parts.push(s.slice(i, i + fixedLength));
+      }
+    }
+    // initial status before any bracket selection (analysis independent)
+    if (parts.length === 0 || otChars.length === 0) {
+      setKlamacStatus('none');
+      setStatusMessage(null);
+    } else if (parts.length > otChars.length) {
+      setKlamacStatus('needsKlamac');
+      setStatusMessage(`Pozor: OT má menej znakov (${otChars.length}) ako ZT tokenov (${parts.length}). Vyber klamáč.`);
+    } else if (parts.length < otChars.length) {
+      setKlamacStatus('invalid');
+      setStatusMessage(`OT má viac znakov (${otChars.length}) ako ZT tokenov (${parts.length}). Text môže byť poškodený alebo chybne parsovaný.`);
+    } else {
+      setKlamacStatus('ok');
+      setStatusMessage(null);
+    }
     return parts.map((t, i) => ({ id: `zt_${i}`, text: t }));
-  }, [ztRaw]);
+  }, [ztRaw, ztParseMode, separator, fixedLength, otChars.length]);
+
+  // Analysis-first workflow: keep analysis working on full ztTokens; bracket filtering is only for output preview.
+  const effectiveZtTokens = useMemo(() => {
+    if (!bracketedIndices || bracketedIndices.length === 0) return ztTokens;
+    const brSet = new Set(bracketedIndices);
+    return ztTokens.filter((_, i) => !brSet.has(i));
+  }, [ztTokens, bracketedIndices]);
 
   const COLS = 12;
   const otRows = useMemo(() => {
@@ -47,16 +109,43 @@ const NomenklatorPage: React.FC = () => {
     return groups;
   }, [otRows, ztTokens]);
 
+  // Flag to indicate analysis finished; bracket selection enabled after analysis
+  const [analysisDone, setAnalysisDone] = useState(false);
+
   // Hydrate state from local settings once
   React.useEffect(() => {
     if (!hydrated.current) {
       setOtRaw(settings.otRaw ?? '');
       setZtRaw(settings.ztRaw ?? '');
       setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
-      setLockedKeys(settings.lockedKeys ?? {});
+  setLockedKeys(settings.lockedKeys ?? {});
+  setBracketedIndices(Array.isArray(settings.bracketedIndices) ? settings.bracketedIndices : []);
       hydrated.current = true;
     }
   }, [settings]);
+
+  // Persist bracketed indices to settings
+  React.useEffect(() => {
+    setSettings(prev => {
+      const prevStr = JSON.stringify(prev.bracketedIndices || []);
+      const nextStr = JSON.stringify(bracketedIndices || []);
+      return prevStr === nextStr ? prev : { ...prev, bracketedIndices };
+    });
+  }, [bracketedIndices, setSettings]);
+
+  // Validate bracketed indices after parse changes; drop out-of-range and show a warning
+  React.useEffect(() => {
+    setBracketWarning(null);
+    setBracketedIndices(prev => {
+      if (!prev || prev.length === 0) return prev;
+      const max = ztTokens.length;
+      const filtered = prev.filter(i => i >= 0 && i < max);
+      if (filtered.length !== prev.length) {
+        setBracketWarning('Niektoré klamače už neexistujú po zmene parsovania; boli odstránené.');
+      }
+      return filtered;
+    });
+  }, [ztTokens.length]);
 
   // Persist to local settings when changed
   React.useEffect(() => {
@@ -76,26 +165,78 @@ const NomenklatorPage: React.FC = () => {
     });
   }, [lockedKeys, setSettings]);
 
-  // Initialize rowGroups from baseline on first render or when inputs change
+  // Initialize analysis groups when OT/ZT change (excluding bracket changes); keep locks/selections
   React.useEffect(() => {
-    setRowGroups(baselineGroups);
-    setLockedKeys({});
-    setCandidatesByChar({});
-    setSelections({});
-    
-    setValidationMsg('');
-  }, [baselineGroups]);
+    const baseLists = convertCountsToLists(baselineGroups);
+    setAnalysisRowGroups(baseLists);
+    // Recompute display groups from analysis counts onto CURRENT effective tokens
+    const baseCounts = getCounts(baseLists);
+    const effSel: SelectionMap = {};
+    for (const [lk, seq] of Object.entries(lockedKeys)) if (seq) effSel[lk] = seq;
+    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) effSel[ch] = seq;
+    const effCounts = reflowRowGroups(otRows, effectiveZtTokens, baseCounts, effSel, candidatesByChar);
+    setDisplayRowGroups(convertCountsToLists(effCounts));
+  }, [baselineGroups, otRows, ztTokens]);
+
+  // On bracket changes after analysis: reflow display counts; do not reset locks/selections
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    const baseCounts = getCounts(analysisRowGroups.length ? analysisRowGroups : convertCountsToLists(baselineGroups));
+    const effSel: SelectionMap = {};
+    for (const [lk, seq] of Object.entries(lockedKeys)) if (seq) effSel[lk] = seq;
+    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) effSel[ch] = seq;
+    const effCounts = reflowRowGroups(otRows, effectiveZtTokens, baseCounts, effSel, candidatesByChar);
+    setDisplayRowGroups(convertCountsToLists(effCounts));
+  }, [bracketedIndices, effectiveZtTokens, analysisDone]);
+
+  // Reflow display when locks or selections change (post-analysis), so chosen sequences land under correct OT cells
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    const baseCounts = getCounts(analysisRowGroups.length ? analysisRowGroups : convertCountsToLists(baselineGroups));
+    const effSel: SelectionMap = {};
+    for (const [lk, seq] of Object.entries(lockedKeys)) if (seq) effSel[lk] = seq;
+    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) effSel[ch] = seq;
+    const effCounts = reflowRowGroups(otRows, effectiveZtTokens, baseCounts, effSel, candidatesByChar);
+    setDisplayRowGroups(convertCountsToLists(effCounts));
+  }, [lockedKeys, selections, candidatesByChar, analysisRowGroups, effectiveZtTokens, otRows, analysisDone]);
+
+  // Update status after bracket changes (post-analysis) to hide/show warnings dynamically
+  React.useEffect(() => {
+    const OT = otChars.length;
+    const totalZT = ztTokens.length;
+    const effLen = effectiveZtTokens.length;
+    if (OT === 0 || totalZT === 0) {
+      setKlamacStatus('none');
+      setStatusMessage(null);
+      return;
+    }
+    // Before analysis we already set initial status in ztTokens memo.
+    if (!analysisDone) return;
+    // After analysis: evaluate effective length (with klamač removed)
+    if (effLen < OT) {
+      setKlamacStatus('invalid');
+      setStatusMessage(`Vybraný zlý klamáč alebo text je poškodený: OT (${OT}) > ZT po odfiltrovaní (${effLen}).`);
+    } else if (effLen > OT) {
+      setKlamacStatus('needsKlamac');
+      setStatusMessage(`Ešte stále je viac ZT tokenov (${effLen}) ako OT znakov (${OT}). Vyber ďalší klamáč.`);
+    } else {
+      setKlamacStatus('ok');
+      setStatusMessage(null);
+    }
+  }, [analysisDone, bracketedIndices, effectiveZtTokens.length, otChars.length, ztTokens.length]);
 
   function runAnalysis() {
     // Pass current locks so analyzer first honors them when computing starts/candidates
-    const res = analyze(otRows, ztTokens, rowGroups.length ? rowGroups : baselineGroups, { keysPerOTMode }, lockedKeys);
-    // Populate candidates and default selections (only high-confidence pre-selected)
+    const rg = (analysisRowGroups.length > 0 ? analysisRowGroups : convertCountsToLists(baselineGroups)) as number[][][];
+    const base = getCounts(rg);
+    const res = analyze(otRows, ztTokens, base, { keysPerOTMode }, lockedKeys);
+    const analyzed = convertCountsToLists(res.proposedRowGroups);
+    setAnalysisRowGroups(analyzed);
+    // After analysis, display uses effective tokens (currently identical because no klamač yet)
+    setDisplayRowGroups(analyzed);
     setCandidatesByChar(res.candidatesByChar);
-    const nextSel: SelectionMap = {};
-    for (const s of res.suggestions) {
-      if (s.lockRecommended) nextSel[s.otChar] = s.token;
-    }
-    setSelections(nextSel);
+    setSelections({});
+    setAnalysisDone(true);
   }
 
   function onLockOT(ot: string, lockValue: string) {
@@ -110,28 +251,7 @@ const NomenklatorPage: React.FC = () => {
   }
 
   // Helpers: flatten OT (non-empty) and compute flat group strings for given groups
-  function flattenOTChars(rows: OTChar[][]) {
-    const flat: OTChar[] = [];
-    for (const r of rows) for (const cell of r) if (cell && cell.ch !== '') flat.push(cell);
-    return flat;
-  }
-  function flatGroupsFor(rows: OTChar[][], tokens: ZTToken[], groups: number[][]) {
-    const totalZT = tokens.length;
-    const cursor = { i: 0 };
-    const out: string[] = [];
-    for (let r = 0; r < rows.length; r++) {
-      const otRow = rows[r].filter(c => c.ch !== '');
-      const sizes = (groups[r] || []).slice(0, otRow.length);
-      while (sizes.length < otRow.length) sizes.push(0);
-      for (let c = 0; c < otRow.length; c++) {
-        const take = Math.max(0, Math.min(totalZT - cursor.i, sizes[c]));
-        const group = tokens.slice(cursor.i, cursor.i + take);
-        cursor.i += take;
-        out.push(group.map(z => z.text).join(''));
-      }
-    }
-    return out;
-  }
+  // Removed flattenOTChars / flatGroupsFor (obsolete in simplified single-token model)
 
   // Auto-reflow: tries to align selected chars to their chosen sequences by shifting
   // extra tokens into previous non-selected cells, while preserving total token count.
@@ -157,17 +277,22 @@ const NomenklatorPage: React.FC = () => {
       while (sizes.length < len) sizes.push(0);
       counts.push(...sizes);
     }
-    const totalZT = tokens.length;
-    const T = counts.reduce((a, b) => a + b, 0);
+  const totalZT = tokens.length;
+  // Target sum must match the ACTUAL token stream we're rendering over.
+  // Using the base counts sum would keep the original (pre-klamáč) length and cause misalignment
+  // when some tokens are filtered out. Therefore preserve "totalZT" instead of the base sum.
+  const TARGET = totalZT;
     const isSelectedIndex = (i: number) => Boolean(selectionsIn[flat[i]?.ch]);
     const seqLenFor = (ch: string, seq: string) => {
       const found = (cands[ch] || []).find(c => c.token === seq);
-      return found ? found.length : seq.length;
+      return found ? found.length : 1; // default to 1 token per selection if unknown
     };
-    const matchAt = (start: number, seq: string) => {
-      if (start < 0 || start + seq.length > totalZT) return false;
-      for (let i = 0; i < seq.length; i++) if (tokens[start + i].text !== seq[i]) return false;
-      return true;
+    const matchAt = (start: number, seq: string, L: number) => {
+      if (start < 0 || start + L > totalZT) return false;
+      // Compare concatenated text of L tokens with expected sequence string
+      let acc = '';
+      for (let i = 0; i < L; i++) acc += tokens[start + i].text;
+      return acc === seq;
     };
     // Greedy left-to-right alignment
     let cursor = 0;
@@ -175,10 +300,10 @@ const NomenklatorPage: React.FC = () => {
       const ch = flat[i]?.ch;
       const want = ch ? selectionsIn[ch] : null;
       if (!want) { cursor += counts[i] || 0; continue; }
-      const L = seqLenFor(ch!, want!);
+  const L = seqLenFor(ch!, want!);
       // Find all possible starts for want and choose the closest to current cursor.
       const positions: number[] = [];
-      for (let p = 0; p + want!.length <= totalZT; p++) if (matchAt(p, want!)) positions.push(p);
+  for (let p = 0; p + L <= totalZT; p++) if (matchAt(p, want!, L)) positions.push(p);
       let target = -1;
       if (positions.length > 0) {
         // Prefer minimal absolute shift; if tie, prefer backward when feasible (to avoid stealing later matches)
@@ -250,16 +375,16 @@ const NomenklatorPage: React.FC = () => {
     }
     // Preserve total tokens by trimming/padding tail non-selected cells
     const sumNow = counts.reduce((a, b) => a + b, 0);
-    if (sumNow > T) {
-      let need = sumNow - T;
+    if (sumNow > TARGET) {
+      let need = sumNow - TARGET;
       for (let i = counts.length - 1; i >= 0 && need > 0; i--) {
         if (isSelectedIndex(i)) continue;
         const can = Math.min(counts[i], need);
         counts[i] -= can;
         need -= can;
       }
-    } else if (sumNow < T) {
-      let need = T - sumNow;
+    } else if (sumNow < TARGET) {
+      let need = TARGET - sumNow;
       for (let i = counts.length - 1; i >= 0 && need > 0; i--) {
         if (isSelectedIndex(i)) continue;
         counts[i] += 1;
@@ -279,143 +404,115 @@ const NomenklatorPage: React.FC = () => {
   }
 
   // Validate a set of selections: budget check and alignment check after previewing
-  function validateSelections(
-    selectionsIn: SelectionMap,
-    candidates: Record<string, Candidate[]>,
-    base: number[][]
-  ): { ok: boolean; message: string; preview: number[][] } {
-    // Early budget check
-    const flat = flattenOTChars(otRows);
-    const occ: Record<string, number> = {};
-    for (const ch of flat.map(c => c.ch)) occ[ch] = (occ[ch] || 0) + 1;
-    let required = 0;
-    for (const [ch, seq] of Object.entries(selectionsIn)) {
-      if (!seq) continue;
-      const len = (candidates[ch] || []).find(c => c.token === seq)?.length ?? seq.length;
-      required += (occ[ch] || 0) * len;
+  // Removed validateSelections (unused in simplified deterministic mapping)
+
+  // Build deterministic groups: each OT cell maps to exactly one token index (single-token model)
+  function buildSingleTokenGroups(
+    rows: OTChar[][],
+    tokens: ZTToken[],
+    forced: Record<string, string>, // char -> desired token text
+  ): { groups: number[][][]; error: string | null } {
+    // Queue token indices by text
+    const queues: Record<string, number[]> = {};
+    tokens.forEach((t, i) => { (queues[t.text] ||= []).push(i); });
+    // Prepare structure
+    const result: number[][][] = rows.map(r => r.filter(c => c.ch !== '').map(() => [] as number[]));
+    const flatCells: { ch: string; row: number; col: number }[] = [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r].filter(c => c.ch !== '');
+      for (let c = 0; c < row.length; c++) flatCells.push({ ch: row[c].ch, row: r, col: c });
     }
-    if (required > ztTokens.length) {
-      return { ok: false, message: `Výber vyžaduje ${required} tokenov, ale k dispozícii je len ${ztTokens.length}.`, preview: base };
-    }
-    // Build preview (auto-reflow) and verify exact alignment per occurrence
-  const preview = reflowRowGroups(otRows, ztTokens, base, selectionsIn, candidates);
-  const flatGroups = flatGroupsFor(otRows, ztTokens, preview);
-    let mismatches = 0;
-    const occIndex: Record<string, number> = {};
-    const bad: string[] = [];
-    for (let i = 0; i < flat.length; i++) {
-      const ch = flat[i].ch;
-      occIndex[ch] = (occIndex[ch] || 0) + 1;
-      const want = selectionsIn[ch] || null;
+    const used = new Set<number>();
+    let error: string | null = null;
+    // First pass: assign forced tokens (locked or selected)
+    for (const cell of flatCells) {
+      const want = forced[cell.ch];
       if (!want) continue;
-      if (flatGroups[i] !== want) {
-        mismatches++;
-        if (bad.length < 10) {
-          bad.push(`${ch}[${occIndex[ch]}]`);
+      const q = queues[want];
+      if (!q || q.length === 0) {
+        error = `Token '${want}' nie je dostupný pre znak '${cell.ch}'.`;
+        continue;
+      }
+      // take earliest unused occurrence
+      let idx = -1;
+      while (q.length && used.has(q[0])) q.shift();
+      if (q.length) idx = q.shift()!;
+      if (idx < 0) {
+        error = `Token '${want}' už bol použitý všetkými výskytmi a chýba pre '${cell.ch}'.`;
+        continue;
+      }
+      used.add(idx);
+      result[cell.row][cell.col] = [idx];
+    }
+    // Remaining indices
+    const remaining = tokens.map((_, i) => i).filter(i => !used.has(i));
+    let remCursor = 0;
+    for (const cell of flatCells) {
+      if (result[cell.row][cell.col].length === 0) {
+        if (remCursor < remaining.length) {
+          const idx = remaining[remCursor++];
+          used.add(idx);
+          result[cell.row][cell.col] = [idx];
         }
       }
     }
-    if (mismatches > 0) {
-      const tail = bad.length === mismatches ? bad.join(', ') : `${bad.join(', ')}…`;
-      return { ok: false, message: `Zarovnanie nezodpovedá výberu: ${mismatches} buniek sa líši. Problémové: ${tail}`, preview };
-    }
-    return { ok: true, message: '', preview };
+    // If tokens fewer than cells, leave empties (will show status elsewhere)
+    return { groups: result, error };
   }
 
   // Memoized occurrences of each OT char (non-empty cells only)
-  const occurrencesByChar = useMemo(() => {
-    const flat: { id: string; ch: string }[] = [];
-    for (const r of otRows) for (const cell of r) if (cell && cell.ch !== '') flat.push(cell);
-    const occ: Record<string, number> = {};
-    for (const ch of flat.map(c => c.ch)) occ[ch] = (occ[ch] || 0) + 1;
-    return occ;
-  }, [otRows]);
+  // occurrencesByChar no longer needed (single-token deterministic mapping)
 
   // Helper to get length of a sequence for a given char from candidates or string length fallback
-  function seqLengthFor(ch: string, seq: string | null | undefined, cands: Record<string, Candidate[]>) {
-    if (!seq) return 0;
-    const found = (cands[ch] || []).find(c => c.token === seq);
-    return found ? found.length : seq.length;
+  // seqLengthFor removed (only single-token lengths now)
+
+  // Drag-end handler (simplified after refactor): supports dropping tokens into bracket area only.
+  function onDragEnd(evt: DragEndEvent) {
+    const data = evt.active?.data?.current as { type?: string; tokenIndex?: number } | undefined;
+    const overId = evt.over?.id;
+    if (!data || data.type !== 'zt' || typeof data.tokenIndex !== 'number') return;
+    if (overId === 'bracket-drop') {
+      const origIdx = data.tokenIndex; // already original in simplified model
+      const text = ztTokens[origIdx]?.text;
+      if (!text) return;
+      const same = ztTokens.map((t,i)=> t.text===text? i : -1).filter(i=> i>=0);
+      setBracketedIndices(prev => {
+        const set = new Set(prev);
+        let changed=false;
+        for (const i of same) if (!set.has(i)) { set.add(i); changed=true; }
+        return changed? Array.from(set).sort((a,b)=>a-b) : prev;
+      });
+    }
   }
 
-  // Move one ZT token to a target cell by adjusting allocation counts (rowGroups),
-  // while preserving total tokens and respecting simple lock constraints.
-  function onMoveZTTokenHandler(tokenIndex: number, toRow: number, toCol: number) {
-    // Build flat OT cell list (non-empty) and row lengths
-    const flat: OTChar[] = [];
-    const rowLens: number[] = [];
-    for (let r = 0; r < otRows.length; r++) {
-      const row = otRows[r].filter(c => c.ch !== '');
-      rowLens.push(row.length);
-      for (const cell of row) flat.push(cell);
-    }
-    if (flat.length === 0) return;
-    const base = rowGroups.length ? rowGroups : baselineGroups;
-    // Flatten counts aligned to flat cells
-    const counts: number[] = [];
-    for (let r = 0; r < base.length; r++) {
-      const len = rowLens[r] || 0;
-      const sizes = (base[r] || []).slice(0, len);
-      while (sizes.length < len) sizes.push(0);
-      counts.push(...sizes);
-    }
-    const totalZT = ztTokens.length;
-    // Compute start indices per flat cell to locate source cell containing tokenIndex
-    const starts: number[] = [];
-    let cursor = 0;
-    for (let i = 0; i < counts.length; i++) { starts[i] = cursor; cursor += Math.max(0, counts[i] || 0); }
-    if (tokenIndex < 0 || tokenIndex >= totalZT) return;
-    let srcIdx = -1;
-    for (let i = 0; i < counts.length; i++) {
-      const s = starts[i];
-      const e = s + (counts[i] || 0);
-      if (tokenIndex >= s && tokenIndex < e) { srcIdx = i; break; }
-    }
-    if (srcIdx < 0) return; // token not inside any allocated cell (shouldn't happen)
-    // Compute target flat index from toRow/toCol in filtered rows
-    let tgtIdx = -1;
-    if (toRow >= 0 && toRow < rowLens.length) {
-      if (toCol >= 0 && toCol < rowLens[toRow]) {
-        tgtIdx = rowLens.slice(0, toRow).reduce((a, b) => a + b, 0) + toCol;
+  // DnD: Bracket drop area
+  const { setNodeRef: setBracketDropRef, isOver: bracketIsOver } = useDroppable({ id: 'bracket-drop' });
+
+  // Map effective index from MappingTable to original ZT index (skipping bracketed ones)
+  // effectiveToOriginalIndex no longer needed after simplification; removed.
+
+  // Toggle bracket for ALL occurrences sharing the same token text as original index i
+  function toggleBracketGroupByOriginalIndex(i: number) {
+    const text = ztTokens[i]?.text;
+    if (!text) return;
+    const sameTextIdx = ztTokens.map((t, idx) => (t.text === text ? idx : -1)).filter(idx => idx >= 0);
+    setBracketedIndices(prev => {
+      const set = new Set(prev);
+      const allAreBracketed = sameTextIdx.every(idx => set.has(idx));
+      if (allAreBracketed) {
+        // Remove all occurrences
+        for (const idx of sameTextIdx) set.delete(idx);
+      } else {
+        // Add any missing occurrences
+        for (const idx of sameTextIdx) set.add(idx);
       }
-    }
-    if (tgtIdx < 0 || tgtIdx >= counts.length) return;
-    if (tgtIdx === srcIdx) return; // no move
-
-    // Respect locks: don't decrease below locked length, don't increase above locked length
-    const srcCh = flat[srcIdx]?.ch;
-    const tgtCh = flat[tgtIdx]?.ch;
-    const srcLockedLen = srcCh && lockedKeys[srcCh] ? seqLengthFor(srcCh, lockedKeys[srcCh], candidatesByChar) : null;
-    const tgtLockedLen = tgtCh && lockedKeys[tgtCh] ? seqLengthFor(tgtCh, lockedKeys[tgtCh], candidatesByChar) : null;
-    if (srcLockedLen !== null && (counts[srcIdx] || 0) <= srcLockedLen) {
-      setValidationMsg(`Presun zablokovaný: bunka ${srcCh} je uzamknutá na ${srcLockedLen} a nemožno z nej odobrať.`);
-      return;
-    }
-    if (tgtLockedLen !== null && (counts[tgtIdx] || 0) >= tgtLockedLen) {
-      setValidationMsg(`Presun zablokovaný: bunka ${tgtCh} je uzamknutá na ${tgtLockedLen} a nemožno do nej pridať.`);
-      return;
-    }
-
-    // Apply move: decrement source by 1, increment target by 1
-    if ((counts[srcIdx] || 0) <= 0) return;
-    counts[srcIdx] = (counts[srcIdx] || 0) - 1;
-    counts[tgtIdx] = (counts[tgtIdx] || 0) + 1;
-
-    // Rebuild 2D groups
-    const groups: number[][] = [];
-    let k = 0;
-    for (let r = 0; r < rowLens.length; r++) {
-      const len = rowLens[r] || 0;
-      const row: number[] = [];
-      for (let c = 0; c < len; c++) row.push(Math.max(0, counts[k++] || 0));
-      groups.push(row);
-    }
-    setRowGroups(groups);
-    setValidationMsg('');
+      return Array.from(set).sort((a, b) => a - b);
+    });
   }
 
   return (
     <AppLayout>
+      <DndContext onDragEnd={onDragEnd}>
       <div className="container mx-auto px-4 py-6">
         <h1 className="text-xl font-semibold mb-4">Nomenklátor – automatické návrhy</h1>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -437,6 +534,105 @@ const NomenklatorPage: React.FC = () => {
               value={ztRaw}
               onChange={(e) => setZtRaw(e.target.value)}
             />
+
+            {statusMessage && (
+              <div
+                className={`text-sm rounded p-2 mt-2 border ${
+                  klamacStatus === 'invalid'
+                    ? 'text-red-700 bg-red-50 border-red-300'
+                    : klamacStatus === 'needsKlamac'
+                      ? 'text-orange-700 bg-orange-50 border-orange-300'
+                      : 'text-green-700 bg-green-50 border-green-300'
+                }`}
+              >
+                {statusMessage}
+              </div>
+            )}
+
+            {/* Klamac/bracket editor: enabled only after analysis so user can first analyze then choose klamač */}
+            {ztTokens.length > 0 && analysisDone && (
+              <div ref={setBracketDropRef} className={`border rounded p-3 ${bracketIsOver ? 'border-purple-500 bg-purple-50' : 'border-purple-200 bg-purple-50/40'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold">Klamáč (presun tokenov do zátvoriek)</div>
+                  <div className="flex gap-2">
+                    <button
+                      className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200"
+                      onClick={() => setBracketedIndices([])}
+                      title="Vyprázdniť zátvorky"
+                    >Vyprázdniť</button>
+                  </div>
+                </div>
+                {bracketWarning && (
+                  <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded p-2 mb-2">{bracketWarning}</div>
+                )}
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="font-mono">{otRaw.trim() || '—'}</span>
+                  <span className="font-mono">[
+                    {bracketedIndices.length > 0 ? bracketedIndices.map(i => ztTokens[i]?.text).filter(Boolean).join(':') : ''}
+                  ]</span>
+                  <span className="font-mono">
+                    {effectiveZtTokens.map(t => t.text).join(':') || '—'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <div className="text-xs text-gray-600 mr-2">Tokeny (klik pre vloženie/vrátenie, alebo potiahni do fialovej zóny):</div>
+                  {ztTokens.map((t, i) => {
+                    const inBracket = bracketedIndices.includes(i);
+                    return (
+                      <button
+                        key={t.id}
+                        className={`text-xs font-mono px-1.5 py-0.5 rounded border select-none ${
+                          inBracket ? 'bg-purple-200 border-purple-300 text-purple-900' : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
+                        }`}
+                        onClick={() => toggleBracketGroupByOriginalIndex(i)}
+                        title={inBracket ? 'Vrátiť všetky rovnaké tokeny zo zátvoriek' : 'Presunúť všetky rovnaké tokeny do zátvoriek'}
+                      >
+                        {t.text}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 text-sm mt-2">
+              <label htmlFor="ztParseMode" className="whitespace-nowrap">Parsovanie ZT:</label>
+              <select
+                id="ztParseMode"
+                className="border border-gray-300 rounded p-1 text-sm"
+                value={ztParseMode}
+                onChange={(e) => setZtParseMode(e.target.value as 'separator' | 'fixedLength')}
+              >
+                <option value="separator">Oddelené znakom</option>
+                <option value="fixedLength">Pevná dĺžka</option>
+              </select>
+              {ztParseMode === 'separator' && (
+                <>
+                  <label htmlFor="separator" className="whitespace-nowrap">Znak:</label>
+                  <input
+                    id="separator"
+                    type="text"
+                    maxLength={1}
+                    className="border border-gray-300 rounded p-1 text-sm w-12 text-center"
+                    value={separator}
+                    onChange={(e) => setSeparator(e.target.value)}
+                  />
+                </>
+              )}
+              {ztParseMode === 'fixedLength' && (
+                <>
+                  <label htmlFor="fixedLength" className="whitespace-nowrap">Dĺžka:</label>
+                  <input
+                    id="fixedLength"
+                    type="number"
+                    min="1"
+                    className="border border-gray-300 rounded p-1 text-sm w-16"
+                    value={fixedLength}
+                    onChange={(e) => setFixedLength(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </>
+              )}
+            </div>
 
             <div className="flex items-center gap-3 text-sm mt-2">
               <label htmlFor="keysPerOT" className="whitespace-nowrap">Počet kľúčov na OT znak:</label>
@@ -464,69 +660,52 @@ const NomenklatorPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">Návrhy</h3>
                   <div className="flex gap-2">
-                      <label className="flex items-center gap-1 text-xs mr-2 select-none" title="Zobraziť aj kandidátov, ktorí sa nedajú správne zaradiť (pre pokročilé ladenie)">
-                        <input
-                          type="checkbox"
-                          checked={showAllCandidates}
-                          onChange={(e) => setShowAllCandidates(e.target.checked)}
-                        />
-                        Zobraziť všetkých kandidátov
-                      </label>
+                      {/* Removed showAllCandidates checkbox and logic */}
                       <button
                         className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                         onClick={() => {
                           setSelections({});
                           setLockedKeys({});
-                          setRowGroups(baselineGroups);
-                          setValidationMsg('');
+                          setAnalysisRowGroups(convertCountsToLists(baselineGroups));
+                          const { groups: effGroups } = computeRowAlloc(otRows, effectiveZtTokens);
+                          setDisplayRowGroups(convertCountsToLists(effGroups));
                         }}
                         title="Vymazať všetky zámky a výbery"
                       >
                         Vymazať
                       </button>
                       
-                    <button
-                      className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                      onClick={() => {
-                        // Preview selections with validation; avoid overriding already locked keys
-                        const effSel: SelectionMap = {};
-                        for (const [ch, seq] of Object.entries(selections)) {
-                          if (!lockedKeys[ch]) effSel[ch] = seq;
-                        }
-                        const base = rowGroups.length ? rowGroups : baselineGroups;
-                        const res = validateSelections(effSel, candidatesByChar, base);
-                        setRowGroups(res.preview);
-                        setValidationMsg(res.ok ? '' : res.message);
-                      }}
-                    >
-                      Náhľad výberu
-                    </button>
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                        onClick={() => {
+                          const forced: Record<string,string> = { ...lockedKeys };
+                          for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq;
+                          const { groups, error } = buildSingleTokenGroups(otRows, effectiveZtTokens, forced);
+                          setSelectionError(error);
+                          setDisplayRowGroups(groups);
+                        }}
+                      >Náhľad výberu</button>
                     <button
                       className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() => {
-                        const effSel: SelectionMap = {};
-                        for (const [ch, seq] of Object.entries(selections)) {
-                          if (!lockedKeys[ch]) effSel[ch] = seq ?? null;
+                        const forced: Record<string,string> = { ...lockedKeys };
+                        for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq;
+                        const { groups, error } = buildSingleTokenGroups(otRows, effectiveZtTokens, forced);
+                        setSelectionError(error);
+                        setDisplayRowGroups(groups);
+                        if (!error) {
+                          // lock selections
+                          const newLocks: Record<string,string> = {};
+                          for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) newLocks[ch] = seq;
+                          setLockedKeys(prev => ({ ...prev, ...newLocks }));
                         }
-                        const base = rowGroups.length ? rowGroups : baselineGroups;
-                        const res = validateSelections(effSel, candidatesByChar, base);
-                        setRowGroups(res.preview);
-                        if (!res.ok) {
-                          setValidationMsg(res.message + ' Zámky neboli aplikované.');
-                          return;
-                        }
-                        setValidationMsg('');
-                        const newLocks = locksFromSelections(effSel);
-                        setLockedKeys(prev => ({ ...newLocks, ...prev }));
                       }}
-                    >
-                      Aplikovať výber
-                    </button>
+                    >Aplikovať výber</button>
                   </div>
                 </div>
-                {validationMsg && (
+                {selectionError && (
                   <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
-                    {validationMsg}
+                    {selectionError}
                   </div>
                 )}
                 
@@ -545,57 +724,9 @@ const NomenklatorPage: React.FC = () => {
                         }}
                       >
                         <option value="">Žiadne (nezamknúť)</option>
-                        {list.map((c, idx) => {
-                          let required = 0;
-                          // include locked keys
-                          for (const [lk, seq] of Object.entries(lockedKeys)) {
-                            if (seq) {
-                              const occ = occurrencesByChar[lk] || 0;
-                              required += occ * (seq.length);
-                            }
-                          }
-                          // include other selections (exclude this 'ch')
-                          for (const [sch, seq] of Object.entries(selections)) {
-                            if (seq && sch !== ch) {
-                              const occ = occurrencesByChar[sch] || 0;
-                              const len = seqLengthFor(sch, seq, candidatesByChar);
-                              required += occ * len;
-                            }
-                          }
-                          // include this option for current 'ch'
-                          const occCh = occurrencesByChar[ch] || 0;
-                          required += occCh * c.length;
-                          const overBudget = required > ztTokens.length;
-                          // Alignment pre-check: build effective selection with this option applied (ignore locked ones duplicatively)
-                          let alignOk = true;
-                          let alignMsg: string | undefined = undefined;
-                          if (!overBudget) {
-                            const effSel: SelectionMap = {};
-                            // include ALL locked keys as hard constraints
-                            for (const [lk, lseq] of Object.entries(lockedKeys)) {
-                              if (lseq) effSel[lk] = lseq;
-                            }
-                            // include other current selections except the char being evaluated (unless it's locked already)
-                            for (const [sch, seq] of Object.entries(selections)) {
-                              if (seq && sch !== ch && !lockedKeys[sch]) effSel[sch] = seq;
-                            }
-                            // apply this candidate for current char if not locked; if locked, keep locked
-                            if (!lockedKeys[ch]) effSel[ch] = c.token;
-                            const base = rowGroups.length ? rowGroups : baselineGroups;
-                            const res = validateSelections(effSel, candidatesByChar, base);
-                            alignOk = res.ok;
-                            alignMsg = res.ok ? undefined : res.message || 'Nezaraditeľný výber';
-                          }
-                          const disabled = overBudget || (!alignOk && !showAllCandidates);
-                          const title = overBudget
-                            ? `Výber by prekročil dostupné tokeny (${required} > ${ztTokens.length}).`
-                            : (!alignOk ? (alignMsg || 'Zarovnanie nezodpovedá výberu') : undefined);
-                          return (
-                            <option key={idx} value={c.token} disabled={disabled} title={title}>
-                              {c.token} (k {c.length})
-                            </option>
-                          );
-                        })}
+                        {list.filter(c => c.length === 1).map((c, idx) => (
+                          <option key={idx} value={c.token}>{c.token}</option>
+                        ))}
                       </select>
                       {lockedKeys[ch] && (
                         <span className="text-xs text-green-700">locked: {lockedKeys[ch]}</span>
@@ -615,12 +746,12 @@ const NomenklatorPage: React.FC = () => {
               
               <MappingTable
                 otRows={otRows}
-                ztTokens={ztTokens}
-                rowGroups={rowGroups}
-                onMoveZTToken={onMoveZTTokenHandler}
+                ztTokens={effectiveZtTokens}
+                rowGroups={displayRowGroups}
                 onLockOT={onLockOT}
                 onUnlockOT={onUnlockOT}
                 lockedKeys={lockedKeys}
+                hasDeceptionWarning={klamacStatus === 'needsKlamac'}
               />
             </div>
           </div>
@@ -629,8 +760,8 @@ const NomenklatorPage: React.FC = () => {
             <h3 className="text-base font-semibold">Tabuľka kľúčov</h3>
             <KeyTable
               otRows={otRows}
-              ztTokens={ztTokens}
-              rowGroups={rowGroups}
+              ztTokens={effectiveZtTokens}
+              rowGroups={displayRowGroups.length > 0 ? displayRowGroups : convertCountsToLists(baselineGroups)}
               keysPerOTMode={keysPerOTMode}
               lockedKeys={lockedKeys}
               onLockOT={onLockOT}
@@ -639,6 +770,7 @@ const NomenklatorPage: React.FC = () => {
           </div>
         </div>
       </div>
+      </DndContext>
     </AppLayout>
   );
 };

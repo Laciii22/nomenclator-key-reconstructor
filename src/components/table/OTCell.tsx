@@ -13,10 +13,15 @@ import ZTTokenComp from './ZTToken';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, row, col, startIndex, onLockOT, onUnlockOT, lockedValue }) => {
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}` });
 
-return (
+  // Filter out undefined tokens and indices to avoid runtime errors
+  const filtered = tokens
+    .map((t, i) => ({ t, idx: tokenIndices[i] }))
+    .filter(({ t }) => t !== undefined && t !== null);
+
+  return (
     <div
       ref={setNodeRef}
       className={`border border-gray-200 rounded p-1 shadow-sm bg-white transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
@@ -32,11 +37,10 @@ return (
                 return;
               }
               if (!onLockOT) return;
-              const groupStr = tokens.map(t => t.text).join('');
+              const groupStr = filtered.map(({ t }) => t.text).join('');
               if (groupStr) onLockOT(ot.ch, groupStr);
             }}
             title={lockedValue ? `OT: ${ot.ch} — click to unlock (${lockedValue})` : `OT: ${ot.ch} — click to lock to this cell's ZT group`}
-
           >
             {ot.ch}
           </span>
@@ -45,11 +49,11 @@ return (
         )}
       </div>
       <div className="flex flex-wrap gap-2 justify-center">
-        {tokens.length === 0 ? (
+        {filtered.length === 0 ? (
           <span className="text-gray-300">—</span>
         ) : (
-          tokens.map((t, i) => (
-            <ZTTokenComp key={`${t.id}-${i}`} token={t} tokenIndex={startIndex + i} row={row} col={col} />
+          filtered.map(({ t, idx }, i) => (
+            <ZTTokenComp key={`${t.id}-${i}`} token={t} tokenIndex={idx} row={row} col={col} />
           ))
         )}
       </div>

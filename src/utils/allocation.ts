@@ -26,13 +26,15 @@
         inf.frac = exact - base;
         allocated += base;
     }
+    allocated = Math.min(allocated, totalOT);
     let remaining = totalZT - allocated;
     if (remaining > 0) {
         const order = info.map((x, i) => ({ i, frac: x.frac })).sort((a, b) => b.frac - a.frac);
         let j = 0;
-        while (remaining > 0 && order.length > 0) {
+        while (remaining > 0 && allocated < totalOT && order.length > 0) {
         info[order[j].i].alloc += 1;
-        remaining--;
+        allocated += 1;
+        remaining -= 1;
         j = (j + 1) % order.length;
         }
     }
@@ -64,81 +66,3 @@
      * 
     */
 
-    export function computeFixedGroups(rows: OTChar[][], tokens: ZTToken[], perOT: number) {
-    const groups: number[][] = [];
-    let remain = tokens.length;
-    for (let r = 0; r < rows.length; r++) {
-        const otCells = rows[r].filter(c => c.ch !== '');
-        const row: number[] = [];
-        for (let c = 0; c < otCells.length; c++) {
-        const take = Math.min(perOT, remain);
-        row.push(take);
-        remain -= take;
-        }
-        groups.push(row);
-    }
-    return groups;
-    }
-
-    /**
-     * This function applies a maximum cap on the number of tokens per OT cell,
-     * and redistributes any excess tokens to other cells that are below the cap.
-     * @param groups 2D array indicating current allocation of tokens to OT cells.
-     * @param totalTokens Total number of ZT tokens to be allocated.
-     * @param cap Maximum number of tokens allowed per OT cell.
-     * @return An object containing:
-     * - groups: The adjusted 2D array after applying the cap and redistribution.
-     * - unplaced: The number of tokens that could not be placed.
-     */
-
-    export function applyCapWithRedistribution(groups: number[][], totalTokens: number, cap: number): { groups: number[][]; unplaced: number } {
-    const clipped = groups.map(row => row.map(g => Math.min(g, cap)));
-    const capacity = clipped.reduce((acc, row) => acc + row.reduce((a, b) => a + (cap - b), 0), 0);
-    const currentSum = groups.reduce((acc, row) => acc + row.reduce((a, b) => a + b, 0), 0);
-    let toRedistribute = Math.max(0, currentSum - clipped.reduce((acc, row) => acc + row.reduce((a, b) => a + b, 0), 0));
-    let r = 0, c = 0;
-    const rowsCount = clipped.length;
-    const rowLens = clipped.map(row => row.length);
-    while (toRedistribute > 0 && capacity > 0) {
-        if (rowLens[r] && clipped[r][c] < cap) {
-        clipped[r][c] += 1;
-        toRedistribute -= 1;
-        }
-        const len = rowLens[r] || 1;
-        c = (c + 1) % len;
-        if (c === 0) r = (r + 1) % rowsCount;
-    }
-    const finalSum = clipped.reduce((acc, row) => acc + row.reduce((a, b) => a + b, 0), 0);
-    const unplaced = Math.max(0, totalTokens - finalSum);
-    return { groups: clipped, unplaced };
-    }
-
-
-    /**
-     * This function computes the OT keys for the given rows, tokens, and groups.
-     * @param rows 2D array of OT characters.
-     * @param tokens Array of ZT tokens.
-     * @param groups 2D array indicating current allocation of tokens to OT cells.
-     * @returns A map where each key is an OT character and the value is a set of corresponding ZT strings.
-     * 
-     */
-    export function computeOTKeys(rows: OTChar[][], tokens: ZTToken[], groups: number[][]): Map<string, Set<string>> {
-    const result = new Map<string, Set<string>>();
-    let cursor = 0;
-    for (let r = 0; r < rows.length; r++) {
-        const otRow = rows[r].filter(c => c.ch !== '');
-        const sizes = (groups[r] || []).slice(0, otRow.length);
-        while (sizes.length < otRow.length) sizes.push(0);
-        for (let c = 0; c < otRow.length; c++) {
-        const take = Math.max(0, Math.min(tokens.length - cursor, sizes[c]));
-        const group = tokens.slice(cursor, cursor + take);
-        cursor += take;
-        const ot = otRow[c]?.ch;
-        if (!ot) continue;
-        const ztStr = group.map(z => z.text).join('');
-        if (!result.has(ot)) result.set(ot, new Set());
-        if (ztStr) result.get(ot)!.add(ztStr);
-        }
-    }
-    return result;
-    }

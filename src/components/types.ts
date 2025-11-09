@@ -1,8 +1,3 @@
-export type TokenCellProps = {
-  token: string;
-  locked?: boolean;
-  onClick?: () => void;
-};
 
 export type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
 import type { OTChar as _OTChar, ZTToken as _ZTToken, KeysPerOTMode as _KeysPerOTMode } from '../types/domain';
@@ -10,7 +5,7 @@ import type { OTChar as _OTChar, ZTToken as _ZTToken, KeysPerOTMode as _KeysPerO
 export type KeyTableProps = {
   otRows: _OTChar[][];
   ztTokens: _ZTToken[];
-  rowGroups?: number[][];
+  rowGroups?: number[][][];
   keysPerOTMode?: _KeysPerOTMode;
   lockedKeys?: Record<string, string>;
   onLockOT?: (ot: string, lockValue: string) => void;
@@ -20,19 +15,20 @@ export type KeyTableProps = {
 export type MappingTableProps = {
   otRows: _OTChar[][];       
   ztTokens: _ZTToken[];      
-  rowGroups?: number[][];   
+  rowGroups?: number[][][];   
   onMoveZTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
   onLockOT?: (ot: string, lockValue: string) => void;
   onUnlockOT?: (ot: string) => void;
   lockedKeys?: Record<string, string>;
+  hasDeceptionWarning?: boolean;
 };
 
 export type OTCellProps = {
   ot: _OTChar | null;
   tokens: _ZTToken[];
+  tokenIndices: number[];
   row: number;
   col: number;
-  startIndex: number;
   onLockOT?: (otChar: string, lockValue: string) => void;
   onUnlockOT?: (otChar: string) => void;
   lockedValue?: string;
@@ -47,4 +43,4 @@ export type ZTTokenProps = {
 
 export type Pair = { ot: string; zt: string };
 
-export type Column = { ot: _OTChar | null; zt: _ZTToken[] };
+export type Column = { ot: _OTChar | null; zt: number[] };
