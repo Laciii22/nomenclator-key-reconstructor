@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { DndContext, type DragEndEvent, useDroppable } from '@dnd-kit/core';
+import { DndContext, type DragEndEvent } from '@dnd-kit/core';
 import type { KeysPerOTMode } from '../components/types';
 import type { OTChar, ZTToken } from '../types/domain';
 import AppLayout from '../components/layout/AppLayout';
@@ -53,6 +53,13 @@ const NomenklatorPage: React.FC = () => {
   const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  // Compute globally reserved tokens (locked + current selections)
+  const reservedTokens = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of Object.values(lockedKeys)) if (v) set.add(v);
+    for (const v of Object.values(selections)) if (v) set.add(v);
+    return set;
+  }, [lockedKeys, selections]);
   
 
   const otChars = useMemo(() => {
@@ -466,27 +473,65 @@ const NomenklatorPage: React.FC = () => {
   // Helper to get length of a sequence for a given char from candidates or string length fallback
   // seqLengthFor removed (only single-token lengths now)
 
-  // Drag-end handler (simplified after refactor): supports dropping tokens into bracket area only.
+  // Drag-end handler: only boundary shift medzi susednými bunkami (už bez bracket drop).
   function onDragEnd(evt: DragEndEvent) {
-    const data = evt.active?.data?.current as { type?: string; tokenIndex?: number } | undefined;
+    const data = evt.active?.data?.current as { type?: string; tokenIndex?: number; row?: number; col?: number } | undefined;
     const overId = evt.over?.id;
     if (!data || data.type !== 'zt' || typeof data.tokenIndex !== 'number') return;
-    if (overId === 'bracket-drop') {
-      const origIdx = data.tokenIndex; // already original in simplified model
-      const text = ztTokens[origIdx]?.text;
-      if (!text) return;
-      const same = ztTokens.map((t,i)=> t.text===text? i : -1).filter(i=> i>=0);
-      setBracketedIndices(prev => {
-        const set = new Set(prev);
-        let changed=false;
-        for (const i of same) if (!set.has(i)) { set.add(i); changed=true; }
-        return changed? Array.from(set).sort((a,b)=>a-b) : prev;
-      });
+    // Shift medzi susednými bunkami (iba hranové tokeny)
+    if (typeof overId === 'string' && overId.startsWith('cell-') && data.row != null && data.col != null) {
+      const match = /cell-(\d+)-(\d+)/.exec(String(overId));
+      if (!match) return;
+      const dstRow = parseInt(match[1], 10);
+      const dstCol = parseInt(match[2], 10);
+      const srcRow = data.row;
+      const srcCol = data.col;
+      if (srcRow === dstRow && srcCol === dstCol) return; // same cell
+      // Build flattened coords for adjacency check
+      const coords: {row:number; col:number}[] = [];
+      for (let r=0; r<displayRowGroups.length; r++) {
+        for (let c=0; c<displayRowGroups[r].length; c++) coords.push({row:r,col:c});
+      }
+      const idxOf = (row:number,col:number) => coords.findIndex(k => k.row===row && k.col===col);
+      const srcFlat = idxOf(srcRow, srcCol);
+      const dstFlat = idxOf(dstRow, dstCol);
+      if (srcFlat < 0 || dstFlat < 0) return;
+      if (Math.abs(srcFlat - dstFlat) !== 1) return; // only immediate neighbor shifts
+      const direction = dstFlat < srcFlat ? 'left' : 'right';
+      const srcList = displayRowGroups[srcRow]?.[srcCol];
+      const dstList = displayRowGroups[dstRow]?.[dstCol];
+      if (!srcList || !dstList) return;
+      if (srcList.length === 0) return;
+      const tokenIdx = data.tokenIndex;
+      if (direction === 'left') {
+        // must be FIRST token of source to move left
+        if (srcList[0] !== tokenIdx) return;
+        const moving = srcList[0];
+        const newSrc = srcList.slice(1);
+        const newDst = [...dstList, moving];
+        mutateDisplayGroups(srcRow, srcCol, newSrc, dstRow, dstCol, newDst);
+      } else {
+        // right: must be LAST token of source
+        if (srcList[srcList.length - 1] !== tokenIdx) return;
+        const moving = srcList[srcList.length - 1];
+        const newSrc = srcList.slice(0, -1);
+        const newDst = [moving, ...dstList];
+        mutateDisplayGroups(srcRow, srcCol, newSrc, dstRow, dstCol, newDst);
+      }
     }
   }
 
-  // DnD: Bracket drop area
-  const { setNodeRef: setBracketDropRef, isOver: bracketIsOver } = useDroppable({ id: 'bracket-drop' });
+  // Immutable update of two cells in displayRowGroups after a shift
+  function mutateDisplayGroups(srcRow: number, srcCol: number, newSrc: number[], dstRow: number, dstCol: number, newDst: number[]) {
+    setDisplayRowGroups(prev => {
+      const copy = prev.map(row => row.map(cell => [...cell]));
+      if (copy[srcRow] && copy[srcRow][srcCol]) copy[srcRow][srcCol] = newSrc;
+      if (copy[dstRow] && copy[dstRow][dstCol]) copy[dstRow][dstCol] = newDst;
+      return copy;
+    });
+  }
+
+  // Bracket drop area odstránená – označenie klamáča prebieha kliknutím.
 
   // Map effective index from MappingTable to original ZT index (skipping bracketed ones)
   // effectiveToOriginalIndex no longer needed after simplification; removed.
@@ -549,9 +594,9 @@ const NomenklatorPage: React.FC = () => {
               </div>
             )}
 
-            {/* Klamac/bracket editor: enabled only after analysis so user can first analyze then choose klamač */}
+            {/* Klamac/bracket editor: po analýze – iba kliknutie, bez drag & drop */}
             {ztTokens.length > 0 && analysisDone && (
-              <div ref={setBracketDropRef} className={`border rounded p-3 ${bracketIsOver ? 'border-purple-500 bg-purple-50' : 'border-purple-200 bg-purple-50/40'}`}>
+              <div className="border rounded p-3 border-purple-200 bg-purple-50/40">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-semibold">Klamáč (presun tokenov do zátvoriek)</div>
                   <div className="flex gap-2">
@@ -575,7 +620,7 @@ const NomenklatorPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
-                  <div className="text-xs text-gray-600 mr-2">Tokeny (klik pre vloženie/vrátenie, alebo potiahni do fialovej zóny):</div>
+                  <div className="text-xs text-gray-600 mr-2">Tokeny (klik = označiť/vrátiť klamáč):</div>
                   {ztTokens.map((t, i) => {
                     const inBracket = bracketedIndices.includes(i);
                     return (
@@ -724,9 +769,14 @@ const NomenklatorPage: React.FC = () => {
                         }}
                       >
                         <option value="">Žiadne (nezamknúť)</option>
-                        {list.filter(c => c.length === 1).map((c, idx) => (
-                          <option key={idx} value={c.token}>{c.token}</option>
-                        ))}
+                        {list.filter(c => c.length === 1).map((c, idx) => {
+                          const takenByOther = reservedTokens.has(c.token) && selections[ch] !== c.token && lockedKeys[ch] !== c.token;
+                          return (
+                            <option key={idx} value={c.token} disabled={takenByOther} title={takenByOther ? 'Tento token je už použitý pre iný znak' : undefined}>
+                              {c.token}
+                            </option>
+                          );
+                        })}
                       </select>
                       {lockedKeys[ch] && (
                         <span className="text-xs text-green-700">locked: {lockedKeys[ch]}</span>
