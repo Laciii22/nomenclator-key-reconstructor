@@ -60,6 +60,8 @@ const NomenklatorPage: React.FC = () => {
     for (const v of Object.values(selections)) if (v) set.add(v);
     return set;
   }, [lockedKeys, selections]);
+
+  // (Removed standalone occurrencesByToken – building occurrence map lazily in dropdown rendering)
   
 
   const otChars = useMemo(() => {
@@ -390,12 +392,24 @@ const NomenklatorPage: React.FC = () => {
         counts[i] -= can;
         need -= can;
       }
+      // Fallback: if everything is selected (or still need remains), trim from the very last cell
+      if (need > 0 && counts.length > 0) {
+        const last = counts.length - 1;
+        counts[last] = Math.max(0, counts[last] - need);
+        need = 0;
+      }
     } else if (sumNow < TARGET) {
       let need = TARGET - sumNow;
       for (let i = counts.length - 1; i >= 0 && need > 0; i--) {
         if (isSelectedIndex(i)) continue;
         counts[i] += 1;
         need -= 1;
+      }
+      // Fallback: when all cells are selected (e.g., after locking each OT), we still must place the extra tokens.
+      // Distribute the remaining need into the last cell so no token disappears.
+      if (need > 0 && counts.length > 0) {
+        counts[counts.length - 1] += need;
+        need = 0;
       }
     }
     // Rebuild 2D groups
@@ -451,19 +465,66 @@ const NomenklatorPage: React.FC = () => {
       used.add(idx);
       result[cell.row][cell.col] = [idx];
     }
-    // Remaining indices
-    const remaining = tokens.map((_, i) => i).filter(i => !used.has(i));
+    // Remaining indices (unused tokens)
+    const remaining = tokens.map((_, i) => i).filter(i => !used.has(i)).sort((a,b)=>a-b);
+    // First pass: assign ONE to any empty cell (earliest remaining in order)
     let remCursor = 0;
     for (const cell of flatCells) {
-      if (result[cell.row][cell.col].length === 0) {
-        if (remCursor < remaining.length) {
-          const idx = remaining[remCursor++];
-          used.add(idx);
-          result[cell.row][cell.col] = [idx];
+      if (result[cell.row][cell.col].length === 0 && remCursor < remaining.length) {
+        const idx = remaining[remCursor++];
+        used.add(idx);
+        result[cell.row][cell.col] = [idx];
+      }
+    }
+    // Any leftover beyond one-per-cell should NOT disappear; distribute so overall ordering is preserved.
+    const leftover: number[] = remaining.slice(remCursor);
+    if (leftover.length > 0) {
+      // Build array of cells with their current single indices (or empty)
+      const cellInfos = flatCells.map(cell => {
+        const arr = result[cell.row][cell.col];
+        return { ...cell, indices: arr };
+      });
+      // For ordering, get representative index (minimum) per cell; empty cells get +Infinity so leftovers go before them if needed.
+      const repIndices = cellInfos.map(ci => ci.indices.length ? Math.min(...ci.indices) : Number.POSITIVE_INFINITY);
+      // Distribute each leftover index to the previous cell boundary so that global order across cells remains ascending.
+      for (const li of leftover) {
+        // Find first cell whose first index is strictly greater than li
+        let firstGreaterIdx = -1;
+        for (let i = 0; i < repIndices.length; i++) {
+          if (repIndices[i] > li) { firstGreaterIdx = i; break; }
+        }
+        // Target is previous cell if found, otherwise last cell
+        const targetCellIdx = firstGreaterIdx > 0 ? firstGreaterIdx - 1 : (firstGreaterIdx === 0 ? 0 : repIndices.length - 1);
+        const target = cellInfos[targetCellIdx];
+        // Insert into target cell keeping ascending order
+        const arr = target.indices;
+        let pos = 0;
+        while (pos < arr.length && arr[pos] < li) pos++;
+        arr.splice(pos, 0, li);
+        // Update representative index in case target was empty (shouldn't happen after initial pass)
+        repIndices[targetCellIdx] = Math.min(repIndices[targetCellIdx], li);
+      }
+    }
+
+    // Final pass: enforce monotonic boundary across adjacent cells (max left < min right)
+    {
+      const cellInfos = flatCells.map(cell => ({ ...cell, indices: result[cell.row][cell.col] }));
+      for (let i = 0; i < cellInfos.length - 1; i++) {
+        const left = cellInfos[i].indices;
+        const right = cellInfos[i + 1].indices;
+        if (left.length === 0 || right.length === 0) continue;
+        let maxLeft = left[left.length - 1];
+        // While right has smaller items than maxLeft, move them into left keeping sort
+        while (right.length > 0 && right[0] < maxLeft) {
+          const v = right.shift()!;
+          // insert v into left sorted position
+          let p = 0;
+          while (p < left.length && left[p] < v) p++;
+          left.splice(p, 0, v);
+          maxLeft = left[left.length - 1];
         }
       }
     }
-    // If tokens fewer than cells, leave empties (will show status elsewhere)
     return { groups: result, error };
   }
 
@@ -487,6 +548,10 @@ const NomenklatorPage: React.FC = () => {
       const srcRow = data.row;
       const srcCol = data.col;
       if (srcRow === dstRow && srcCol === dstCol) return; // same cell
+      // Block shifting if either source or destination cell is locked
+      const srcCh = otRows[srcRow]?.[srcCol]?.ch;
+      const dstCh = otRows[dstRow]?.[dstCol]?.ch;
+      if ((srcCh && lockedKeys[srcCh]) || (dstCh && lockedKeys[dstCh])) return;
       // Build flattened coords for adjacency check
       const coords: {row:number; col:number}[] = [];
       for (let r=0; r<displayRowGroups.length; r++) {
@@ -726,7 +791,13 @@ const NomenklatorPage: React.FC = () => {
                           const forced: Record<string,string> = { ...lockedKeys };
                           for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq;
                           const { groups, error } = buildSingleTokenGroups(otRows, effectiveZtTokens, forced);
-                          setSelectionError(error);
+                          const totalCells = otRows.reduce((a,row)=> a + row.filter(c=> c.ch !== '').length,0);
+                          let finalError = error;
+                          if (!finalError && bracketedIndices.length === 0 && effectiveZtTokens.length > totalCells) {
+                            const diff = effectiveZtTokens.length - totalCells;
+                            finalError = `Chýba klamáč: Je o ${diff} ZT token(y) viac ako OT znakov.`;
+                          }
+                          setSelectionError(finalError);
                           setDisplayRowGroups(groups);
                         }}
                       >Náhľad výberu</button>
@@ -736,9 +807,15 @@ const NomenklatorPage: React.FC = () => {
                         const forced: Record<string,string> = { ...lockedKeys };
                         for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq;
                         const { groups, error } = buildSingleTokenGroups(otRows, effectiveZtTokens, forced);
-                        setSelectionError(error);
+                        const totalCells = otRows.reduce((a,row)=> a + row.filter(c=> c.ch !== '').length,0);
+                        let finalError = error;
+                        if (!finalError && bracketedIndices.length === 0 && effectiveZtTokens.length > totalCells) {
+                          const diff = effectiveZtTokens.length - totalCells;
+                          finalError = `Chýba klamáč: Je o ${diff} ZT token(y) viac ako OT znakov – nemožno aplikovať.`;
+                        }
+                        setSelectionError(finalError);
                         setDisplayRowGroups(groups);
-                        if (!error) {
+                        if (!finalError) {
                           // lock selections
                           const newLocks: Record<string,string> = {};
                           for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) newLocks[ch] = seq;
@@ -771,10 +848,49 @@ const NomenklatorPage: React.FC = () => {
                         <option value="">Žiadne (nezamknúť)</option>
                         {list.filter(c => c.length === 1).map((c, idx) => {
                           const takenByOther = reservedTokens.has(c.token) && selections[ch] !== c.token && lockedKeys[ch] !== c.token;
+                            // Order constraint: First OT cell must not skip the very first token.
+                            // Determine flat index of this OT char among non-empty OT chars.
+                            // Build flat OT once (memoized extraction similar to earlier logic)
+                            // We'll compute it inline for clarity; cost negligible.
+                            const cellFlatIndex = (() => {
+                              let idx = 0;
+                              for (const row of otRows) {
+                                for (const cell of row) {
+                                  if (cell.ch !== '') {
+                                    if (cell.ch === ch) return idx;
+                                    idx++;
+                                  }
+                                }
+                              }
+                              return -1;
+                            })();
+                            // Build occurrence map lazily (effective tokens only)
+                            const occMap: Record<string, number[]> = {};
+                            effectiveZtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
+                            const occ = occMap[c.token] || [];
+                            let orderInvalid = false;
+                            if (cellFlatIndex === 0) {
+                              // For very first cell, only allow token whose FIRST occurrence is exactly at 0
+                              const firstOcc = occ.length ? occ[0] : -1;
+                              orderInvalid = firstOcc !== 0; // hide if earliest occurrence not at start
+                            }
+                            // Future refinement: could add constraints for later cells (e.g., prevent choosing token whose next unused occurrence lies before startIndex), but user request targets first cell scenario.
+                            const disabled = takenByOther || orderInvalid;
                           return (
-                            <option key={idx} value={c.token} disabled={takenByOther} title={takenByOther ? 'Tento token je už použitý pre iný znak' : undefined}>
-                              {c.token}
-                            </option>
+                              <option
+                                key={idx}
+                                value={c.token}
+                                disabled={disabled}
+                                title={
+                                  takenByOther
+                                    ? 'Tento token je už použitý pre iný znak'
+                                    : orderInvalid
+                                      ? 'Token by preskočil prvý pôvodný token – nie je povolený pre prvý znak'
+                                      : undefined
+                                }
+                              >
+                                {c.token}
+                              </option>
                           );
                         })}
                       </select>
