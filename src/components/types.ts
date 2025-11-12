@@ -10,6 +10,7 @@ export type KeyTableProps = {
   lockedKeys?: Record<string, string>;
   onLockOT?: (ot: string, lockValue: string) => void;
   onUnlockOT?: (ot: string) => void;
+  onLockAll?: (locks: Record<string, string>) => void;
 };
 
 export type MappingTableProps = {

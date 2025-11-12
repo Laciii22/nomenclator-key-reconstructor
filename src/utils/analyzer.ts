@@ -1,4 +1,8 @@
+
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
+
+// SelectionMap: mapuje OT znak na vybraný ZT token (nebo null)
+export type SelectionMap = Record<string, string | null>;
 
 export type AnalysisOptions = {
   keysPerOTMode: KeysPerOTMode;
@@ -123,18 +127,25 @@ export function analyze(
 
   // Build simplified candidates: for EACH OT char list ALL UNIQUE single tokens from ZT.
   const uniqueTokens = Array.from(new Set(ztTokens.map(t => t.text)));
-  const totalTokens = ztTokens.length;
   const freq: Record<string, number> = {};
   for (const t of ztTokens) freq[t.text] = (freq[t.text] || 0) + 1;
   const candidatesByChar: Record<string, Candidate[]> = {};
   for (const ch of Object.keys(charPositions)) {
-    candidatesByChar[ch] = uniqueTokens.map(tok => ({
-      token: tok,
-      length: 1,
-      support: freq[tok] || 0,
-      occurrences: totalTokens,
-      score: (freq[tok] || 0) / Math.max(1, totalTokens)
-    }));
+    const cellCount = charPositions[ch].length; // počet buniek pre tento OT znak
+    candidatesByChar[ch] = uniqueTokens.map(tok => {
+      const tokenCount = freq[tok] || 0;
+      let score = 0;
+      if (cellCount > 0 || tokenCount > 0) {
+        score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
+      }
+      return {
+        token: tok,
+        length: 1,
+        support: tokenCount,
+        occurrences: cellCount,
+        score
+      };
+    });
   }
 
   // Build proposed rowGroups honoring incoming lockedKeys only (no auto locks)
@@ -202,16 +213,3 @@ export function analyze(
   };
 }
 
-export type SelectionMap = Record<string, string | null>; // otChar -> chosen concatenated seq or null for none
-
-// Build new rowGroups by applying desired counts from selections (based on chosen sequence lengths),
-// without touching locked characters in selections (caller should exclude them).
-// Removed buildRowGroupsForSelections (unused after simplification)
-
-export function locksFromSelections(selections: SelectionMap): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [ch, seq] of Object.entries(selections)) {
-    if (seq) out[ch] = seq;
-  }
-  return out;
-}

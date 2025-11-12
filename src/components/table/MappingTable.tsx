@@ -91,7 +91,6 @@ const MappingTable: React.FC<MappingTableProps> = ({ otRows, ztTokens, rowGroups
     return result;
   }, [otRows, ztTokens, rowGroups]);
 
-  // Note: DnD drop handling moved to top-level page; cells remain droppable for styling if needed.
 
 
   return (

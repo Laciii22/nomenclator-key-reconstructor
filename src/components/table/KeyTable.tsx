@@ -29,7 +29,7 @@ function distributeRow(otRow: OTChar[], ztRowIndices: number[], cursor: { i: num
  * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT }) => {
+const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll }) => {
   const pairs = useMemo(() => {
     const totalOT = otRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
     const totalZT = ztTokens.length;
@@ -117,8 +117,37 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, rowGroups, keysPe
 
   if (aggregated.length === 0) return <div className="text-sm text-gray-500">(žiadne páry)</div>;
 
+  // Determine if there are any violations (errors) and compute bulk locks
+  let hasError = false;
+  const bulkLocks: Record<string, string> = {};
+  for (const row of aggregated) {
+    const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
+    const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
+    const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
+    const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
+    if (isViolationSingle || lockedMismatch || row.ztList.length === 0) {
+      hasError = true;
+    }
+    if (row.ztList.length > 0) {
+      bulkLocks[row.ot] = row.ztList[0];
+    }
+  }
+
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100">
+        <div className="text-sm font-medium text-gray-700">Kľúčové páry</div>
+        {onLockAll && (
+          <button
+            className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            onClick={() => onLockAll && onLockAll(bulkLocks)}
+            disabled={hasError}
+            title={hasError ? 'Najprv oprav chyby (viac kľúčov / nesúlad / prázdny ZT)' : 'Zamknúť všetky OT → ZT podľa tabuľky'}
+          >
+            Zamknúť všetko
+          </button>
+        )}
+      </div>
       <table className="w-full text-sm">
         <thead className="bg-gray-50">
           <tr>
