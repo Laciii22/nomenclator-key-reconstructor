@@ -5,25 +5,24 @@ import type { OTChar as _OTChar, ZTToken as _ZTToken, KeysPerOTMode as _KeysPerO
 export type KeyTableProps = {
   otRows: _OTChar[][];
   ztTokens: _ZTToken[];
-  rowGroups?: number[][][];
   keysPerOTMode?: _KeysPerOTMode;
   lockedKeys?: Record<string, string>;
   onLockOT?: (ot: string, lockValue: string) => void;
   onUnlockOT?: (ot: string) => void;
   onLockAll?: (locks: Record<string, string>) => void;
+  selections?: Record<string, string | null>;
 };
 
 export type MappingTableProps = {
-  otRows: _OTChar[][];       
-  ztTokens: _ZTToken[];      
-  rowGroups?: number[][][];   
+  otRows: _OTChar[][];
+  ztTokens: _ZTToken[];
   onMoveZTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
   onLockOT?: (ot: string, lockValue: string) => void;
   onUnlockOT?: (ot: string) => void;
   lockedKeys?: Record<string, string>;
   hasDeceptionWarning?: boolean;
   onEditToken?: (tokenIndex: number, newText: string) => void;
-  selections?: Record<string, string | null>; // aktuálne výbery (pre preview rozdelenie skupín)
+  selections?: Record<string, string | null>;
 };
 
 export type OTCellProps = {

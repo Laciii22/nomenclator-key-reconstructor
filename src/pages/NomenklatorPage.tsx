@@ -6,8 +6,6 @@ import MappingTable from '../components/table/MappingTable';
 import KeyTable from '../components/table/KeyTable';
 import BracketEditor from '../components/controls/BracketEditor';
 import ParseControls from '../components/controls/ParseControls';
-import { computeRowAlloc } from '../utils/allocation';
-import { convertCountsToLists } from '../utils/grouping';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap } from '../utils/analyzer';
 
@@ -31,8 +29,7 @@ const NomenklatorPage: React.FC = () => {
     selectionError,
     // derived
     otChars, ztTokens, effectiveZtTokens,
-    otRows, baselineGroups,
-  displayRowGroups,
+    otRows,
     uniqueZTTokenTexts, reservedTokens,
     // actions
     runAnalysis,
@@ -42,7 +39,6 @@ const NomenklatorPage: React.FC = () => {
     previewSelection,
     applySelection,
     editZtToken,
-  setDisplayRowGroups, setAnalysisRowGroups,
   } = useNomenklator();
   
 
@@ -118,9 +114,7 @@ const NomenklatorPage: React.FC = () => {
                         onClick={() => {
                           setSelections({});
                           setLockedKeys({});
-                          setAnalysisRowGroups(convertCountsToLists(baselineGroups));
-                          const { groups: effGroups } = computeRowAlloc(otRows, effectiveZtTokens);
-                          setDisplayRowGroups(convertCountsToLists(effGroups));
+                          // Reset selections and locks only; columns derive automatically now.
                         }}
                         title="Vymazať všetky zámky a výbery"
                       >
@@ -155,6 +149,10 @@ const NomenklatorPage: React.FC = () => {
                     if (lockedVal && !extendedList.some(c => c.token === lockedVal)) {
                       extendedList.unshift({ token: lockedVal, length: 1, support: 0, occurrences: 0, score: 1 });
                     }
+                    const sortedByScore = extendedList.sort((a,b)=> {
+                      if (b.score !== a.score) return b.score - a.score;
+                      return a.token.localeCompare(b.token);
+                    });
                     return (
                       <div key={ch} className="flex items-center gap-3">
                         <div className="w-10 font-mono text-center">
@@ -170,7 +168,7 @@ const NomenklatorPage: React.FC = () => {
                           }}
                         >
                           <option value="">Žiadne (nezamknúť)</option>
-                          {extendedList.filter(c => c.length === 1).map((c, idx) => {
+                          {sortedByScore.filter(c => c.length === 1).map((c, idx) => {
                             const takenByOther = reservedTokens.has(c.token) && selectionVal !== c.token && lockedVal !== c.token;
                             const cellFlatIndex = (() => {
                               let idx2 = 0;
@@ -232,7 +230,6 @@ const NomenklatorPage: React.FC = () => {
               <MappingTable
                 otRows={otRows}
                 ztTokens={effectiveZtTokens}
-                rowGroups={displayRowGroups}
                 onLockOT={onLockOT}
                 onUnlockOT={onUnlockOT}
                 lockedKeys={lockedKeys}
@@ -248,22 +245,18 @@ const NomenklatorPage: React.FC = () => {
             <KeyTable
               otRows={otRows}
               ztTokens={effectiveZtTokens}
-              rowGroups={displayRowGroups.length > 0 ? displayRowGroups : convertCountsToLists(baselineGroups)}
               keysPerOTMode={keysPerOTMode}
               lockedKeys={lockedKeys}
+              selections={selections}
               onLockOT={onLockOT}
               onUnlockOT={onUnlockOT}
               onLockAll={(locks) => {
-                // Bulk lock: update lockedKeys AND selections so dropdowns reflect zámky.
                 setLockedKeys(prev => ({ ...prev, ...locks }));
                 setSelections(prev => {
                   const next = { ...prev } as SelectionMap;
-                  for (const [ch, val] of Object.entries(locks)) {
-                    if (val && next[ch] == null) next[ch] = val; // zapíš len ak nie je vyplnené
-                  }
+                  for (const [ch, val] of Object.entries(locks)) if (val && next[ch] == null) next[ch] = val;
                   return next;
                 });
-                // Prepočítaj analýzu až po nastavení stavov (microtask)
                 queueMicrotask(() => runAnalysis());
               }}
             />

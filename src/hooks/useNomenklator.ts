@@ -4,7 +4,8 @@ import type { OTChar, ZTToken } from '../types/domain';
 import { useLocalSettings } from './useLocalSettings';
 import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';
-import { convertCountsToLists, getCounts, reflowRowGroups, getExpectedZTIndicesForOT, buildSingleTokenGroups } from '../utils/grouping';
+import { getExpectedZTIndicesForOT } from '../utils/grouping';
+import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 import type { DragEndEvent } from '@dnd-kit/core';
 
 export function useNomenklator() {
@@ -19,24 +20,22 @@ export function useNomenklator() {
   const [fixedLength, setFixedLength] = useState<number>(1);
   const [keysPerOTMode, setKeysPerOTMode] = useState<KeysPerOTMode>('single');
 
-  // Locks, selections, status
+  // Locks & selections
   const [lockedKeys, setLockedKeys] = useState<Record<string, string>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
   const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
+  const [analysisDone, setAnalysisDone] = useState(false);
+
+  // Status / warnings
   const [klamacStatus, setKlamacStatus] = useState<'none' | 'needsKlamac' | 'ok' | 'invalid'>('none');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
-
-  // Bracketing
-  const [bracketedIndices, setBracketedIndices] = useState<number[]>([]);
   const [bracketWarning, setBracketWarning] = useState<string | null>(null);
 
-  // Groups
-  const [analysisRowGroups, setAnalysisRowGroups] = useState<number[][][]>([]);
-  const [displayRowGroups, setDisplayRowGroups] = useState<number[][][]>([]);
-  const [analysisDone, setAnalysisDone] = useState(false);
+  // Brackets
+  const [bracketedIndices, setBracketedIndices] = useState<number[]>([]);
 
-  // Derived
+  // Derived sets
   const reservedTokens = useMemo(() => {
     const set = new Set<string>();
     for (const v of Object.values(lockedKeys)) if (v) set.add(v);
@@ -52,33 +51,22 @@ export function useNomenklator() {
   const ztTokens = useMemo<ZTToken[]>(() => {
     const s = ztRaw.trim();
     let parts: string[];
-    if (ztParseMode === 'separator') {
-      parts = s.split(separator).filter(Boolean);
-    } else {
+    if (ztParseMode === 'separator') parts = s.split(separator).filter(Boolean);
+    else {
       parts = [];
       for (let i = 0; i < s.length; i += fixedLength) parts.push(s.slice(i, i + fixedLength));
     }
-    // initial status before any bracket selection (analysis independent)
-    if (parts.length === 0 || otChars.length === 0) {
-      setKlamacStatus('none');
-      setStatusMessage(null);
-    } else if (parts.length > otChars.length) {
-      setKlamacStatus('needsKlamac');
-      setStatusMessage(`Pozor: OT má menej znakov (${otChars.length}) ako ZT tokenov (${parts.length}). Vyber klamáč.`);
-    } else if (parts.length < otChars.length) {
-      setKlamacStatus('invalid');
-      setStatusMessage(`OT má viac znakov (${otChars.length}) ako ZT tokenov (${parts.length}). Text môže byť poškodený alebo chybne parsovaný.`);
-    } else {
-      setKlamacStatus('ok');
-      setStatusMessage(null);
-    }
+    if (parts.length === 0 || otChars.length === 0) { setKlamacStatus('none'); setStatusMessage(null); }
+    else if (parts.length > otChars.length) { setKlamacStatus('needsKlamac'); setStatusMessage(`Pozor: OT (${otChars.length}) < ZT tokenov (${parts.length}). Vyber klamáč.`); }
+    else if (parts.length < otChars.length) { setKlamacStatus('invalid'); setStatusMessage(`OT (${otChars.length}) > ZT tokenov (${parts.length}). Text môže byť poškodený.`); }
+    else { setKlamacStatus('ok'); setStatusMessage(null); }
     return parts.map((t, i) => ({ id: `zt_${i}`, text: t }));
   }, [ztRaw, ztParseMode, separator, fixedLength, otChars.length]);
 
   const effectiveZtTokens = useMemo(() => {
-    if (!bracketedIndices || bracketedIndices.length === 0) return ztTokens;
-    const brSet = new Set(bracketedIndices);
-    return ztTokens.filter((_, i) => !brSet.has(i));
+    if (!bracketedIndices.length) return ztTokens;
+    const br = new Set(bracketedIndices);
+    return ztTokens.filter((_, i) => !br.has(i));
   }, [ztTokens, bracketedIndices]);
 
   const COLS = 12;
@@ -88,262 +76,123 @@ export function useNomenklator() {
     return rows.length ? rows : [[]];
   }, [otChars]);
 
-  const baselineGroups = useMemo(() => {
-    const { groups } = computeRowAlloc(otRows, ztTokens);
-    return groups;
-  }, [otRows, ztTokens]);
+  // Shift-only columns mapping with deception cells
+  const columns = useMemo(() => buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections), [otRows, effectiveZtTokens, lockedKeys, selections]);
 
-  // Auto-select top score=1 if fits expected indices
+  // Auto-select candidates with score==1 matching sequential expected indices
   React.useEffect(() => {
-    if (!candidatesByChar || Object.keys(candidatesByChar).length === 0) return;
-    const expectedIndices = getExpectedZTIndicesForOT(otRows, ztTokens, bracketedIndices);
+    if (!Object.keys(candidatesByChar).length) return;
+    const expected = getExpectedZTIndicesForOT(otRows, ztTokens, bracketedIndices);
     setSelections(prev => {
-      const auto: SelectionMap = { ...prev };
+      const next = { ...prev };
       for (const [ch, list] of Object.entries(candidatesByChar)) {
-        if (auto[ch]) continue;
+        if (next[ch]) continue;
         const score1 = list.filter(c => c.score === 1);
         if (score1.length !== 1) continue;
         const token = score1[0].token;
         const indices = ztTokens.map((t, i) => t.text === token ? i : -1).filter(i => i >= 0);
-        const expected = expectedIndices[ch] || [];
-        if (indices.length === expected.length && indices.every((v, i) => v === expected[i])) {
-          auto[ch] = token;
-        }
+        const exp = expected[ch] || [];
+        if (indices.length === exp.length && indices.every((v, i) => v === exp[i])) next[ch] = token;
       }
-      return auto;
+      return next;
     });
   }, [candidatesByChar, otRows, ztTokens, bracketedIndices]);
 
-  // Hydration from local settings
+  // Hydration (avoid stale stale locks + brackets)
   React.useEffect(() => {
-    if (!hydrated.current) {
-      setOtRaw(settings.otRaw ?? '');
-      setZtRaw(settings.ztRaw ?? '');
-      setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
-      // Do not restore old locks/brackets to avoid stale local cache issues
-      setLockedKeys({});
-      setBracketedIndices([]);
-      hydrated.current = true;
-    }
+    if (hydrated.current) return;
+    setOtRaw(settings.otRaw ?? '');
+    setZtRaw(settings.ztRaw ?? '');
+    setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
+    setLockedKeys({});
+    setBracketedIndices([]);
+    hydrated.current = true;
   }, [settings]);
 
-  // Persistence
-  React.useEffect(() => { setSettings(prev => (prev.otRaw === otRaw ? prev : { ...prev, otRaw })); }, [otRaw, setSettings]);
-  React.useEffect(() => { setSettings(prev => (prev.ztRaw === ztRaw ? prev : { ...prev, ztRaw })); }, [ztRaw, setSettings]);
-  React.useEffect(() => { setSettings(prev => (prev.keysPerOTMode === keysPerOTMode ? prev : { ...prev, keysPerOTMode })); }, [keysPerOTMode, setSettings]);
-  // Intentionally stop persisting lockedKeys and bracketedIndices to avoid stale cache
+  // Minimal persistence
+  React.useEffect(() => { setSettings(p => (p.otRaw === otRaw ? p : { ...p, otRaw })); }, [otRaw]);
+  React.useEffect(() => { setSettings(p => (p.ztRaw === ztRaw ? p : { ...p, ztRaw })); }, [ztRaw]);
+  React.useEffect(() => { setSettings(p => (p.keysPerOTMode === keysPerOTMode ? p : { ...p, keysPerOTMode })); }, [keysPerOTMode]);
 
-  // Validate bracketed after parse changes
+  // Bracket validity post parse-change
   React.useEffect(() => {
     setBracketWarning(null);
     setBracketedIndices(prev => {
-      if (!prev || prev.length === 0) return prev;
+      if (!prev.length) return prev;
       const max = ztTokens.length;
       const filtered = prev.filter(i => i >= 0 && i < max);
-      if (filtered.length !== prev.length) {
-        setBracketWarning('Niektoré klamače už neexistujú po zmene parsovania; boli odstránené.');
-      }
+      if (filtered.length !== prev.length) setBracketWarning('Niektoré klamače po zmene parsovania neexistujú – odstránené.');
       return filtered;
     });
   }, [ztTokens.length]);
 
-  // Initialize analysis groups when OT/ZT change
-  React.useEffect(() => {
-    const baseLists = convertCountsToLists(baselineGroups);
-    setAnalysisRowGroups(baseLists);
-    const baseCounts = getCounts(baseLists);
-    const effSel: SelectionMap = {};
-    for (const [lk, seq] of Object.entries(lockedKeys)) if (seq) effSel[lk] = seq;
-    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) effSel[ch] = seq;
-    const effCounts = reflowRowGroups(otRows as OTChar[][], effectiveZtTokens, baseCounts, effSel, candidatesByChar);
-    setDisplayRowGroups(convertCountsToLists(effCounts));
-  }, [baselineGroups, otRows, ztTokens]);
-
-  // On bracket changes after analysis
-  React.useEffect(() => {
-    if (!analysisDone) return;
-    const baseCounts = getCounts(analysisRowGroups.length ? analysisRowGroups : convertCountsToLists(baselineGroups));
-    const effSel: SelectionMap = {};
-    for (const [lk, seq] of Object.entries(lockedKeys)) if (seq) effSel[lk] = seq;
-    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) effSel[ch] = seq;
-    const effCounts = reflowRowGroups(otRows as OTChar[][], effectiveZtTokens, baseCounts, effSel, candidatesByChar);
-    setDisplayRowGroups(convertCountsToLists(effCounts));
-  }, [bracketedIndices, effectiveZtTokens, analysisDone]);
-
-  // Reflow or materialize display when locks or selections change
-  React.useEffect(() => {
-    if (!analysisDone) return;
-    const hasForced = Object.keys(lockedKeys).length > 0 || Object.values(selections).some(v => v);
-    if (hasForced) {
-      const forced: Record<string, string> = { ...lockedKeys };
-      for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq as string;
-      const { groups } = buildSingleTokenGroups(otRows as OTChar[][], effectiveZtTokens, forced);
-      setDisplayRowGroups(groups);
-    } else {
-      const baseCounts = getCounts(analysisRowGroups.length ? analysisRowGroups : convertCountsToLists(baselineGroups));
-      const effCounts = reflowRowGroups(otRows as OTChar[][], effectiveZtTokens, baseCounts, {}, candidatesByChar);
-      setDisplayRowGroups(convertCountsToLists(effCounts));
-    }
-  }, [lockedKeys, selections, candidatesByChar, analysisRowGroups, effectiveZtTokens, otRows, analysisDone, baselineGroups]);
-
-  // Status update after analysis based on effective lens
+  // Status update after analysis w.r.t. brackets
   React.useEffect(() => {
     const OT = otChars.length;
-    const totalZT = ztTokens.length;
-    const effLen = effectiveZtTokens.length;
-    if (OT === 0 || totalZT === 0) {
-      setKlamacStatus('none');
-      setStatusMessage(null);
-      return;
-    }
+    const eff = effectiveZtTokens.length;
+    if (OT === 0 || ztTokens.length === 0) { setKlamacStatus('none'); setStatusMessage(null); return; }
     if (!analysisDone) return;
-    if (effLen < OT) {
-      setKlamacStatus('invalid');
-      setStatusMessage(`Vybraný zlý klamáč alebo text je poškodený: OT (${OT}) > ZT po odfiltrovaní (${effLen}).`);
-    } else if (effLen > OT) {
-      setKlamacStatus('needsKlamac');
-      setStatusMessage(`Ešte stále je viac ZT tokenov (${effLen}) ako OT znakov (${OT}). Vyber ďalší klamáč.`);
-    } else {
-      setKlamacStatus('ok');
-      setStatusMessage(null);
-    }
+    if (eff < OT) { setKlamacStatus('invalid'); setStatusMessage(`Vybraný zlý klamáč: OT (${OT}) > ZT (${eff}).`); }
+    else if (eff > OT) { setKlamacStatus('needsKlamac'); setStatusMessage(`Prebytočné tokeny: ${eff - OT}. Vyber ďalší klamáč.`); }
+    else { setKlamacStatus('ok'); setStatusMessage(null); }
   }, [analysisDone, bracketedIndices, effectiveZtTokens.length, otChars.length, ztTokens.length]);
 
   function runAnalysis() {
-    const rg = (analysisRowGroups.length > 0 ? analysisRowGroups : convertCountsToLists(baselineGroups)) as number[][][];
-    const base = getCounts(rg);
-    const res = analyze(otRows as OTChar[][], ztTokens, base, { keysPerOTMode }, lockedKeys);
-    setCandidatesByChar(res.candidatesByChar);
-    // If máme už nejaké zamknuté hodnoty, materializujeme priamo podľa skutočných indexov,
-    // aby sa pri ďalšom locku neposunulo číslovanie.
-    const hasLocks = Object.keys(lockedKeys).some(k => lockedKeys[k]);
-    if (hasLocks) {
-      const { groups } = buildSingleTokenGroups(otRows as OTChar[][], effectiveZtTokens, lockedKeys);
-      setAnalysisRowGroups(groups);
-      setDisplayRowGroups(groups);
-    } else {
-      const analyzed = convertCountsToLists(res.proposedRowGroups);
-      setAnalysisRowGroups(analyzed);
-      setDisplayRowGroups(analyzed);
-    }
+    const alloc = computeRowAlloc(otRows as OTChar[][], ztTokens); // still used for basic counts heuristic
+    const baseCounts = alloc.groups.map(r => r.map(v => v));
+    const res = analyze(otRows as OTChar[][], ztTokens, baseCounts, { keysPerOTMode }, lockedKeys);
+    const sorted: Record<string, Candidate[]> = {};
+    for (const [ch, list] of Object.entries(res.candidatesByChar)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
+    setCandidatesByChar(sorted);
     setSelections({});
     setAnalysisDone(true);
   }
 
-  function onLockOT(ot: string, lockValue: string) { setLockedKeys(prev => ({ ...prev, [ot]: lockValue })); }
-  function onUnlockOT(ot: string) {
-    setLockedKeys(prev => { const copy = { ...prev }; delete copy[ot]; return copy; });
-  }
-
-  function mutateDisplayGroups(srcRow: number, srcCol: number, newSrc: number[], dstRow: number, dstCol: number, newDst: number[]) {
-    setDisplayRowGroups(prev => {
-      const copy = prev.map(row => row.map(cell => [...cell]));
-      if (copy[srcRow] && copy[srcRow][srcCol]) copy[srcRow][srcCol] = newSrc;
-      if (copy[dstRow] && copy[dstRow][dstCol]) copy[dstRow][dstCol] = newDst;
-      return copy;
-    });
-  }
-
-  function onDragEnd(evt: DragEndEvent) {
-    const data = evt.active?.data?.current as { type?: string; tokenIndex?: number; row?: number; col?: number } | undefined;
-    const overId = evt.over?.id;
-    if (!data || data.type !== 'zt' || typeof data.tokenIndex !== 'number') return;
-    if (typeof overId === 'string' && overId.startsWith('cell-') && data.row != null && data.col != null) {
-      const match = /cell-(\d+)-(\d+)/.exec(String(overId));
-      if (!match) return;
-      const dstRow = parseInt(match[1], 10);
-      const dstCol = parseInt(match[2], 10);
-      const srcRow = data.row;
-      const srcCol = data.col;
-      if (srcRow === dstRow && srcCol === dstCol) return;
-      const srcCh = (otRows as OTChar[][])[srcRow]?.[srcCol]?.ch;
-      const dstCh = (otRows as OTChar[][])[dstRow]?.[dstCol]?.ch;
-      if ((srcCh && lockedKeys[srcCh]) || (dstCh && lockedKeys[dstCh])) return;
-      const coords: { row: number; col: number }[] = [];
-      for (let r = 0; r < displayRowGroups.length; r++) for (let c = 0; c < displayRowGroups[r].length; c++) coords.push({ row: r, col: c });
-      const idxOf = (row: number, col: number) => coords.findIndex(k => k.row === row && k.col === col);
-      const srcFlat = idxOf(srcRow, srcCol);
-      const dstFlat = idxOf(dstRow, dstCol);
-      if (srcFlat < 0 || dstFlat < 0) return;
-      if (Math.abs(srcFlat - dstFlat) !== 1) return;
-      const direction = dstFlat < srcFlat ? 'left' : 'right';
-      const srcList = displayRowGroups[srcRow]?.[srcCol];
-      const dstList = displayRowGroups[dstRow]?.[dstCol];
-      if (!srcList || !dstList) return;
-      if (srcList.length === 0) return;
-      const tokenIdx = data.tokenIndex;
-      if (direction === 'left') {
-        if (srcList[0] !== tokenIdx) return;
-        const moving = srcList[0];
-        const newSrc = srcList.slice(1);
-        const newDst = [...dstList, moving];
-        mutateDisplayGroups(srcRow, srcCol, newSrc, dstRow, dstCol, newDst);
-      } else {
-        if (srcList[srcList.length - 1] !== tokenIdx) return;
-        const moving = srcList[srcList.length - 1];
-        const newSrc = srcList.slice(0, -1);
-        const newDst = [moving, ...dstList];
-        mutateDisplayGroups(srcRow, srcCol, newSrc, dstRow, dstCol, newDst);
-      }
-    }
-  }
+  function onLockOT(ot: string, val: string) { setLockedKeys(prev => ({ ...prev, [ot]: val })); }
+  function onUnlockOT(ot: string) { setLockedKeys(prev => { const c = { ...prev }; delete c[ot]; return c; }); }
+  function onDragEnd(_evt: DragEndEvent) { /* drag disabled in simplified mode */ }
 
   function toggleBracketGroupByText(text: string) {
     if (!text) return;
-    const sameTextIdx = ztTokens.map((t, idx) => (t.text === text ? idx : -1)).filter(idx => idx >= 0);
+    const same = ztTokens.map((t, i) => t.text === text ? i : -1).filter(i => i >= 0);
     setBracketedIndices(prev => {
       const set = new Set(prev);
-      const allAreBracketed = sameTextIdx.length > 0 && sameTextIdx.every(idx => set.has(idx));
-      if (allAreBracketed) for (const idx of sameTextIdx) set.delete(idx);
-      else for (const idx of sameTextIdx) set.add(idx);
+      const all = same.every(i => set.has(i));
+      if (all) same.forEach(i => set.delete(i)); else same.forEach(i => set.add(i));
       return Array.from(set).sort((a, b) => a - b);
     });
   }
 
   const uniqueZTTokenTexts = useMemo(() => {
     const seen = new Set<string>();
-    const brSet = new Set(bracketedIndices);
+    const br = new Set(bracketedIndices);
     const map = new Map<string, number[]>();
-    ztTokens.forEach((t, i) => { if (!map.has(t.text)) map.set(t.text, []); map.get(t.text)!.push(i); });
-    const arr: { text: string; allBracketed: boolean }[] = [];
+    ztTokens.forEach((t, i) => { (map.get(t.text) || map.set(t.text, []).get(t.text))?.push(i); });
+    const out: { text: string; allBracketed: boolean }[] = [];
     for (const t of ztTokens) {
-      if (seen.has(t.text)) continue;
-      seen.add(t.text);
+      if (seen.has(t.text)) continue; seen.add(t.text);
       const idxs = map.get(t.text) || [];
-      const allBracketed = idxs.length > 0 && idxs.every(i => brSet.has(i));
-      arr.push({ text: t.text, allBracketed });
+      out.push({ text: t.text, allBracketed: idxs.length > 0 && idxs.every(i => br.has(i)) });
     }
-    return arr;
+    return out;
   }, [ztTokens, bracketedIndices]);
 
   function previewSelection() {
-    // Build real token index mapping respecting forced selections; no arbitrary count slicing.
-    const forced: Record<string, string> = { ...lockedKeys };
-    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq as string;
-    const { groups, error } = buildSingleTokenGroups(otRows as OTChar[][], effectiveZtTokens, forced);
-    const totalCells = (otRows as OTChar[][]).reduce((a, row) => a + row.filter(c => c.ch !== '').length, 0);
-    let finalError = error;
-    if (!finalError && bracketedIndices.length === 0 && effectiveZtTokens.length > totalCells) {
-      const diff = effectiveZtTokens.length - totalCells;
-      finalError = `Pozor stále je prítomný klamač: ZT tokenov je o ${diff} viac ako OT znakov.`;
-    }
-    setSelectionError(finalError);
-    setDisplayRowGroups(groups);
+    const totalCells = otRows.reduce((a, r) => a + r.filter(c => c.ch !== '').length, 0);
+    let err: string | null = null;
+    if (!bracketedIndices.length && effectiveZtTokens.length > totalCells) err = `Pozor klamáč: ZT tokenov o ${effectiveZtTokens.length - totalCells} viac.`;
+    setSelectionError(err);
   }
 
-  function editZtToken(tokenIndex: number, newText: string) {
-    // Map effective index (display) to original ZT index considering brackets
-    const brSet = new Set(bracketedIndices || []);
-    const effectiveToOriginal: number[] = [];
-    for (let i = 0; i < ztTokens.length; i++) if (!brSet.has(i)) effectiveToOriginal.push(i);
-    const originalIndex = effectiveToOriginal[tokenIndex] ?? tokenIndex;
-    // Reconstruct ztRaw from original tokens with the edited one
+  function editZtToken(effIndex: number, newText: string) {
+    const br = new Set(bracketedIndices);
+    const effToOrig: number[] = [];
+    for (let i = 0; i < ztTokens.length; i++) if (!br.has(i)) effToOrig.push(i);
+    const orig = effToOrig[effIndex] ?? effIndex;
+    if (orig < 0 || orig >= ztTokens.length) return;
     const tokens = ztTokens.map(t => t.text);
-    if (originalIndex < 0 || originalIndex >= tokens.length) return;
-    tokens[originalIndex] = newText;
-    const newRaw = (ztParseMode === 'separator')
-      ? tokens.join(separator)
-      : tokens.join('');
+    tokens[orig] = newText;
+    const newRaw = ztParseMode === 'separator' ? tokens.join(separator) : tokens.join('');
     setZtRaw(newRaw);
   }
 
@@ -369,24 +218,21 @@ export function useNomenklator() {
     candidatesByChar,
     klamacStatus, statusMessage,
     bracketedIndices, setBracketedIndices,
-    bracketWarning, setBracketWarning,
+    bracketWarning,
     analysisDone,
     selectionError,
     // derived
     otChars, ztTokens, effectiveZtTokens,
-    otRows, baselineGroups,
-    analysisRowGroups, displayRowGroups,
+    otRows, columns,
     uniqueZTTokenTexts, reservedTokens,
     // actions
     runAnalysis,
     onLockOT, onUnlockOT,
     onDragEnd,
     toggleBracketGroupByText,
-    mutateDisplayGroups,
     previewSelection,
     applySelection,
     editZtToken,
-    setCandidatesByChar, setDisplayRowGroups, setAnalysisRowGroups,
-    setAnalysisDone, setSelectionError,
+    setCandidatesByChar, setAnalysisDone, setSelectionError,
   } as const;
 }
