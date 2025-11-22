@@ -4,7 +4,7 @@ import type { OTChar, ZTToken } from '../types/domain';
 import { useLocalSettings } from './useLocalSettings';
 import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';
-import { convertCountsToLists, getCounts, reflowRowGroups, buildSingleTokenGroups, getExpectedZTIndicesForOT } from '../utils/grouping';
+import { convertCountsToLists, getCounts, reflowRowGroups, getExpectedZTIndicesForOT, buildSingleTokenGroups } from '../utils/grouping';
 import type { DragEndEvent } from '@dnd-kit/core';
 
 export function useNomenklator() {
@@ -120,8 +120,9 @@ export function useNomenklator() {
       setOtRaw(settings.otRaw ?? '');
       setZtRaw(settings.ztRaw ?? '');
       setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
-      setLockedKeys(settings.lockedKeys ?? {});
-      setBracketedIndices(Array.isArray(settings.bracketedIndices) ? settings.bracketedIndices : []);
+      // Do not restore old locks/brackets to avoid stale local cache issues
+      setLockedKeys({});
+      setBracketedIndices([]);
       hydrated.current = true;
     }
   }, [settings]);
@@ -130,20 +131,7 @@ export function useNomenklator() {
   React.useEffect(() => { setSettings(prev => (prev.otRaw === otRaw ? prev : { ...prev, otRaw })); }, [otRaw, setSettings]);
   React.useEffect(() => { setSettings(prev => (prev.ztRaw === ztRaw ? prev : { ...prev, ztRaw })); }, [ztRaw, setSettings]);
   React.useEffect(() => { setSettings(prev => (prev.keysPerOTMode === keysPerOTMode ? prev : { ...prev, keysPerOTMode })); }, [keysPerOTMode, setSettings]);
-  React.useEffect(() => {
-    setSettings(prev => {
-      const prevStr = JSON.stringify(prev.lockedKeys || {});
-      const nextStr = JSON.stringify(lockedKeys || {});
-      return prevStr === nextStr ? prev : { ...prev, lockedKeys };
-    });
-  }, [lockedKeys, setSettings]);
-  React.useEffect(() => {
-    setSettings(prev => {
-      const prevStr = JSON.stringify(prev.bracketedIndices || []);
-      const nextStr = JSON.stringify(bracketedIndices || []);
-      return prevStr === nextStr ? prev : { ...prev, bracketedIndices };
-    });
-  }, [bracketedIndices, setSettings]);
+  // Intentionally stop persisting lockedKeys and bracketedIndices to avoid stale cache
 
   // Validate bracketed after parse changes
   React.useEffect(() => {
@@ -182,16 +170,21 @@ export function useNomenklator() {
     setDisplayRowGroups(convertCountsToLists(effCounts));
   }, [bracketedIndices, effectiveZtTokens, analysisDone]);
 
-  // Reflow display when locks or selections change
+  // Reflow or materialize display when locks or selections change
   React.useEffect(() => {
     if (!analysisDone) return;
-    const baseCounts = getCounts(analysisRowGroups.length ? analysisRowGroups : convertCountsToLists(baselineGroups));
-    const effSel: SelectionMap = {};
-    for (const [lk, seq] of Object.entries(lockedKeys)) if (seq) effSel[lk] = seq;
-    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) effSel[ch] = seq;
-    const effCounts = reflowRowGroups(otRows as OTChar[][], effectiveZtTokens, baseCounts, effSel, candidatesByChar);
-    setDisplayRowGroups(convertCountsToLists(effCounts));
-  }, [lockedKeys, selections, candidatesByChar, analysisRowGroups, effectiveZtTokens, otRows, analysisDone]);
+    const hasForced = Object.keys(lockedKeys).length > 0 || Object.values(selections).some(v => v);
+    if (hasForced) {
+      const forced: Record<string, string> = { ...lockedKeys };
+      for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq as string;
+      const { groups } = buildSingleTokenGroups(otRows as OTChar[][], effectiveZtTokens, forced);
+      setDisplayRowGroups(groups);
+    } else {
+      const baseCounts = getCounts(analysisRowGroups.length ? analysisRowGroups : convertCountsToLists(baselineGroups));
+      const effCounts = reflowRowGroups(otRows as OTChar[][], effectiveZtTokens, baseCounts, {}, candidatesByChar);
+      setDisplayRowGroups(convertCountsToLists(effCounts));
+    }
+  }, [lockedKeys, selections, candidatesByChar, analysisRowGroups, effectiveZtTokens, otRows, analysisDone, baselineGroups]);
 
   // Status update after analysis based on effective lens
   React.useEffect(() => {
@@ -220,10 +213,19 @@ export function useNomenklator() {
     const rg = (analysisRowGroups.length > 0 ? analysisRowGroups : convertCountsToLists(baselineGroups)) as number[][][];
     const base = getCounts(rg);
     const res = analyze(otRows as OTChar[][], ztTokens, base, { keysPerOTMode }, lockedKeys);
-    const analyzed = convertCountsToLists(res.proposedRowGroups);
-    setAnalysisRowGroups(analyzed);
-    setDisplayRowGroups(analyzed);
     setCandidatesByChar(res.candidatesByChar);
+    // If máme už nejaké zamknuté hodnoty, materializujeme priamo podľa skutočných indexov,
+    // aby sa pri ďalšom locku neposunulo číslovanie.
+    const hasLocks = Object.keys(lockedKeys).some(k => lockedKeys[k]);
+    if (hasLocks) {
+      const { groups } = buildSingleTokenGroups(otRows as OTChar[][], effectiveZtTokens, lockedKeys);
+      setAnalysisRowGroups(groups);
+      setDisplayRowGroups(groups);
+    } else {
+      const analyzed = convertCountsToLists(res.proposedRowGroups);
+      setAnalysisRowGroups(analyzed);
+      setDisplayRowGroups(analyzed);
+    }
     setSelections({});
     setAnalysisDone(true);
   }
@@ -315,6 +317,7 @@ export function useNomenklator() {
   }, [ztTokens, bracketedIndices]);
 
   function previewSelection() {
+    // Build real token index mapping respecting forced selections; no arbitrary count slicing.
     const forced: Record<string, string> = { ...lockedKeys };
     for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) forced[ch] = seq as string;
     const { groups, error } = buildSingleTokenGroups(otRows as OTChar[][], effectiveZtTokens, forced);
@@ -322,10 +325,26 @@ export function useNomenklator() {
     let finalError = error;
     if (!finalError && bracketedIndices.length === 0 && effectiveZtTokens.length > totalCells) {
       const diff = effectiveZtTokens.length - totalCells;
-      finalError = `Pozor stále je prítomný klamač:   ZT tokenov je o ${diff} viac ako OT znakov.`;
+      finalError = `Pozor stále je prítomný klamač: ZT tokenov je o ${diff} viac ako OT znakov.`;
     }
     setSelectionError(finalError);
     setDisplayRowGroups(groups);
+  }
+
+  function editZtToken(tokenIndex: number, newText: string) {
+    // Map effective index (display) to original ZT index considering brackets
+    const brSet = new Set(bracketedIndices || []);
+    const effectiveToOriginal: number[] = [];
+    for (let i = 0; i < ztTokens.length; i++) if (!brSet.has(i)) effectiveToOriginal.push(i);
+    const originalIndex = effectiveToOriginal[tokenIndex] ?? tokenIndex;
+    // Reconstruct ztRaw from original tokens with the edited one
+    const tokens = ztTokens.map(t => t.text);
+    if (originalIndex < 0 || originalIndex >= tokens.length) return;
+    tokens[originalIndex] = newText;
+    const newRaw = (ztParseMode === 'separator')
+      ? tokens.join(separator)
+      : tokens.join('');
+    setZtRaw(newRaw);
   }
 
   function applySelection() {
@@ -366,6 +385,7 @@ export function useNomenklator() {
     mutateDisplayGroups,
     previewSelection,
     applySelection,
+    editZtToken,
     setCandidatesByChar, setDisplayRowGroups, setAnalysisRowGroups,
     setAnalysisDone, setSelectionError,
   } as const;

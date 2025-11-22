@@ -22,6 +22,8 @@ export type MappingTableProps = {
   onUnlockOT?: (ot: string) => void;
   lockedKeys?: Record<string, string>;
   hasDeceptionWarning?: boolean;
+  onEditToken?: (tokenIndex: number, newText: string) => void;
+  selections?: Record<string, string | null>; // aktuálne výbery (pre preview rozdelenie skupín)
 };
 
 export type OTCellProps = {
@@ -33,6 +35,8 @@ export type OTCellProps = {
   onLockOT?: (otChar: string, lockValue: string) => void;
   onUnlockOT?: (otChar: string) => void;
   lockedValue?: string;
+  onEditToken?: (tokenIndex: number, newText: string) => void;
+  deception?: boolean;
 };
 
 export type ZTTokenProps = {
@@ -40,8 +44,9 @@ export type ZTTokenProps = {
   tokenIndex: number;
   row: number;
   col: number;
+  onEdit?: (tokenIndex: number, newText: string) => void;
 };
 
 export type Pair = { ot: string; zt: string };
 
-export type Column = { ot: _OTChar | null; zt: number[] };
+export type Column = { ot: _OTChar | null; zt: number[]; deception?: boolean };

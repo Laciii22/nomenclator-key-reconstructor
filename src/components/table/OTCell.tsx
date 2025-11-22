@@ -13,7 +13,7 @@ import ZTTokenComp from './ZTToken';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue }) => {
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}` });
 
   // Filter out undefined tokens and indices to avoid runtime errors
@@ -24,7 +24,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
   return (
     <div
       ref={setNodeRef}
-      className={`border border-gray-200 rounded p-1 shadow-sm bg-white transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
+      className={`border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
     >
       <div className="text-center font-mono text-base mb-1">
         {ot ? (
@@ -45,7 +45,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
             {ot.ch}
           </span>
         ) : (
-          '·'
+          <span className="inline-block px-1 rounded bg-orange-100 text-orange-800 border border-orange-300 font-mono text-md" title="Pravdepodobný klamač">!</span>
         )}
       </div>
       <div className="flex flex-wrap gap-2 justify-center">
@@ -53,7 +53,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
           <span className="text-gray-300">—</span>
         ) : (
           filtered.map(({ t, idx }, i) => (
-            <ZTTokenComp key={`${t.id}-${i}`} token={t} tokenIndex={idx} row={row} col={col} />
+            <ZTTokenComp key={`${t.id}-${i}`} token={t} tokenIndex={idx} row={row} col={col} onEdit={onEditToken} />
           ))
         )}
       </div>

@@ -41,6 +41,7 @@ const NomenklatorPage: React.FC = () => {
     toggleBracketGroupByText,
     previewSelection,
     applySelection,
+    editZtToken,
   setDisplayRowGroups, setAnalysisRowGroups,
   } = useNomenklator();
   
@@ -236,6 +237,8 @@ const NomenklatorPage: React.FC = () => {
                 onUnlockOT={onUnlockOT}
                 lockedKeys={lockedKeys}
                 hasDeceptionWarning={klamacStatus === 'needsKlamac'}
+                onEditToken={editZtToken}
+                selections={selections}
               />
             </div>
           </div>
