@@ -13,25 +13,36 @@ import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
  * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections }) => {
+const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1 }) => {
   // Unified mapping: reuse buildShiftOnlyColumns (same as MappingTable) and derive pairs ignoring deception cells.
+  const colsForMode = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, ztParseMode === 'fixedLength' ? groupSize : 1), [otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
+
   const pairs = useMemo(() => {
-    const cols = buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections);
+    const cols = colsForMode;
     const out: Pair[] = [];
     for (const row of cols) {
       for (const col of row) {
         if (!col.ot) continue; // skip deception/null cells
-        const ch = col.ot.ch;
-        const idx = col.zt.length ? col.zt[0] : null;
-        const zt = idx != null ? (ztTokens[idx]?.text || '') : '';
-        out.push({ ot: ch, zt });
+        if (ztParseMode === 'fixedLength') {
+          // Concatenate all indices for logical group
+          const text = col.zt.map(i => ztTokens[i]?.text || '').join('');
+          out.push({ ot: col.ot.ch, zt: text });
+        } else {
+          const idx = col.zt.length ? col.zt[0] : null;
+          const zt = idx != null ? (ztTokens[idx]?.text || '') : '';
+          out.push({ ot: col.ot.ch, zt });
+        }
       }
     }
     return out;
-  }, [otRows, ztTokens, lockedKeys, selections]);
+  }, [colsForMode, ztTokens, ztParseMode]);
 
   // Aggregate by OT character: collect ZT groups
   const aggregated = useMemo(() => {
+    if (ztParseMode === 'fixedLength') {
+      // No aggregation: each position listed separately
+      return pairs.map((p, i) => ({ ot: p.ot, ztList: [p.zt || ''], uniqueCount: p.zt ? 1 : 0, positionIndex: i }));
+    }
     const map = new Map<string, { allSet: Set<string>; nonEmptySet: Set<string>; displayList: string[] }>();
     const order: string[] = [];
     for (const p of pairs) {
@@ -68,12 +79,13 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = '
       const dl = entry.displayList.filter(v => !(v === '' && uniqueCountNonEmpty > 0));
       return { ot, ztList: dl, uniqueCount: uniqueCountNonEmpty };
     });
-  }, [pairs, keysPerOTMode]);
+  }, [pairs, keysPerOTMode, ztParseMode]);
 
   // Abecedné zoradenie podľa OT znaku
   const sortedAggregated = useMemo(() => {
+    if (ztParseMode === 'fixedLength') return aggregated; // keep original order (positional)
     return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
-  }, [aggregated]);
+  }, [aggregated, ztParseMode]);
 
   if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(žiadne páry)</div>;
 
@@ -111,8 +123,8 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = '
       <table className="w-full text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="text-left px-3 py-2">OT</th>
-            <th className="text-left px-3 py-2">ZT</th>
+            <th className="text-left px-3 py-2">OT{ztParseMode==='fixedLength' && <span className="ml-1 text-xs text-gray-400">(pozícia)</span>}</th>
+            <th className="text-left px-3 py-2">ZT{ztParseMode==='fixedLength' && groupSize>1 && <span className="ml-1 text-xs text-gray-400">(skupina {groupSize})</span>}</th>
             <th className="text-left px-3 py-2 w-24">&nbsp;</th>
           </tr>
         </thead>
@@ -126,7 +138,12 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = '
             const trClass = (isViolationSingle || lockedMismatch) ? 'bg-red-50' : '';
             return (
               <tr key={row.ot} className={`border-t border-gray-100 ${trClass}`}>
-                <td className="px-3 py-2 font-mono">{row.ot}</td>
+                <td className="px-3 py-2 font-mono">
+                  {row.ot}
+                  {ztParseMode === 'fixedLength' && typeof (row as any).positionIndex === 'number' && (
+                    <span className="ml-1 text-xs text-gray-400">#{(row as any).positionIndex}</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 font-mono">
                   <span>{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
                   {isViolationSingle && <span className="ml-2 text-red-600">(viac kľúčov)</span>}
@@ -134,24 +151,26 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = '
                 </td>
                 <td className="px-3 py-2">
                   {onLockOT || onUnlockOT ? (
-                    isLocked ? (
-                      <button
-                        className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                        onClick={() => onUnlockOT && onUnlockOT(row.ot)}
-                        title={`Odomknúť ${row.ot}`}
-                      >
-                        Odomknúť
-                      </button>
-                    ) : (
-                      <button
-                        className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200"
-                        onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
-                        disabled={row.ztList.length === 0}
-                        title={row.ztList.length ? `Zamknúť ${row.ot} = ${row.ztList[0]}` : 'Nie je čo zamknúť'}
-                      >
-                        Zamknúť
-                      </button>
-                    )
+                    <>
+                      {isLocked ? (
+                        <button
+                          className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                          onClick={() => onUnlockOT && onUnlockOT(row.ot)}
+                          title={`Odomknúť ${row.ot}`}
+                        >
+                          Odomknúť
+                        </button>
+                      ) : (
+                        <button
+                          className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200"
+                          onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
+                          disabled={row.ztList.length === 0}
+                          title={row.ztList.length ? `Zamknúť ${row.ot} = ${row.ztList[0]}` : 'Nie je čo zamknúť'}
+                        >
+                          Zamknúť
+                        </button>
+                      )}
+                    </>
                   ) : null}
                 </td>
               </tr>

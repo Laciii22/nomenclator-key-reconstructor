@@ -3,10 +3,19 @@ import type { MappingTableProps } from '../types';
 import OTCell from './OTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
 
-function MappingTable(props: MappingTableProps) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken } = props;
+function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertRawCharsAfterPosition?: (positionIndex:number, text:string)=>void; ztParseMode?: 'separator' | 'fixedLength' }) {
+	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, ztParseMode='separator' } = props;
 
-	const rows = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections), [otRows, ztTokens, lockedKeys, selections]);
+	const rows = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, groupSize), [otRows, ztTokens, lockedKeys, selections, groupSize]);
+
+	// Flat index of OT cells (skip deception) for insertion prompt in fixedLength mode
+	const flatIndices = useMemo(() => {
+		let counter = 0;
+		return rows.map(row => row.map(col => {
+			if (col.ot) { const idx = counter; counter++; return idx; }
+			return -1;
+		}));
+	}, [rows]);
 
 	return (
 		<div className={`space-y-4 ${hasDeceptionWarning ? 'border border-orange-300 rounded p-2 bg-orange-50' : ''}`}>
@@ -17,19 +26,26 @@ function MappingTable(props: MappingTableProps) {
 							<div className="text-gray-400 text-sm">(prázdny riadok)</div>
 						) : (
 							cols.map((col, cIdx) => (
-								<OTCell
-									key={cIdx}
-									ot={col.ot ?? null}
-									tokens={col.zt.map(i => ztTokens[i])}
-									tokenIndices={col.zt}
-									row={rIdx}
-									col={cIdx}
-									onLockOT={onLockOT}
-									onUnlockOT={onUnlockOT}
-									lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
-									deception={Boolean(col.deception || col.ot == null)}
-									onEditToken={onEditToken}
-								/>
+									<OTCell
+										key={cIdx}
+										ot={col.ot ?? null}
+										tokens={col.zt.map(i => ztTokens[i])}
+										tokenIndices={col.zt}
+										row={rIdx}
+										col={cIdx}
+										onLockOT={onLockOT}
+										onUnlockOT={onUnlockOT}
+										lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
+										deception={Boolean(col.deception || col.ot == null)}
+										onEditToken={onEditToken}
+										isFixedLength={ztParseMode==='fixedLength'}
+										flatIndex={flatIndices[rIdx][cIdx]}
+										onInsertAfterGroup={(fi) => {
+											if (ztParseMode!=='fixedLength' || fi < 0) return;
+											const input = window.prompt('Pridať raw znaky (bez medzier):', '');
+											if (input && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input);
+										}}
+									/>
 							))
 						)}
 					</div>

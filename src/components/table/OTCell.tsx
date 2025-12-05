@@ -13,7 +13,7 @@ import ZTTokenComp from './ZTToken';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception }) => {
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, flatIndex, onInsertAfterGroup }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}` });
 
   // Filter out undefined tokens and indices to avoid runtime errors
@@ -24,7 +24,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
   return (
     <div
       ref={setNodeRef}
-      className={`border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
+      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
     >
       <div className="text-center font-mono text-base mb-1">
         {ot ? (
@@ -53,10 +53,26 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
           <span className="text-gray-300">—</span>
         ) : (
           filtered.map(({ t, idx }, i) => (
-            <ZTTokenComp key={`${t.id}-${i}`} token={t} tokenIndex={idx} row={row} col={col} onEdit={onEditToken} />
+            <ZTTokenComp
+              key={`${t.id}-${i}`}
+              token={t}
+              tokenIndex={idx}
+              row={row}
+              col={col}
+              onEdit={onEditToken}
+              // A multi-char lock locks all constituent single-char tokens
+              isLocked={Boolean(lockedValue && lockedValue === filtered.map(x => x.t.text).join(''))}
+            />
           ))
         )}
       </div>
+      {isFixedLength && ot && !lockedValue && typeof flatIndex === 'number' && flatIndex >= 0 && (
+        <button
+          className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
+          onClick={() => onInsertAfterGroup && onInsertAfterGroup(flatIndex!)}
+          title="Pridať raw znaky za túto skupinu"
+        >+</button>
+      )}
     </div>
   );
 };

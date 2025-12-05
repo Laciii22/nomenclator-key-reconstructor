@@ -11,6 +11,8 @@ export type KeyTableProps = {
   onUnlockOT?: (ot: string) => void;
   onLockAll?: (locks: Record<string, string>) => void;
   selections?: Record<string, string | null>;
+  ztParseMode?: 'separator' | 'fixedLength';
+  groupSize?: number; // only relevant for fixedLength mode
 };
 
 export type MappingTableProps = {
@@ -36,6 +38,9 @@ export type OTCellProps = {
   lockedValue?: string;
   onEditToken?: (tokenIndex: number, newText: string) => void;
   deception?: boolean;
+  isFixedLength?: boolean;
+  flatIndex?: number; // positional index among OT cells (fixedLength mode)
+  onInsertAfterGroup?: (flatIndex: number) => void; // trigger raw insertion prompt upstream
 };
 
 export type ZTTokenProps = {
@@ -44,6 +49,7 @@ export type ZTTokenProps = {
   row: number;
   col: number;
   onEdit?: (tokenIndex: number, newText: string) => void;
+  isLocked?: boolean;
 };
 
 export type Pair = { ot: string; zt: string };

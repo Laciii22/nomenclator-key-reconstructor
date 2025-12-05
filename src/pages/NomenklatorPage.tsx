@@ -39,6 +39,7 @@ const NomenklatorPage: React.FC = () => {
     previewSelection,
     applySelection,
     editZtToken,
+    insertRawCharsAfterPosition,
   } = useNomenklator();
   
 
@@ -182,13 +183,21 @@ const NomenklatorPage: React.FC = () => {
                               }
                               return -1;
                             })();
+                            const groupSize = ztParseMode === 'fixedLength' ? fixedLength : 1;
                             const occMap: Record<string, number[]> = {};
-                            effectiveZtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
+                            if (groupSize === 1) {
+                              effectiveZtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
+                            } else {
+                              for (let i = 0; i + groupSize - 1 < effectiveZtTokens.length; i += groupSize) {
+                                const grp = effectiveZtTokens.slice(i, i + groupSize).map(x => x.text).join('');
+                                (occMap[grp] ||= []).push(i);
+                              }
+                            }
                             const occ = occMap[c.token] || [];
                             let orderInvalid = false;
                             if (cellFlatIndex === 0) {
                               const firstOcc = occ.length ? occ[0] : -1;
-                              orderInvalid = firstOcc !== 0;
+                              orderInvalid = firstOcc !== 0; // prvý znak musí začínať na 0
                             }
                             const disabled = takenByOther || orderInvalid;
                             const scoreStr = ` (score: ${c.score.toFixed(2)})`;
@@ -201,7 +210,7 @@ const NomenklatorPage: React.FC = () => {
                                   takenByOther
                                     ? 'Tento token je už použitý pre iný znak'
                                     : orderInvalid
-                                      ? 'Token by preskočil prvý pôvodný token – nie je povolený pre prvý znak'
+                                      ? 'Token musí začínať na indexe 0 pre prvý OT znak'
                                       : undefined
                                 }
                               >
@@ -236,6 +245,9 @@ const NomenklatorPage: React.FC = () => {
                 hasDeceptionWarning={klamacStatus === 'needsKlamac'}
                 onEditToken={editZtToken}
                 selections={selections}
+                groupSize={ztParseMode === 'fixedLength' ? fixedLength : 1}
+                ztParseMode={ztParseMode}
+                onInsertRawCharsAfterPosition={(pos, text) => insertRawCharsAfterPosition(pos, text)}
               />
             </div>
           </div>
@@ -250,6 +262,8 @@ const NomenklatorPage: React.FC = () => {
               selections={selections}
               onLockOT={onLockOT}
               onUnlockOT={onUnlockOT}
+              ztParseMode={ztParseMode}
+              groupSize={ztParseMode==='fixedLength'? fixedLength : 1}
               onLockAll={(locks) => {
                 setLockedKeys(prev => ({ ...prev, ...locks }));
                 setSelections(prev => {

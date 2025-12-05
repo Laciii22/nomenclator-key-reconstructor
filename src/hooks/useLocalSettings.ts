@@ -11,7 +11,6 @@ export type LocalSettings = {
   lockedKeys: LockedKeys;
   otRaw: string;
   ztRaw: string;
-  // indices (v pôvodnom ZT) presunuté do zátvoriek
   bracketedIndices: number[];
 };
 
