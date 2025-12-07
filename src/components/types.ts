@@ -39,8 +39,10 @@ export type OTCellProps = {
   onEditToken?: (tokenIndex: number, newText: string) => void;
   deception?: boolean;
   isFixedLength?: boolean;
+  groupSize?: number;
   flatIndex?: number; // positional index among OT cells (fixedLength mode)
   onInsertAfterGroup?: (flatIndex: number) => void; // trigger raw insertion prompt upstream
+  onSplitGroup?: (flatIndex: number) => void; // split merged OT group back into singles
 };
 
 export type ZTTokenProps = {

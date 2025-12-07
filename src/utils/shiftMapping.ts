@@ -67,9 +67,26 @@ export function buildShiftOnlyColumns(
             found = true;
             break;
           } else {
-            // deception cell for current single token
-            rowCols.push({ ot: null, zt: [tokenPtr], deception: true });
-            tokenPtr += 1;
+              // deception cell(s) for current tokenPtr
+              const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
+              const seqAt = (start: number) => {
+                if (start + groupSize - 1 >= ztTokens.length) return null;
+                let s = '';
+                for (let g = 0; g < groupSize; g++) s += ztTokens[start + g].text;
+                return s;
+              };
+              const here = seqAt(tokenPtr);
+              const next = seqAt(tokenPtr + 1);
+              const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string);
+              if (!shouldProtectNext && groupSize > 1 && tokenPtr + groupSize <= ztTokens.length) {
+                const groupIndices: number[] = [];
+                for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
+                rowCols.push({ ot: null, zt: groupIndices, deception: true });
+                tokenPtr += groupSize;
+              } else {
+                rowCols.push({ ot: null, zt: [tokenPtr], deception: true });
+                tokenPtr += 1;
+              }
           }
         }
         if (!found) {
@@ -79,9 +96,17 @@ export function buildShiftOnlyColumns(
       }
     }
     if (r === filteredRows.length - 1) {
+      // At the very end, collapse remaining raw tokens into deception groups when possible
       while (tokenPtr < ztTokens.length) {
-        rowCols.push({ ot: null, zt: [tokenPtr], deception: true });
-        tokenPtr++;
+        if (groupSize > 1 && tokenPtr + groupSize <= ztTokens.length) {
+          const groupIndices: number[] = [];
+          for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
+          rowCols.push({ ot: null, zt: groupIndices, deception: true });
+          tokenPtr += groupSize;
+        } else {
+          rowCols.push({ ot: null, zt: [tokenPtr], deception: true });
+          tokenPtr++;
+        }
       }
     }
     result.push(rowCols);

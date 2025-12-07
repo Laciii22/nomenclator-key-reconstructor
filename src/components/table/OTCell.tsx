@@ -1,7 +1,8 @@
 import React from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
 import type { OTCellProps } from '../types';
 import ZTTokenComp from './ZTToken';
+import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
 
 
 /**
@@ -13,13 +14,41 @@ import ZTTokenComp from './ZTToken';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, flatIndex, onInsertAfterGroup }) => {
-  const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}` });
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup }) => {
+  const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}`, data: { row, col, isKlamac: !ot, flatIndex } });
 
-  // Filter out undefined tokens and indices to avoid runtime errors
-  const filtered = tokens
-    .map((t, i) => ({ t, idx: tokenIndices[i] }))
-    .filter(({ t }) => t !== undefined && t !== null);
+  // Map token indices to token objects and filter undefined
+  // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
+  let displayedIndices: number[] = [];
+  if (Array.isArray(tokenIndices) && tokenIndices.length > 0) {
+    // Only expand to `groupSize` when this is a real OT cell (not a deception placeholder)
+    const isRealOtCell = !!ot;
+    if (isRealOtCell && isFixedLength && groupSize > 1) {
+      // If the column already contains a full group, respect those indices; otherwise expand from the first index
+      if (tokenIndices.length >= groupSize) {
+        displayedIndices = tokenIndices.slice(0, groupSize);
+      } else {
+        const start = tokenIndices[0];
+        for (let k = 0; k < groupSize; k++) {
+          const idx = start + k;
+          if (idx < tokens.length) displayedIndices.push(idx);
+        }
+      }
+    } else {
+      // For deception cells or non-fixed mode, show only the actual indices assigned
+      displayedIndices = tokenIndices.slice();
+    }
+  }
+
+  const filtered = displayedIndices.length
+    ? tokensFromIndices(tokens, displayedIndices).map((t, i) => ({ t, idx: displayedIndices[i] }))
+    : [];
+
+  const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({
+    id: ot ? `ot-${row}-${col}` : `ot-empty-${row}-${col}`,
+    data: { type: 'ot', flatIndex, sourceRow: row, sourceCol: col },
+    disabled: !ot || Boolean(lockedValue),
+  });
 
   return (
     <div
@@ -29,18 +58,22 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
       <div className="text-center font-mono text-base mb-1">
         {ot ? (
           <span
+            ref={setDragRef}
+            {...attributes}
+            {...(!lockedValue ? listeners : {})}
             className={` ${lockedValue ? 'bg-green-200 text-neutral-950' : ''} inline-block px-1 rounded bg-green-100 text-green-800 border border-green-300 font-mono text-md font-bold cursor-pointer select-none`}
-            onClick={() => {
-              // If currently locked, clicking unlocks; otherwise it locks to this cell's ZT group
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              // Double-click toggles lock to avoid conflict with drag
               if (lockedValue) {
                 if (onUnlockOT) onUnlockOT(ot.ch);
                 return;
               }
               if (!onLockOT) return;
-              const groupStr = filtered.map(({ t }) => t.text).join('');
+              const groupStr = joinTokenTexts(filtered.map(f => f.t));
               if (groupStr) onLockOT(ot.ch, groupStr);
             }}
-            title={lockedValue ? `OT: ${ot.ch} — click to unlock (${lockedValue})` : `OT: ${ot.ch} — click to lock to this cell's ZT group`}
+            title={lockedValue ? `OT: ${ot.ch} — double-click to unlock (${lockedValue})` : `OT: ${ot.ch} — double-click to lock to this cell's ZT group`}
           >
             {ot.ch}
           </span>
@@ -72,6 +105,16 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
           onClick={() => onInsertAfterGroup && onInsertAfterGroup(flatIndex!)}
           title="Pridať raw znaky za túto skupinu"
         >+</button>
+      )}
+      {ot && ot.ch.length > 1 && typeof flatIndex === 'number' && flatIndex >= 0 && (
+        <button
+          className="absolute top-1 left-1 px-1 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 leading-none"
+          onClick={() => {
+            if (lockedValue) return; // avoid splitting when locked
+            if (onSplitGroup) onSplitGroup(flatIndex!);
+          }}
+          title={lockedValue ? 'Najprv odomkni, potom rozdeľ skupinu' : 'Rozdeliť skupinu na jednotlivé znaky'}
+        >-</button>
       )}
     </div>
   );

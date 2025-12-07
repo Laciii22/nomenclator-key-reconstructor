@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import type { KeyTableProps, Pair } from '../types';
-import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
+import type { KeyTableProps } from '../types';
+import { buildShiftOnlyColumns as buildColumns } from '../../utils/shiftMapping';
+import { computePairsFromColumns, aggregatePairsByOT } from '../../utils/columns';
 
 
 
@@ -13,79 +14,22 @@ import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
  * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1 }) => {
-  // Unified mapping: reuse buildShiftOnlyColumns (same as MappingTable) and derive pairs ignoring deception cells.
-  const colsForMode = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, ztParseMode === 'fixedLength' ? groupSize : 1), [otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
+const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>> }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns }) => {
+  // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
+  const colsForMode = useMemo(() => {
+    if (columns && columns.length) return columns as Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
+    return buildColumns(otRows, ztTokens, lockedKeys, selections, ztParseMode === 'fixedLength' ? groupSize : 1);
+  }, [columns, otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
 
-  const pairs = useMemo(() => {
-    const cols = colsForMode;
-    const out: Pair[] = [];
-    for (const row of cols) {
-      for (const col of row) {
-        if (!col.ot) continue; // skip deception/null cells
-        if (ztParseMode === 'fixedLength') {
-          // Concatenate all indices for logical group
-          const text = col.zt.map(i => ztTokens[i]?.text || '').join('');
-          out.push({ ot: col.ot.ch, zt: text });
-        } else {
-          const idx = col.zt.length ? col.zt[0] : null;
-          const zt = idx != null ? (ztTokens[idx]?.text || '') : '';
-          out.push({ ot: col.ot.ch, zt });
-        }
-      }
-    }
-    return out;
-  }, [colsForMode, ztTokens, ztParseMode]);
+  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, ztParseMode), [colsForMode, ztTokens, ztParseMode]);
 
   // Aggregate by OT character: collect ZT groups
-  const aggregated = useMemo(() => {
-    if (ztParseMode === 'fixedLength') {
-      // No aggregation: each position listed separately
-      return pairs.map((p, i) => ({ ot: p.ot, ztList: [p.zt || ''], uniqueCount: p.zt ? 1 : 0, positionIndex: i }));
-    }
-    const map = new Map<string, { allSet: Set<string>; nonEmptySet: Set<string>; displayList: string[] }>();
-    const order: string[] = [];
-    for (const p of pairs) {
-      if (!map.has(p.ot)) {
-        map.set(p.ot, { allSet: new Set(), nonEmptySet: new Set(), displayList: [] });
-        order.push(p.ot);
-      }
-      const entry = map.get(p.ot)!;
-      const tokenText = p.zt; // may be '' for empty cell
-      // Track all (including empty) and non-empty separately
-      if (!entry.allSet.has(tokenText)) entry.allSet.add(tokenText);
-      if (tokenText !== '' && !entry.nonEmptySet.has(tokenText)) entry.nonEmptySet.add(tokenText);
-      // Display logic: skip additional empty duplicates; for single mode prefer first non-empty
-      if (keysPerOTMode === 'single') {
-        if (entry.displayList.length === 0) {
-          // prefer non-empty; if empty and later non-empty arrives, replace
-          entry.displayList.push(tokenText);
-        } else if (entry.displayList[0] === '' && tokenText !== '') {
-          entry.displayList[0] = tokenText;
-        }
-      } else {
-        // multiple mode: include unique non-empty; include a single placeholder '—' if all empty
-        if (tokenText === '') {
-          // only add empty if we have none yet and no non-empty collected
-          if (entry.displayList.length === 0) entry.displayList.push('');
-        } else if (!entry.displayList.includes(tokenText)) {
-          entry.displayList.push(tokenText);
-        }
-      }
-    }
-    return order.map(ot => {
-      const entry = map.get(ot)!;
-      const uniqueCountNonEmpty = entry.nonEmptySet.size; // count only real keys
-      const dl = entry.displayList.filter(v => !(v === '' && uniqueCountNonEmpty > 0));
-      return { ot, ztList: dl, uniqueCount: uniqueCountNonEmpty };
-    });
-  }, [pairs, keysPerOTMode, ztParseMode]);
+  const aggregated = useMemo(() => aggregatePairsByOT(pairs, keysPerOTMode), [pairs, keysPerOTMode]);
 
   // Abecedné zoradenie podľa OT znaku
   const sortedAggregated = useMemo(() => {
-    if (ztParseMode === 'fixedLength') return aggregated; // keep original order (positional)
     return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
-  }, [aggregated, ztParseMode]);
+  }, [aggregated]);
 
   if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(žiadne páry)</div>;
 
@@ -120,11 +64,11 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = '
           </button>
         )}
       </div>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm table-fixed">
         <thead className="bg-gray-50">
           <tr>
-            <th className="text-left px-3 py-2">OT{ztParseMode==='fixedLength' && <span className="ml-1 text-xs text-gray-400">(pozícia)</span>}</th>
-            <th className="text-left px-3 py-2">ZT{ztParseMode==='fixedLength' && groupSize>1 && <span className="ml-1 text-xs text-gray-400">(skupina {groupSize})</span>}</th>
+            <th className="text-left px-3 py-2">OT</th>
+            <th className="text-left px-3 py-2">ZT</th>
             <th className="text-left px-3 py-2 w-24">&nbsp;</th>
           </tr>
         </thead>
@@ -138,14 +82,9 @@ const KeyTable: React.FC<KeyTableProps> = ({ otRows, ztTokens, keysPerOTMode = '
             const trClass = (isViolationSingle || lockedMismatch) ? 'bg-red-50' : '';
             return (
               <tr key={row.ot} className={`border-t border-gray-100 ${trClass}`}>
-                <td className="px-3 py-2 font-mono">
-                  {row.ot}
-                  {ztParseMode === 'fixedLength' && typeof (row as any).positionIndex === 'number' && (
-                    <span className="ml-1 text-xs text-gray-400">#{(row as any).positionIndex}</span>
-                  )}
-                </td>
-                <td className="px-3 py-2 font-mono">
-                  <span>{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
+                <td className="px-3 py-2 font-mono whitespace-nowrap">{row.ot}</td>
+                <td className="px-3 py-2 font-mono whitespace-nowrap">
+                  <span className="whitespace-nowrap">{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
                   {isViolationSingle && <span className="ml-2 text-red-600">(viac kľúčov)</span>}
                   {lockedMismatch && <span className="ml-2 text-red-600">(nesúlad so zámkom)</span>}
                 </td>

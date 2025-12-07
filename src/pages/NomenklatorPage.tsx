@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { DndContext } from '@dnd-kit/core';
+import { DndContext, useSensors, useSensor, MouseSensor, TouchSensor, KeyboardSensor, pointerWithin } from '@dnd-kit/core';
 import AppLayout from '../components/layout/AppLayout';
 import MappingTable from '../components/table/MappingTable';
 import KeyTable from '../components/table/KeyTable';
@@ -8,8 +8,13 @@ import BracketEditor from '../components/controls/BracketEditor';
 import ParseControls from '../components/controls/ParseControls';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap } from '../utils/analyzer';
+import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 
 const NomenklatorPage: React.FC = () => {
+
+    //const TEST_OT = 'ahaho pisal stare znaky do knihy potichu.';
+    //const TEST_ZT = '1:6:99:1:6:12:13:7:15:1:10:15:16:99:1:14:5:19:11:1:9:18:4:12:9:11:7:6:18:99:13:12:16:7:3:6:17:20';
+
   const {
     // inputs
     otRaw, setOtRaw,
@@ -34,18 +39,29 @@ const NomenklatorPage: React.FC = () => {
     // actions
     runAnalysis,
     onLockOT, onUnlockOT,
+    onDragStart,
     onDragEnd,
+    
     toggleBracketGroupByText,
     previewSelection,
     applySelection,
     editZtToken,
     insertRawCharsAfterPosition,
+    splitOTAt,
   } = useNomenklator();
   
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  // Shared columns grid: same builder for both tables
+  const sharedColumns = React.useMemo(() => buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode === 'fixedLength' ? fixedLength : 1), [otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode, fixedLength]);
 
   return (
     <AppLayout>
-      <DndContext onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="container mx-auto px-4 py-6">
         <h1 className="text-xl font-semibold mb-4">Nomenklátor – automatické návrhy</h1>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -194,10 +210,29 @@ const NomenklatorPage: React.FC = () => {
                               }
                             }
                             const occ = occMap[c.token] || [];
+                            // Sekvenčné poradie pre fixedLength: pozícia i by mala začínať na indexe i*groupSize
+                            // Uvoľníme to tak, že ak je pred OT bunkou N raw tokenov v klamačoch,
+                            // akceptujeme štarty v intervale expectedStart ± N.
                             let orderInvalid = false;
-                            if (cellFlatIndex === 0) {
-                              const firstOcc = occ.length ? occ[0] : -1;
-                              orderInvalid = firstOcc !== 0; // prvý znak musí začínať na 0
+                            if (ztParseMode === 'fixedLength' && cellFlatIndex >= 0) {
+                              const expectedStart = cellFlatIndex * groupSize;
+                              // Build flatColumns from sharedColumns to count deception tokens before the target OT cell
+                              const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+                              for (const row of sharedColumns) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
+                              // Count how many raw tokens are represented by deception cells overall
+                              let deceptionTotal = 0;
+                              for (let i = 0; i < flatColumns.length; i++) if (flatColumns[i].otCh == null) deceptionTotal += (flatColumns[i].indices || []).length;
+                              // Accept token if any of its start occurrences is within expectedStart ± deceptionTotal
+                              orderInvalid = !occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal);
+                            } else if (cellFlatIndex >= 0) {
+                              // Separator mode (one token per OT): expectedStart = cellFlatIndex
+                              // Allow selection if token occurs within ± total deception token count
+                              const expectedStart = cellFlatIndex;
+                              const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+                              for (const row of sharedColumns) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
+                              let deceptionTotal = 0;
+                              for (let i = 0; i < flatColumns.length; i++) if (flatColumns[i].otCh == null) deceptionTotal += (flatColumns[i].indices || []).length;
+                              orderInvalid = !occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal);
                             }
                             const disabled = takenByOther || orderInvalid;
                             const scoreStr = ` (score: ${c.score.toFixed(2)})`;
@@ -210,7 +245,9 @@ const NomenklatorPage: React.FC = () => {
                                   takenByOther
                                     ? 'Tento token je už použitý pre iný znak'
                                     : orderInvalid
-                                      ? 'Token musí začínať na indexe 0 pre prvý OT znak'
+                                      ? (ztParseMode === 'fixedLength'
+                                          ? `Token musí začínať na indexe ${cellFlatIndex * groupSize} pre pozíciu ${cellFlatIndex}`
+                                          : 'Token musí začínať na indexe 0 pre prvý OT znak')
                                       : undefined
                                 }
                               >
@@ -229,27 +266,6 @@ const NomenklatorPage: React.FC = () => {
               </div>
             )}
 
-            
-
-            <div>
-              <div className="text-sm text-gray-600 mb-2">
-                OT znakov: {otChars.length} • ZT tokenov: {ztTokens.length}
-              </div>
-              
-              <MappingTable
-                otRows={otRows}
-                ztTokens={effectiveZtTokens}
-                onLockOT={onLockOT}
-                onUnlockOT={onUnlockOT}
-                lockedKeys={lockedKeys}
-                hasDeceptionWarning={klamacStatus === 'needsKlamac'}
-                onEditToken={editZtToken}
-                selections={selections}
-                groupSize={ztParseMode === 'fixedLength' ? fixedLength : 1}
-                ztParseMode={ztParseMode}
-                onInsertRawCharsAfterPosition={(pos, text) => insertRawCharsAfterPosition(pos, text)}
-              />
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -264,6 +280,7 @@ const NomenklatorPage: React.FC = () => {
               onUnlockOT={onUnlockOT}
               ztParseMode={ztParseMode}
               groupSize={ztParseMode==='fixedLength'? fixedLength : 1}
+              columns={sharedColumns}
               onLockAll={(locks) => {
                 setLockedKeys(prev => ({ ...prev, ...locks }));
                 setSelections(prev => {
@@ -276,6 +293,28 @@ const NomenklatorPage: React.FC = () => {
             />
           </div>
         </div>
+
+                    <div>
+              <div className="text-sm text-gray-600 mb-2">
+                OT znakov: {otChars.length} • ZT tokenov: {ztParseMode === 'fixedLength' ? Math.floor(ztTokens.length / Math.max(1, fixedLength)) : ztTokens.length}
+              </div>
+              
+              <MappingTable
+                otRows={otRows}
+                ztTokens={effectiveZtTokens}
+                onLockOT={onLockOT}
+                onUnlockOT={onUnlockOT}
+                lockedKeys={lockedKeys}
+                hasDeceptionWarning={klamacStatus === 'needsKlamac'}
+                onEditToken={editZtToken}
+                selections={selections}
+                groupSize={ztParseMode === 'fixedLength' ? fixedLength : 1}
+                onInsertRawCharsAfterPosition={(pos, text) => insertRawCharsAfterPosition(pos, text)}
+                onSplitGroup={(fi: number) => splitOTAt(fi)}
+                canInsertRaw={ztParseMode === 'fixedLength'}
+                canSplitGroup={true}
+              />
+            </div>
       </div>
       </DndContext>
     </AppLayout>

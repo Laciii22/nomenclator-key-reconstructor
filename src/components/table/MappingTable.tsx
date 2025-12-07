@@ -3,8 +3,8 @@ import type { MappingTableProps } from '../types';
 import OTCell from './OTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
 
-function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertRawCharsAfterPosition?: (positionIndex:number, text:string)=>void; ztParseMode?: 'separator' | 'fixedLength' }) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, ztParseMode='separator' } = props;
+function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertRawCharsAfterPosition?: (positionIndex:number, text:string)=>void; onSplitGroup?: (flatIndex:number)=>void; canInsertRaw?: boolean; canSplitGroup?: boolean }) {
+	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true } = props;
 
 	const rows = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, groupSize), [otRows, ztTokens, lockedKeys, selections, groupSize]);
 
@@ -29,7 +29,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 									<OTCell
 										key={cIdx}
 										ot={col.ot ?? null}
-										tokens={col.zt.map(i => ztTokens[i])}
+										tokens={ztTokens}
 										tokenIndices={col.zt}
 										row={rIdx}
 										col={cIdx}
@@ -38,13 +38,15 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 										lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
 										deception={Boolean(col.deception || col.ot == null)}
 										onEditToken={onEditToken}
-										isFixedLength={ztParseMode==='fixedLength'}
+										isFixedLength={groupSize > 1}
+										groupSize={groupSize}
 										flatIndex={flatIndices[rIdx][cIdx]}
 										onInsertAfterGroup={(fi) => {
-											if (ztParseMode!=='fixedLength' || fi < 0) return;
+											if (!canInsertRaw || fi < 0) return;
 											const input = window.prompt('Pridať raw znaky (bez medzier):', '');
 											if (input && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input);
 										}}
+										onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
 									/>
 							))
 						)}

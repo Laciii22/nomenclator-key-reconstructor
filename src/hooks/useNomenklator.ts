@@ -6,6 +6,7 @@ import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';
 import { getExpectedZTIndicesForOT } from '../utils/grouping';
 import { buildShiftOnlyColumns } from '../utils/shiftMapping';
+import { uniqueGroupTexts, toggleBracketByGroupText } from '../utils/parse/fixedLength';
 import type { DragEndEvent } from '@dnd-kit/core';
 
 export function useNomenklator() {
@@ -26,6 +27,7 @@ export function useNomenklator() {
   const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
   const [analysisDone, setAnalysisDone] = useState(false);
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
+  const isDraggingRef = useRef(false);
 
   // Status / warnings
   const [klamacStatus, setKlamacStatus] = useState<'none' | 'needsKlamac' | 'ok' | 'invalid'>('none');
@@ -44,10 +46,13 @@ export function useNomenklator() {
     return set;
   }, [lockedKeys, selections]);
 
+  // Optional custom grouping of OT characters (supports merging adjacent OT cells)
+  const [customOtGroups, setCustomOtGroups] = useState<OTChar[] | null>(null);
   const otChars = useMemo(() => {
+    if (customOtGroups && customOtGroups.length) return customOtGroups;
     const chars = Array.from(otRaw).filter(ch => !/\s/.test(ch));
     return chars.map((ch, i) => ({ id: `ot_${i}`, ch }));
-  }, [otRaw]);
+  }, [otRaw, customOtGroups]);
 
   // Raw ZT tokens are always single characters in fixedLength mode (for easier editing)
   // In separator mode they are split by separator.
@@ -133,6 +138,7 @@ export function useNomenklator() {
     setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
     setLockedKeys({});
     setBracketedIndices([]);
+    setCustomOtGroups(null);
     hydrated.current = true;
   }, [settings]);
 
@@ -226,10 +232,14 @@ export function useNomenklator() {
 
   function onLockOT(ot: string, val: string) { setLockedKeys(prev => ({ ...prev, [ot]: val })); }
   function onUnlockOT(ot: string) { setLockedKeys(prev => { const c = { ...prev }; delete c[ot]; return c; }); }
-  function onDragEnd(_evt: DragEndEvent) { /* drag disabled in simplified mode */ }
+  // drag behavior intentionally disabled in simplified mode
 
   function toggleBracketGroupByText(text: string) {
     if (!text) return;
+    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
+      setBracketedIndices(prev => toggleBracketByGroupText(text, ztTokens, fixedLength || 1, prev));
+      return;
+    }
     const same = ztTokens.map((t, i) => t.text === text ? i : -1).filter(i => i >= 0);
     setBracketedIndices(prev => {
       const set = new Set(prev);
@@ -240,6 +250,9 @@ export function useNomenklator() {
   }
 
   const uniqueZTTokenTexts = useMemo(() => {
+    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
+      return uniqueGroupTexts(ztTokens, fixedLength || 1, bracketedIndices);
+    }
     const seen = new Set<string>();
     const br = new Set(bracketedIndices);
     const map = new Map<string, number[]>();
@@ -251,7 +264,7 @@ export function useNomenklator() {
       out.push({ text: t.text, allBracketed: idxs.length > 0 && idxs.every(i => br.has(i)) });
     }
     return out;
-  }, [ztTokens, bracketedIndices]);
+  }, [ztTokens, bracketedIndices, ztParseMode, fixedLength]);
 
   function previewSelection() {
     const totalCells = otRows.reduce((a, r) => a + r.filter(c => c.ch !== '').length, 0);
@@ -316,6 +329,101 @@ export function useNomenklator() {
     if (Object.keys(newLocks).length) setLockedKeys(prev => ({ ...prev, ...newLocks }));
   }
 
+  // Merge adjacent OT groups: fromIndex merged into toIndex (concatenate text), only if toIndex is adjacent (fromIndex+1)
+  function joinOTAt(fromIndex: number, toIndex: number) {
+    const flat: OTChar[] = (customOtGroups && customOtGroups.length)
+      ? customOtGroups
+      : otChars.filter(c => c.ch !== '');
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= flat.length || toIndex >= flat.length) return;
+    // Only allow merging when dropping onto the immediate next OT
+    if (toIndex !== fromIndex + 1) return;
+    const a = flat[fromIndex];
+    const b = flat[toIndex];
+    const merged: OTChar = { id: `${a.id}_merge_${b.id}`, ch: `${a.ch}${b.ch}` };
+    const next = [...flat];
+    next.splice(fromIndex, 2, merged);
+    setCustomOtGroups(next);
+  }
+
+  // Split a multi-char OT group at index back into single-character groups
+  function splitOTAt(index: number) {
+    const flat: OTChar[] = (customOtGroups && customOtGroups.length)
+      ? customOtGroups
+      : otChars.filter(c => c.ch !== '');
+    if (index < 0 || index >= flat.length) return;
+    const cur = flat[index];
+    if (!cur || !cur.ch || cur.ch.length <= 1) return;
+    const singles: OTChar[] = Array.from(cur.ch).map((ch, i) => ({ id: `${cur.id}_s${i}`, ch }));
+    const next = [...flat];
+    next.splice(index, 1, ...singles);
+    setCustomOtGroups(next);
+  }
+
+  function onDragStart() {
+    isDraggingRef.current = true;
+  }
+
+  function onDragEnd(evt: DragEndEvent) {
+    const wasDragging = isDraggingRef.current;
+    isDraggingRef.current = false;
+    if (!wasDragging) return; // prevent accidental merges from clicks
+    const active = evt.active;
+    const over = evt.over;
+    if (!active || !over) return;
+    const src = active.data?.current as any;
+    const dst = over.data?.current as any;
+    // Debug: log DnD resolution for troubleshooting
+    try {
+      console.log('[DnD] active.id=', active.id, 'over.id=', over.id, 'src.data=', src, 'dst.data=', dst);
+    } catch {}
+    // Reject drops onto klamáč cells
+    if (dst && dst.isKlamac) return;
+    // Resolve source/target grid positions
+    let srcRow: number | undefined = src?.sourceRow;
+    let srcCol: number | undefined = src?.sourceCol;
+    let dstRow: number | undefined = dst?.row;
+    let dstCol: number | undefined = dst?.col;
+    // Fallback: parse droppable id if data missing
+    if ((dstRow == null || dstCol == null) && typeof over.id === 'string') {
+      const m = /^cell-(\d+)-(\d+)$/.exec(over.id as string);
+      if (m) {
+        dstRow = Number(m[1]);
+        dstCol = Number(m[2]);
+      }
+    }
+    if (srcRow == null || srcCol == null || dstRow == null || dstCol == null) return;
+    // Enforce grid-adjacency: only allow merge if target is exactly the next column in the same row
+    if (!(dstRow === srcRow && dstCol === srcCol + 1)) return;
+    // Both source and target must be non-empty OT cells
+    const srcCell = columns[srcRow]?.[srcCol];
+    const dstCell = columns[dstRow]?.[dstCol];
+    if (!srcCell || !dstCell) return;
+    if (!srcCell.ot || !dstCell.ot) return;
+    // Compute current flat indices by scanning otRows, counting only non-empty cells
+    let fromFlat = -1;
+    let targetFlat = -1;
+    let counter = 0;
+    for (let rr = 0; rr < columns.length; rr++) {
+      const rowArr = columns[rr];
+      for (let cc = 0; cc < rowArr.length; cc++) {
+        const cell = rowArr[cc];
+        if (cell.ot) {
+          if (rr === srcRow && cc === srcCol) fromFlat = counter;
+          if (rr === dstRow && cc === dstCol) targetFlat = counter;
+          counter++;
+        }
+      }
+    }
+    if (fromFlat < 0 || targetFlat < 0) return;
+    // Perform merge strictly to immediate right in the grid
+    joinOTAt(fromFlat, targetFlat);
+  }
+
+  // Re-run analysis when OT grouping changes and we already have results
+  React.useEffect(() => {
+    if (analysisDone) refreshAnalysisPreserve();
+  }, [customOtGroups, otRows, analysisDone]);
+
   // Insert raw characters after the group belonging to flat OT position (only fixedLength mode)
   function insertRawCharsAfterPosition(positionIndex: number, text: string) {
     if (ztParseMode !== 'fixedLength') return;
@@ -368,12 +476,14 @@ export function useNomenklator() {
     // actions
     runAnalysis,
     onLockOT, onUnlockOT,
+    onDragStart,
     onDragEnd,
     toggleBracketGroupByText,
     previewSelection,
     applySelection,
     editZtToken,
     insertRawCharsAfterPosition,
-    setCandidatesByChar, setAnalysisDone, setSelectionError,
+    joinOTAt,
+    splitOTAt,
   } as const;
 }
