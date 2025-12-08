@@ -1,11 +1,12 @@
+import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
 
-export type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
-import type { OTChar as _OTChar, ZTToken as _ZTToken, KeysPerOTMode as _KeysPerOTMode } from '../types/domain';
+// Re-export core domain types for backwards compatibility with imports
+export type { OTChar, ZTToken, KeysPerOTMode };
 
 export type KeyTableProps = {
-  otRows: _OTChar[][];
-  ztTokens: _ZTToken[];
-  keysPerOTMode?: _KeysPerOTMode;
+  otRows: OTChar[][];
+  ztTokens: ZTToken[];
+  keysPerOTMode?: KeysPerOTMode;
   lockedKeys?: Record<string, string>;
   onLockOT?: (ot: string, lockValue: string) => void;
   onUnlockOT?: (ot: string) => void;
@@ -16,8 +17,8 @@ export type KeyTableProps = {
 };
 
 export type MappingTableProps = {
-  otRows: _OTChar[][];
-  ztTokens: _ZTToken[];
+  otRows: OTChar[][];
+  ztTokens: ZTToken[];
   onMoveZTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
   onLockOT?: (ot: string, lockValue: string) => void;
   onUnlockOT?: (ot: string) => void;
@@ -28,8 +29,8 @@ export type MappingTableProps = {
 };
 
 export type OTCellProps = {
-  ot: _OTChar | null;
-  tokens: _ZTToken[];
+  ot: OTChar | null;
+  tokens: ZTToken[];
   tokenIndices: number[];
   row: number;
   col: number;
@@ -46,7 +47,7 @@ export type OTCellProps = {
 };
 
 export type ZTTokenProps = {
-  token: _ZTToken;
+  token: ZTToken;
   tokenIndex: number;
   row: number;
   col: number;
@@ -56,4 +57,4 @@ export type ZTTokenProps = {
 
 export type Pair = { ot: string; zt: string };
 
-export type Column = { ot: _OTChar | null; zt: number[]; deception?: boolean };
+export type Column = { ot: OTChar | null; zt: number[]; deception?: boolean };

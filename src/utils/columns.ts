@@ -7,18 +7,18 @@ type ColumnLike = { ot: { ch: string } | null; zt: number[] } & Record<string, a
 export function computePairsFromColumns(
   cols: ColumnLike[][],
   ztTokens: ZTToken[],
-  ztParseMode: 'separator' | 'fixedLength' = 'separator'
+  groupSize: number = 1
 ): Pair[] {
   const out: Pair[] = [];
   for (const row of cols) {
     for (const col of row) {
       if (!col.ot) continue;
-      const text = (ztParseMode === 'fixedLength')
-        ? col.zt.map((i: number) => ztTokens[i]?.text || '').join('')
-        : (() => {
+      const text = (groupSize === 1)
+        ? (() => {
             const idx = col.zt.length ? col.zt[0] : null;
             return idx != null ? (ztTokens[idx]?.text || '') : '';
-          })();
+          })()
+        : col.zt.map((i: number) => ztTokens[i]?.text || '').join('');
       out.push({ ot: col.ot.ch, zt: text });
     }
   }

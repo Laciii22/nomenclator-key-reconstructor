@@ -2,6 +2,7 @@ import type { OTChar } from '../types/domain';
 import type { Column } from '../components/types';
 import type { ZTToken } from '../types/domain';
 
+//This is for fixed-length mode only
 // Build shift-only columns with deception (!) cells without reordering original token indices.
 // Forced map combines lockedKeys + selections (selections do not overwrite locks).
 export function buildShiftOnlyColumns(
@@ -25,8 +26,7 @@ export function buildShiftOnlyColumns(
       const ch = rowChars[c].ch;
       const want = hasForced ? forced[ch] : undefined;
       if (!want) {
-        // Unforced cell. Heuristika: ak posunutie o celý groupSize by rozbilo budúcu nútenú sekvenciu (forced value)
-        // ktorá začína na tokenPtr+1 (ale nie na tokenPtr), odober len jeden token.
+        // Unforced cell. Heurristic: try to take groupSize tokens starting at tokenPtr.
         if (tokenPtr < ztTokens.length) {
           const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
           const seqAt = (start: number) => {
@@ -37,9 +37,14 @@ export function buildShiftOnlyColumns(
           };
           const here = seqAt(tokenPtr);
           const next = seqAt(tokenPtr + 1);
-          const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string);
+          // Decide whether to protect next forced group by taking only one token here.
+          // Additionally ensure taking one token won't leave too many remaining tokens
+          // that cannot be accommodated by remaining OT cells (would create leftover tokens).
+          const remainingOTCells = rowChars.length - (c + 1);
+          const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
+          const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
+          const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
           if (shouldProtectNext) {
-            // Vezmi len jeden token, aby ostala budúca skupina nedotknutá
             rowCols.push({ ot: rowChars[c], zt: [tokenPtr] });
             tokenPtr += 1;
           } else {
@@ -66,19 +71,22 @@ export function buildShiftOnlyColumns(
             tokenPtr += groupSize;
             found = true;
             break;
-          } else {
-              // deception cell(s) for current tokenPtr
-              const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
-              const seqAt = (start: number) => {
-                if (start + groupSize - 1 >= ztTokens.length) return null;
-                let s = '';
-                for (let g = 0; g < groupSize; g++) s += ztTokens[start + g].text;
-                return s;
-              };
-              const here = seqAt(tokenPtr);
-              const next = seqAt(tokenPtr + 1);
-              const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string);
-              if (!shouldProtectNext && groupSize > 1 && tokenPtr + groupSize <= ztTokens.length) {
+              } else {
+                // deception cell(s) for current tokenPtr
+                const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
+                const seqAt = (start: number) => {
+                  if (start + groupSize - 1 >= ztTokens.length) return null;
+                  let s = '';
+                  for (let g = 0; g < groupSize; g++) s += ztTokens[start + g].text;
+                  return s;
+                };
+                const here = seqAt(tokenPtr);
+                const next = seqAt(tokenPtr + 1);
+                const remainingOTCells = rowChars.length - (c + 1);
+                const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
+                const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
+                const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
+                if (!shouldProtectNext && groupSize > 1 && tokenPtr + groupSize <= ztTokens.length) {
                 const groupIndices: number[] = [];
                 for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
                 rowCols.push({ ot: null, zt: groupIndices, deception: true });

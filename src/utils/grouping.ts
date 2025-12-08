@@ -1,6 +1,6 @@
 import type { OTChar, ZTToken } from '../types/domain';
 
-// Sequential expected ZT indices per OT char (skips bracketed tokens)
+// Sequential expected ZT indices per OT char (skips bracketed (deception) tokens)
 export function getExpectedZTIndicesForOT(
   otRowsLocal: OTChar[][],
   ztTokensLocal: ZTToken[],

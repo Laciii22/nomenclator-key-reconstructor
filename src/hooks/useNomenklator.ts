@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import type { KeysPerOTMode } from '../components/types';
-import type { OTChar, ZTToken } from '../types/domain';
+import type { KeysPerOTMode, OTChar, ZTToken } from '../components/types';
 import { useLocalSettings } from './useLocalSettings';
 import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';

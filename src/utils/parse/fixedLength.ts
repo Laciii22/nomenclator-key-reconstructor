@@ -1,6 +1,6 @@
 import type { ZTToken } from '../../types/domain';
 
-export const DECEPTION_MARKER = (size: number) => '9'.repeat(Math.max(1, size));
+
 
 export function logicalGroups(tokens: ZTToken[], groupSize: number): { text: string; start: number }[] {
   const size = Math.max(1, groupSize);

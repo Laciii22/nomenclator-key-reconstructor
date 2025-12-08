@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import type { KeyTableProps } from '../types';
 import { buildShiftOnlyColumns as buildColumns } from '../../utils/shiftMapping';
 import { computePairsFromColumns, aggregatePairsByOT } from '../../utils/columns';
+import { getGroupSize } from '../../utils/parseStrategies';
 
 
 
@@ -18,10 +19,11 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
-    return buildColumns(otRows, ztTokens, lockedKeys, selections, ztParseMode === 'fixedLength' ? groupSize : 1);
+    const gs = getGroupSize(ztParseMode, groupSize);
+    return buildColumns(otRows, ztTokens, lockedKeys, selections, gs);
   }, [columns, otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
 
-  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, ztParseMode), [colsForMode, ztTokens, ztParseMode]);
+  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, getGroupSize(ztParseMode, groupSize)), [colsForMode, ztTokens, ztParseMode, groupSize]);
 
   // Aggregate by OT character: collect ZT groups
   const aggregated = useMemo(() => aggregatePairsByOT(pairs, keysPerOTMode), [pairs, keysPerOTMode]);

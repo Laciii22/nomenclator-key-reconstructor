@@ -7,9 +7,6 @@ const Navbar: React.FC = () => {
                 <h1 className="text-white text-lg font-bold">
                     HCPortal Semi-Automatic Nomenclator Key Reconstruction module
                 </h1>
-                <div className="flex gap-4">
-                    <a href="/" className="text-white hover:underline">Domov</a>
-                </div>
             </div>
         </nav>
     );
