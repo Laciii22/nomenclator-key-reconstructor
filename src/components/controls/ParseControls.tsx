@@ -39,6 +39,20 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           <option value="separator">Separated by character</option>
           <option value="fixedLength">Fixed length</option>
         </select>
+        {/* inline help */}
+        <div className="ml-2">
+          <details className="text-xs">
+            <summary className="cursor-pointer underline">Help</summary>
+            <div className="mt-1 p-2 bg-gray-50 border border-gray-200 rounded text-xs max-w-sm">
+              <strong>Separator mode</strong>: split ZT using the chosen separator character.
+              <br />
+              <strong>Fixed-length mode</strong>: ZT treated as raw characters grouped into fixed-size tokens.
+              <br />
+              <br />
+              <strong>Deception</strong>: when ZT has extra tokens, mark them as deception to exclude from analysis.
+            </div>
+          </details>
+        </div>
         {ztParseMode === 'separator' && (
           <>
             <label htmlFor="separator" className="whitespace-nowrap">Character:</label>

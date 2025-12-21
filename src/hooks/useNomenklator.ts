@@ -6,6 +6,10 @@ import { computeRowAlloc } from '../utils/allocation';
 import { getExpectedZTIndicesForOT } from '../utils/grouping';
 import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 import { uniqueGroupTexts, toggleBracketByGroupText } from '../utils/parse/fixedLength';
+import { parseSeparatorRaw } from '../utils/parse/separator';
+import { parseFixedRaw } from '../utils/parse/fixed';
+import buildLogicalTokens from '../utils/parse/logicalTokens';
+import { resolveMergeFromEvent } from '../utils/dnd';
 import type { DragEndEvent } from '@dnd-kit/core';
 
 export function useNomenklator() {
@@ -14,8 +18,13 @@ export function useNomenklator() {
 
   // Inputs & modes
   const [otRaw, setOtRaw] = useState('');
-  const [ztRaw, setZtRaw] = useState('');
   const [ztParseMode, setZtParseMode] = useState<'separator' | 'fixedLength'>('separator');
+  // Separate raw inputs per parse mode so edits in one mode don't overwrite the other
+  const [ztRawSeparator, setZtRawSeparator] = useState('');
+  const [ztRawFixed, setZtRawFixed] = useState('');
+  const ztRaw = ztParseMode === 'fixedLength' ? ztRawFixed : ztRawSeparator;
+  const setZtRawActive = (v: string) => { if (ztParseMode === 'fixedLength') setZtRawFixed(v); else setZtRawSeparator(v); };
+  const setZtRawForMode = (mode: 'separator' | 'fixedLength', v: string) => { if (mode === 'fixedLength') setZtRawFixed(v); else setZtRawSeparator(v); };
   const [separator, setSeparator] = useState<string>(':');
   const [fixedLength, setFixedLength] = useState<number>(1);
   const [keysPerOTMode, setKeysPerOTMode] = useState<KeysPerOTMode>('single');
@@ -37,6 +46,13 @@ export function useNomenklator() {
   // Brackets
   const [bracketedIndices, setBracketedIndices] = useState<number[]>([]);
 
+  // Highlighting: single OT character to visually emphasize across the grid
+  const [highlightedOTChar, setHighlightedOTChar] = useState<string | null>(null);
+
+  function toggleHighlightForOT(ch: string) {
+    setHighlightedOTChar(prev => prev === ch ? null : ch);
+  }
+
   // Derived sets
   const reservedTokens = useMemo(() => {
     const set = new Set<string>();
@@ -56,40 +72,19 @@ export function useNomenklator() {
   // Raw ZT tokens are always single characters in fixedLength mode (for easier editing)
   // In separator mode they are split by separator.
   const ztTokens = useMemo<ZTToken[]>(() => {
-    const s = ztRaw.trim();
-    let parts: string[] = [];
-    if (!s) {
-      setKlamacStatus('none');
-      setStatusMessage(null);
-      return [];
-    }
+    // delegate parsing & status determination to mode-specific helpers
     if (ztParseMode === 'separator') {
-      parts = s.split(separator).filter(Boolean);
-      // Status directly compares token count to OT chars
-      if (parts.length === 0 || otChars.length === 0) { setKlamacStatus('none'); setStatusMessage(null); }
-      else if (parts.length > otChars.length) { setKlamacStatus('needsKlamac'); setStatusMessage(`Pozor: OT (${otChars.length}) < ZT tokenov (${parts.length}). Vyber klamáč.`); }
-      else if (parts.length < otChars.length) { setKlamacStatus('invalid'); setStatusMessage(`OT (${otChars.length}) > ZT tokenov (${parts.length}). Text môže byť poškodený.`); }
-      else { setKlamacStatus('ok'); setStatusMessage(null); }
-    } else {
-      // fixedLength: break into single characters, but logical grouping uses fixedLength later
-      parts = Array.from(s);
-      const groupSize = fixedLength > 0 ? fixedLength : 1;
-      const groupsCount = Math.floor(parts.length / groupSize);
-      const leftover = parts.length % groupSize;
-      if (groupsCount === 0 || otChars.length === 0) { setKlamacStatus('none'); setStatusMessage(null); }
-      else if (leftover !== 0) {
-        setKlamacStatus('invalid');
-        setStatusMessage(`Nedokončená skupina: chýba ${groupSize - leftover} znak(y) pre poslednú skupinu.`);
-      } else if (groupsCount > otChars.length) {
-        setKlamacStatus('needsKlamac');
-        setStatusMessage(`Pozor: OT (${otChars.length}) < skupín ZT (${groupsCount}). Vyber klamáč.`);
-      } else if (groupsCount < otChars.length) {
-        setKlamacStatus('invalid');
-        setStatusMessage(`OT (${otChars.length}) > skupín ZT (${groupsCount}). Text môže byť poškodený.`);
-      } else { setKlamacStatus('ok'); setStatusMessage(null); }
+      const res = parseSeparatorRaw(ztRaw, separator, otChars.length);
+      setKlamacStatus(res.klamacStatus);
+      setStatusMessage(res.statusMessage);
+      return res.tokens;
     }
-    return parts.map((t, i) => ({ id: `zt_${i}`, text: t }));
+    const res = parseFixedRaw(ztRaw, fixedLength || 1, otChars.length);
+    setKlamacStatus(res.klamacStatus);
+    setStatusMessage(res.statusMessage);
+    return res.tokens;
   }, [ztRaw, ztParseMode, separator, fixedLength, otChars.length]);
+  
 
   const effectiveZtTokens = useMemo(() => {
     if (!bracketedIndices.length) return ztTokens;
@@ -133,7 +128,9 @@ export function useNomenklator() {
   React.useEffect(() => {
     if (hydrated.current) return;
     setOtRaw(settings.otRaw ?? '');
-    setZtRaw(settings.ztRaw ?? '');
+    // initialize both mode-specific raws from saved value to avoid surprising empty fields
+    setZtRawSeparator(settings.ztRaw ?? '');
+    setZtRawFixed(settings.ztRaw ?? '');
     setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
     setLockedKeys({});
     setBracketedIndices([]);
@@ -153,7 +150,7 @@ export function useNomenklator() {
       if (!prev.length) return prev;
       const max = ztTokens.length;
       const filtered = prev.filter(i => i >= 0 && i < max);
-      if (filtered.length !== prev.length) setBracketWarning('Niektoré klamače po zmene parsovania neexistujú – odstránené.');
+      if (filtered.length !== prev.length) setBracketWarning('Some deception brackets no longer exist after parse change — removed.');
       return filtered;
     });
   }, [ztTokens.length]);
@@ -169,27 +166,18 @@ export function useNomenklator() {
     const leftover = effChars % groupSize;
     if (leftover !== 0) {
       setKlamacStatus('invalid');
-      setStatusMessage(`Klamač zle vybraný: nedelené skupiny (chýba ${groupSize - leftover}).`);
+      setStatusMessage(`Deception incorrectly selected: incomplete groups (missing ${groupSize - leftover} characters).`);
       return;
     }
-    if (effGroups < OT) { setKlamacStatus('invalid'); setStatusMessage(`Vybraný zlý klamáč: OT (${OT}) > ZT (${effGroups}).`); }
-    else if (effGroups > OT) { setKlamacStatus('needsKlamac'); setStatusMessage(`Prebytočné skupiny: ${effGroups - OT}. Vyber ďalší klamáč.`); }
+    if (effGroups < OT) { setKlamacStatus('invalid'); setStatusMessage(`Wrong deception selected: OT (${OT}) > ZT (${effGroups}).`); }
+    else if (effGroups > OT) { setKlamacStatus('needsKlamac'); setStatusMessage(`Excess groups: ${effGroups - OT}. Choose another deception token.`); }
     else { setKlamacStatus('ok'); setStatusMessage(null); }
   }, [analysisDone, bracketedIndices, effectiveZtTokens.length, otChars.length, ztTokens.length, ztParseMode, fixedLength]);
 
   function runAnalysis() {
     // Build logical tokens (group substrings) for analysis when in fixedLength mode
     const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    let logicalTokens: ZTToken[];
-    if (groupSize === 1) {
-      logicalTokens = ztTokens;
-    } else {
-      logicalTokens = [];
-      for (let i = 0; i + groupSize - 1 < ztTokens.length; i += groupSize) {
-        const slice = ztTokens.slice(i, i + groupSize).map(t => t.text).join('');
-        logicalTokens.push({ id: `lzt_${i}`, text: slice });
-      }
-    }
+    const logicalTokens = buildLogicalTokens(ztTokens, groupSize);
     const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens); // proportional allocation based on logical groups
     const baseCounts = alloc.groups.map(r => r.map(v => v));
     const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
@@ -203,16 +191,7 @@ export function useNomenklator() {
   // Preserve existing selections where the token still appears in refreshed candidates
   function refreshAnalysisPreserve() {
     const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    let logicalTokens: ZTToken[];
-    if (groupSize === 1) {
-      logicalTokens = ztTokens;
-    } else {
-      logicalTokens = [];
-      for (let i = 0; i + groupSize - 1 < ztTokens.length; i += groupSize) {
-        const slice = ztTokens.slice(i, i + groupSize).map(t => t.text).join('');
-        logicalTokens.push({ id: `lzt_${i}`, text: slice });
-      }
-    }
+    const logicalTokens = buildLogicalTokens(ztTokens, groupSize);
     const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
     const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
@@ -274,12 +253,12 @@ export function useNomenklator() {
         const effGroups = Math.floor(effectiveZtTokens.length / groupSize);
         const leftover = effectiveZtTokens.length % groupSize;
         if (leftover !== 0) {
-          err = `Nedokončená skupina: chýba ${groupSize - leftover} znak(y).`;
+          err = `Incomplete group: missing ${groupSize - leftover} character(s).`;
         } else if (effGroups > totalCells) {
-          err = `Pozor klamáč: skupín ZT o ${effGroups - totalCells} viac.`;
+          err = `Warning: too many ZT groups by ${effGroups - totalCells}.`;
         }
       } else {
-        if (effectiveZtTokens.length > totalCells) err = `Pozor klamáč: ZT tokenov o ${effectiveZtTokens.length - totalCells} viac.`;
+        if (effectiveZtTokens.length > totalCells) err = `Warning: ZT tokens exceed OT by ${effectiveZtTokens.length - totalCells}.`;
       }
     }
     setSelectionError(err);
@@ -316,7 +295,8 @@ export function useNomenklator() {
     });
     // Rebuild raw string
     const newRaw = nextParseMode === 'separator' ? tokensArr.join(separator) : tokensArr.join('');
-    setZtRaw(newRaw);
+    // write raw into the appropriate mode-specific storage to avoid cross-mode propagation
+    setZtRawForMode(nextParseMode, newRaw);
     if (analysisDone) setPendingAutoRefresh(true);
   }
 
@@ -371,51 +351,9 @@ export function useNomenklator() {
     if (!active || !over) return;
     const src = active.data?.current as any;
     const dst = over.data?.current as any;
-    // Debug: log DnD resolution for troubleshooting
-    try {
-      console.log('[DnD] active.id=', active.id, 'over.id=', over.id, 'src.data=', src, 'dst.data=', dst);
-    } catch {}
-    // Reject drops onto klamáč cells
-    if (dst && dst.isKlamac) return;
-    // Resolve source/target grid positions
-    let srcRow: number | undefined = src?.sourceRow;
-    let srcCol: number | undefined = src?.sourceCol;
-    let dstRow: number | undefined = dst?.row;
-    let dstCol: number | undefined = dst?.col;
-    // Fallback: parse droppable id if data missing
-    if ((dstRow == null || dstCol == null) && typeof over.id === 'string') {
-      const m = /^cell-(\d+)-(\d+)$/.exec(over.id as string);
-      if (m) {
-        dstRow = Number(m[1]);
-        dstCol = Number(m[2]);
-      }
-    }
-    if (srcRow == null || srcCol == null || dstRow == null || dstCol == null) return;
-    // Enforce grid-adjacency: only allow merge if target is exactly the next column in the same row
-    if (!(dstRow === srcRow && dstCol === srcCol + 1)) return;
-    // Both source and target must be non-empty OT cells
-    const srcCell = columns[srcRow]?.[srcCol];
-    const dstCell = columns[dstRow]?.[dstCol];
-    if (!srcCell || !dstCell) return;
-    if (!srcCell.ot || !dstCell.ot) return;
-    // Compute current flat indices by scanning otRows, counting only non-empty cells
-    let fromFlat = -1;
-    let targetFlat = -1;
-    let counter = 0;
-    for (let rr = 0; rr < columns.length; rr++) {
-      const rowArr = columns[rr];
-      for (let cc = 0; cc < rowArr.length; cc++) {
-        const cell = rowArr[cc];
-        if (cell.ot) {
-          if (rr === srcRow && cc === srcCol) fromFlat = counter;
-          if (rr === dstRow && cc === dstCol) targetFlat = counter;
-          counter++;
-        }
-      }
-    }
-    if (fromFlat < 0 || targetFlat < 0) return;
-    // Perform merge strictly to immediate right in the grid
-    joinOTAt(fromFlat, targetFlat);
+    const resolved = resolveMergeFromEvent(evt, columns);
+    if (!resolved) return;
+    joinOTAt(resolved.fromFlat, resolved.targetFlat);
   }
 
   // Re-run analysis when OT grouping changes and we already have results
@@ -438,8 +376,8 @@ export function useNomenklator() {
     // Insert at afterIndex (bounded to array length)
     const safeIndex = Math.min(afterIndex, rawArr.length);
     rawArr.splice(safeIndex, 0, ...chars);
-    // Update ztRaw (fixedLength mode raw is just concatenation)
-    setZtRaw(rawArr.join(''));
+    // Update fixed-length raw only (do not touch separator raw)
+    setZtRawForMode('fixedLength', rawArr.join(''));
     if (analysisDone) setPendingAutoRefresh(true);
   }
 
@@ -454,7 +392,7 @@ export function useNomenklator() {
   return {
     // inputs
     otRaw, setOtRaw,
-    ztRaw, setZtRaw,
+    ztRaw, setZtRaw: setZtRawActive,
     ztParseMode, setZtParseMode,
     separator, setSeparator,
     fixedLength, setFixedLength,
@@ -484,5 +422,8 @@ export function useNomenklator() {
     insertRawCharsAfterPosition,
     joinOTAt,
     splitOTAt,
+    // highlighting
+    highlightedOTChar,
+    toggleHighlightForOT,
   } as const;
 }

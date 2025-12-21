@@ -30,6 +30,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 									// into a full fixed-length group. We disallow expansion when any of
 									// the would-be indices are already assigned to other cells.
 									<OTCell
+										highlightedOTChar={props.highlightedOTChar}
 										key={cIdx}
 										ot={col.ot ?? null}
 										tokens={ztTokens}

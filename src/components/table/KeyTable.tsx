@@ -4,6 +4,8 @@ import { buildShiftOnlyColumns as buildColumns } from '../../utils/shiftMapping'
 import { computePairsFromColumns, aggregatePairsByOT } from '../../utils/columns';
 import { getGroupSize } from '../../utils/parseStrategies';
 import padlock from '../../assets/icons/padlock.png';
+import highlighter from '../../assets/icons/highlighter.png';
+import { colors } from '../../utils/colors';
 
 
 
@@ -16,7 +18,7 @@ import padlock from '../../assets/icons/padlock.png';
  * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>> }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns }) => {
+const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>> }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
@@ -96,22 +98,38 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                     <>
                       {isLocked ? (
                         <button
-                          className="text-xs px-2 py-1 rounded bg-green-100 hover:bg-green-200 text-green-800 border border-green-300"
+                          className={`text-xs px-2 py-1 rounded ${colors.lockedBtn}`}
                           onClick={() => onUnlockOT && onUnlockOT(row.ot)}
                           title={`Unlock ${row.ot}`}
+                          aria-label={`Unlock ${row.ot}`}
+                          aria-pressed={true}
                         >
-                          <img src={padlock} alt="unlock" className="w-4 h-4" />
+                          <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
                         </button>
                       ) : (
                         <button
-                          className="text-xs px-2 py-1 rounded bg-yellow-100 hover:bg-yellow-200 text-yellow-800 border border-yellow-300"
+                          className={`text-xs px-2 py-1 rounded ${colors.unlockedBtn}`}
                           onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
                           disabled={row.ztList.length === 0}
                           title={row.ztList.length ? `Lock ${row.ot} = ${row.ztList[0]}` : 'Nothing to lock'}
+                          aria-label={row.ztList.length ? `Lock ${row.ot} to ${row.ztList[0]}` : `Nothing to lock for ${row.ot}`}
+                          aria-pressed={false}
                         >
-                          <img src={padlock} alt="lock" className="w-4 h-4" />
+                          <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
                         </button>
                       )}
+                        {/* Highlighter icon shown for error rows */}
+                        { (isViolationSingle || lockedMismatch || row.ztList.length === 0) && onToggleHighlightOT ? (
+                          <button
+                            className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedOTChar === row.ot ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
+                            onClick={() => onToggleHighlightOT(row.ot)}
+                            title={`Highlight OT ${row.ot}`}
+                            aria-label={`Highlight OT ${row.ot}`}
+                            aria-pressed={highlightedOTChar === row.ot}
+                          >
+                            <img src={highlighter} alt="" aria-hidden="true" className="w-4 h-4" />
+                          </button>
+                        ) : null}
                     </>
                   ) : null}
                 </td>

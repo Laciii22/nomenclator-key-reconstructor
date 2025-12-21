@@ -14,6 +14,8 @@ export type KeyTableProps = {
   selections?: Record<string, string | null>;
   ztParseMode?: 'separator' | 'fixedLength';
   groupSize?: number; // only relevant for fixedLength mode
+  highlightedOTChar?: string | null;
+  onToggleHighlightOT?: (ch: string) => void;
 };
 
 export type MappingTableProps = {
@@ -26,6 +28,7 @@ export type MappingTableProps = {
   hasDeceptionWarning?: boolean;
   onEditToken?: (tokenIndex: number, newText: string) => void;
   selections?: Record<string, string | null>;
+  highlightedOTChar?: string | null;
 };
 
 export type OTCellProps = {
@@ -48,6 +51,7 @@ export type OTCellProps = {
   // start index to a full fixed-length group by taking subsequent global
   // indices (only used in fixed-length mode).
   allowExpandFromStart?: boolean;
+  highlightedOTChar?: string | null;
 };
 
 export type ZTTokenProps = {

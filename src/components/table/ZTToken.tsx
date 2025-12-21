@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { ZTTokenProps } from '../types';
+import ZTTokenEditor from './ZTTokenEditor';
+import { colors } from '../../utils/colors';
 
 
 
@@ -20,51 +22,28 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
   });
 
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(token.text);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.focus();
-  }, [editing]);
-
-  useEffect(() => { setValue(token.text); }, [token.text]);
-
-  function commit() {
-    const next = value.trim();
-    if (next && next !== token.text && onEdit) onEdit(tokenIndex, next);
-    setEditing(false);
-  }
-
-  function cancel() {
-    setValue(token.text);
-    setEditing(false);
-  }
 
   return (
     <span ref={setNodeRef} style={{ touchAction: 'none' }}>
       {editing ? (
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); commit(); }
-            else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-          }}
-          className="text-xs px-0.5 py-0 rounded border border-yellow-300 bg-white text-yellow-700 font-mono w-12"
+        <ZTTokenEditor
+          tokenText={token.text}
+          isLocked={isLocked}
+          onCommit={(next) => { if (onEdit) onEdit(tokenIndex, next); setEditing(false); }}
+          onCancel={() => setEditing(false)}
         />
       ) : (
         <span
           {...attributes}
           {...listeners}
-          className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-50 text-yellow-700 border-yellow-200'} ${isDragging ? 'opacity-50' : ''}`}
+          className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? colors.tokenLocked : colors.tokenUnlocked} ${isDragging ? 'opacity-50' : ''}`}
           title={isLocked ? 'Locked token – cannot edit' : 'Click to edit, drag to move'}
           onClick={(e) => {
             e.stopPropagation();
             if (isLocked) return;
             setEditing(true);
           }}
+          aria-pressed={isLocked}
         >
           {token.text}
         </span>

@@ -32,7 +32,7 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
         return (
           <div key={ch} className="flex items-center gap-3">
             <div className="w-10 font-mono text-center">
-              <span className={`inline-block px-2 py-0.5 rounded border ${lockedVal ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'}`} title={lockedVal ? `Zamknuté: ${lockedVal}` : undefined}>{ch}</span>
+              <span className={`inline-block px-2 py-0.5 rounded border ${lockedVal ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
             </div>
             <select
               className={`border border-gray-300 rounded p-1 text-sm flex-1 ${disabledSelect ? 'bg-green-50 cursor-not-allowed' : ''}`}
@@ -43,7 +43,7 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
                 setSelections((prev: any) => ({ ...prev, [ch]: val === '' ? null : val }));
               }}
             >
-              <option value="">Žiadne (nezamknúť)</option>
+              <option value="">None (do not lock)</option>
               {sortedByScore.filter((c:any) => c.length === 1).map((c:any, idx:number) => {
                 const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize: 1, reservedTokens, selectionVal, lockedVal, sharedColumns });
                 return (

@@ -50,6 +50,9 @@ const NomenklatorPage: React.FC = () => {
     editZtToken,
     insertRawCharsAfterPosition,
     splitOTAt,
+    // highlighting
+    highlightedOTChar,
+    toggleHighlightForOT,
   } = useNomenklator();
   
   const sensors = useSensors(
@@ -199,6 +202,8 @@ const NomenklatorPage: React.FC = () => {
               ztParseMode={ztParseMode}
               groupSize={ztParseMode==='fixedLength'? fixedLength : 1}
               columns={sharedColumns}
+              highlightedOTChar={highlightedOTChar}
+              onToggleHighlightOT={toggleHighlightForOT}
               onLockAll={(locks) => {
                 setLockedKeys(prev => ({ ...prev, ...locks }));
                 setSelections(prev => {
@@ -231,6 +236,7 @@ const NomenklatorPage: React.FC = () => {
                 onSplitGroup={(fi: number) => splitOTAt(fi)}
                 canInsertRaw={ztParseMode === 'fixedLength'}
                 canSplitGroup={true}
+                highlightedOTChar={highlightedOTChar}
               />
             </div>
       </div>
