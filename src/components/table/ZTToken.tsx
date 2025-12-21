@@ -59,7 +59,7 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
           {...attributes}
           {...listeners}
           className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? 'bg-gray-200 text-gray-600 border-gray-300' : 'bg-blue-50 text-blue-700 border-blue-200'} ${isDragging ? 'opacity-50' : ''}`}
-          title={isLocked ? 'Zamknutý token – nemožno editovať' : 'Klikni pre úpravu, potiahni pre presun'}
+          title={isLocked ? 'Locked token – cannot edit' : 'Click to edit, drag to move'}
           onClick={(e) => {
             e.stopPropagation();
             if (isLocked) return;

@@ -23,7 +23,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 				<div key={rIdx} className="mb-4">
 					<div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(cols.length, 1)}, minmax(0, 1fr))` }}>
 						{cols.length === 0 ? (
-							<div className="text-gray-400 text-sm">(prázdny riadok)</div>
+							<div className="text-gray-400 text-sm">(empty row)</div>
 						) : (
 							cols.map((col, cIdx) => (
 									// Determine whether it's safe to expand a single assigned index
@@ -68,7 +68,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 										})()}
 										onInsertAfterGroup={(fi) => {
 											if (!canInsertRaw || fi < 0) return;
-											const input = window.prompt('Pridať raw znaky (bez medzier):', '');
+											const input = window.prompt('Add raw chars (no spaces):', '');
 											if (input && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input);
 										}}
 										onSplitGroup={canSplitGroup ? onSplitGroup : undefined}

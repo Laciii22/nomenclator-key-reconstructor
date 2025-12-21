@@ -27,13 +27,13 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
   return (
     <div className="border rounded p-3 border-purple-200 bg-purple-50/40">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold">Klamáč (presun tokenov do zátvoriek)</div>
+        <div className="text-sm font-semibold">Deception token (move tokens into brackets)</div>
         <div className="flex gap-2">
           <button
             className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200"
             onClick={onClear}
-            title="Vyprázdniť zátvorky"
-          >Vyprázdniť</button>
+            title="Clear all deception brackets"
+          >Clear</button>
         </div>
       </div>
       {bracketWarning && (
@@ -47,7 +47,7 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
               allBracketed ? 'bg-purple-200 border-purple-300 text-purple-900' : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
             }`}
             onClick={() => onToggleText(text)}
-            title={allBracketed ? 'Vrátiť všetky rovnaké tokeny zo zátvoriek' : 'Presunúť všetky rovnaké tokeny do zátvoriek'}
+            title={allBracketed ? 'Return all identical tokens from brackets' : 'Move all identical tokens into brackets'}
           >
             {text}
           </button>

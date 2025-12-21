@@ -46,7 +46,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
                 setSelections((prev: any) => ({ ...prev, [ch]: val === '' ? null : val }));
               }}
             >
-              <option value="">Žiadne (nezamknúť)</option>
+              <option value="">None</option>
               {sortedByScore.filter((c:any) => c.length === 1).map((c:any, idx:number) => {
                 const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns });
                 return (

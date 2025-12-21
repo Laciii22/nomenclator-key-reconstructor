@@ -60,8 +60,8 @@ export function buildCandidateOptions(params: {
   const disabled = takenByOther || orderInvalid;
   const scoreStr = ` (score: ${c.score.toFixed(2)})`;
   let title: string | undefined;
-  if (takenByOther) title = 'Tento token je už použitý pre iný znak';
-  else if (orderInvalid) title = groupSize === 1 ? 'Token musí začínať na indexe 0 pre prvý OT znak' : `Token musí začínať na indexe ${cellFlatIndex * groupSize} pre pozíciu ${cellFlatIndex}`;
+  if (takenByOther) title = 'This token is already used for another character';
+  else if (orderInvalid) title = groupSize === 1 ? 'Token must start at index 0 for the first OT character' : `Token must start at index ${cellFlatIndex * groupSize} for position ${cellFlatIndex}`;
 
   return {
     token: c.token,

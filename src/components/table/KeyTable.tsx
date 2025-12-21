@@ -33,7 +33,7 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
     return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
   }, [aggregated]);
 
-  if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(žiadne páry)</div>;
+  if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(no pairs)</div>;
 
   // Determine if there are any violations (errors) and compute bulk locks
   let hasError = false;
@@ -54,15 +54,15 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100">
-        <div className="text-sm font-medium text-gray-700">Kľúčové páry</div>
+        <div className="text-sm font-medium text-gray-700">Key pairs</div>
         {onLockAll && (
           <button
             className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
             onClick={() => onLockAll && onLockAll(bulkLocks)}
             disabled={hasError}
-            title={hasError ? 'Najprv oprav chyby (viac kľúčov / nesúlad / prázdny ZT)' : 'Zamknúť všetky OT → ZT podľa tabuľky'}
+            title={hasError ? 'Fix errors first (multiple keys / lock mismatch / empty ZT)' : 'Lock all OT → ZT according to table'}
           >
-            Zamknúť všetko
+            Lock all
           </button>
         )}
       </div>
@@ -87,8 +87,8 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.ot}</td>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">
                   <span className="whitespace-nowrap">{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
-                  {isViolationSingle && <span className="ml-2 text-red-600">(viac kľúčov)</span>}
-                  {lockedMismatch && <span className="ml-2 text-red-600">(nesúlad so zámkom)</span>}
+                  {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
+                  {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
                 </td>
                 <td className="px-3 py-2">
                   {onLockOT || onUnlockOT ? (
@@ -97,18 +97,18 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                         <button
                           className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                           onClick={() => onUnlockOT && onUnlockOT(row.ot)}
-                          title={`Odomknúť ${row.ot}`}
+                          title={`Unlock ${row.ot}`}
                         >
-                          Odomknúť
+                          Unlock
                         </button>
                       ) : (
                         <button
                           className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200"
                           onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
                           disabled={row.ztList.length === 0}
-                          title={row.ztList.length ? `Zamknúť ${row.ot} = ${row.ztList[0]}` : 'Nie je čo zamknúť'}
+                          title={row.ztList.length ? `Lock ${row.ot} = ${row.ztList[0]}` : 'Nothing to lock'}
                         >
-                          Zamknúť
+                          Lock
                         </button>
                       )}
                     </>

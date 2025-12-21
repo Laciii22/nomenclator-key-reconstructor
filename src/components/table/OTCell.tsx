@@ -108,7 +108,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
         <button
           className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
           onClick={() => onInsertAfterGroup && onInsertAfterGroup(flatIndex!)}
-          title="Pridať raw znaky za túto skupinu"
+          title="Add raw ZT token to this group"
         >+</button>
       )}
       {ot && ot.ch.length > 1 && typeof flatIndex === 'number' && flatIndex >= 0 && (
@@ -118,7 +118,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
             if (lockedValue) return; // avoid splitting when locked
             if (onSplitGroup) onSplitGroup(flatIndex!);
           }}
-          title={lockedValue ? 'Najprv odomkni, potom rozdeľ skupinu' : 'Rozdeliť skupinu na jednotlivé znaky'}
+          title={lockedValue ? 'First unlock, then split the group' : 'Split group into individual characters'}
         >-</button>
       )}
     </div>

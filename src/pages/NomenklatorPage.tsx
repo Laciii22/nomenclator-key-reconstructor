@@ -65,23 +65,24 @@ const NomenklatorPage: React.FC = () => {
     <AppLayout>
       <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="container mx-auto px-4 py-6">
-        <h1 className="text-xl font-semibold mb-4">Nomenklátor – automatické návrhy</h1>
+        <h1 className="text-xl font-semibold mb-4">Nomenclator</h1>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           <div className="space-y-4 lg:col-span-2">
-            <label className="block text-sm font-medium">OT (napr. AHOJ):</label>
+            <label className="block text-sm font-medium">OT (e.g. HELLO):</label>
             <textarea
               rows={3}
               className="w-full font-mono border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Sem napíš OT text"
+              placeholder="Here write OT text (characters only)"
+
               value={otRaw}
               onChange={(e) => setOtRaw(e.target.value)}
             />
 
-            <label className="block text-sm font-medium">ZT (napr. 12 34 12 56):</label>
+            <label className="block text-sm font-medium">ZT (e.g. 11 34 12 12 56):</label>
             <textarea
               rows={3}
               className="w-full font-mono border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Sem napíš ZT text (medzery = tokeny; bez medzier = po znakoch)"
+              placeholder="Here write ZT text (spaces = tokens; no spaces = by characters)"
               value={ztRaw}
               onChange={(e) => setZtRaw(e.target.value)}
             />
@@ -125,7 +126,7 @@ const NomenklatorPage: React.FC = () => {
             {Object.keys(candidatesByChar).length > 0 && (
               <div className="border border-gray-200 rounded p-3 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Návrhy</h3>
+                  <h3 className="font-semibold">Suggestions</h3>
                   <div className="flex gap-2">
                       {/* Removed showAllCandidates checkbox and logic */}
                       <button
@@ -135,19 +136,19 @@ const NomenklatorPage: React.FC = () => {
                           setLockedKeys({});
                           // Reset selections and locks only; columns derive automatically now.
                         }}
-                        title="Vymazať všetky zámky a výbery"
+                        title="Clear all locks and selections"
                       >
-                        Vymazať
+                        Clear all
                       </button>
                       
                       <button
                         className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                         onClick={previewSelection}
-                      >Náhľad výberu</button>
+                      >Preview selection</button>
                     <button
                       className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={applySelection}
-                    >Aplikovať výber</button>
+                    >Apply selection</button>
                   </div>
                 </div>
                 {selectionError && (
@@ -186,7 +187,7 @@ const NomenklatorPage: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-base font-semibold">Tabuľka kľúčov</h3>
+            <h3 className="text-base font-semibold">Key Table</h3>
             <KeyTable
               otRows={otRows}
               ztTokens={effectiveZtTokens}
@@ -213,7 +214,7 @@ const NomenklatorPage: React.FC = () => {
 
                     <div>
               <div className="text-sm text-gray-600 mb-2">
-                OT znakov: {otChars.length} • ZT tokenov: {ztParseMode === 'fixedLength' ? Math.floor(ztTokens.length / Math.max(1, fixedLength)) : ztTokens.length}
+                OT characters: {otChars.length} • ZT tokens: {ztParseMode === 'fixedLength' ? Math.floor(ztTokens.length / Math.max(1, fixedLength)) : ztTokens.length}
               </div>
               
               <MappingTable
