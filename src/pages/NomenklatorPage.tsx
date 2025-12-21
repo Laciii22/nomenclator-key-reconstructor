@@ -93,7 +93,7 @@ const NomenklatorPage: React.FC = () => {
                   klamacStatus === 'invalid'
                     ? 'text-red-700 bg-red-50 border-red-300'
                     : klamacStatus === 'needsKlamac'
-                      ? 'text-orange-700 bg-orange-50 border-orange-300'
+                      ? 'text-red-700 bg-red-50 border-red-300'
                       : 'text-green-700 bg-green-50 border-green-300'
                 }`}
               >

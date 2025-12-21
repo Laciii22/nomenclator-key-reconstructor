@@ -52,13 +52,13 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
             if (e.key === 'Enter') { e.preventDefault(); commit(); }
             else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
           }}
-          className="text-xs px-0.5 py-0 rounded border border-blue-300 bg-white text-blue-700 font-mono w-12"
+          className="text-xs px-0.5 py-0 rounded border border-yellow-300 bg-white text-yellow-700 font-mono w-12"
         />
       ) : (
         <span
           {...attributes}
           {...listeners}
-          className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? 'bg-gray-200 text-gray-600 border-gray-300' : 'bg-blue-50 text-blue-700 border-blue-200'} ${isDragging ? 'opacity-50' : ''}`}
+          className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-50 text-yellow-700 border-yellow-200'} ${isDragging ? 'opacity-50' : ''}`}
           title={isLocked ? 'Locked token – cannot edit' : 'Click to edit, drag to move'}
           onClick={(e) => {
             e.stopPropagation();

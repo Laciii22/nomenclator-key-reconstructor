@@ -18,7 +18,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 	}, [rows]);
 
 	return (
-		<div className={`space-y-4 ${hasDeceptionWarning ? 'border border-orange-300 rounded p-2 bg-orange-50' : ''}`}>
+		<div className={`space-y-4 ${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
 			{rows.map((cols, rIdx) => (
 				<div key={rIdx} className="mb-4">
 					<div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(cols.length, 1)}, minmax(0, 1fr))` }}>

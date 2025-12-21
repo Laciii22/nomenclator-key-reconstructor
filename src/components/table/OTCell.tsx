@@ -3,6 +3,7 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import type { OTCellProps } from '../types';
 import ZTTokenComp from './ZTToken';
 import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
+import padlock from '../../assets/icons/padlock.png';
 
 
 /**
@@ -58,7 +59,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
   return (
     <div
       ref={setNodeRef}
-      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
+      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
     >
       <div className="text-center font-mono text-base mb-1">
         {ot ? (
@@ -66,24 +67,13 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
             ref={setDragRef}
             {...attributes}
             {...(!lockedValue ? listeners : {})}
-            className={` ${lockedValue ? 'bg-green-200 text-neutral-950' : ''} inline-block px-1 rounded bg-green-100 text-green-800 border border-green-300 font-mono text-md font-bold cursor-pointer select-none`}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              // Double-click toggles lock to avoid conflict with drag
-              if (lockedValue) {
-                if (onUnlockOT) onUnlockOT(ot.ch);
-                return;
-              }
-              if (!onLockOT) return;
-              const groupStr = joinTokenTexts(filtered.map(f => f.t));
-              if (groupStr) onLockOT(ot.ch, groupStr);
-            }}
-            title={lockedValue ? `OT: ${ot.ch} — double-click to unlock (${lockedValue})` : `OT: ${ot.ch} — double-click to lock to this cell's ZT group`}
+            className={`inline-block px-1 rounded font-mono text-md font-bold cursor-pointer select-none ${lockedValue ? 'bg-green-200 text-neutral-950 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'}`}
+            title={lockedValue ? `OT: ${ot.ch} — locked (${lockedValue})` : `OT: ${ot.ch}`}
           >
             {ot.ch}
           </span>
         ) : (
-          <span className="inline-block px-1 rounded bg-orange-100 text-orange-800 border border-orange-300 font-mono text-md" title="Pravdepodobný klamač">!</span>
+          <span className="inline-block px-1 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-md" title="Pravdepodobný klamač">!</span>
         )}
       </div>
       <div className="flex flex-wrap gap-2 justify-center">
@@ -111,10 +101,30 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
           title="Add raw ZT token to this group"
         >+</button>
       )}
+      {ot && (
+        <button
+          className="absolute bottom-1 left-1 px-1 py-0.5 text-xs rounded bg-transparent hover:bg-gray-100 leading-none"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!onLockOT) return;
+            if (lockedValue) {
+              if (onUnlockOT) onUnlockOT(ot.ch);
+              return;
+            }
+            const groupStr = joinTokenTexts(filtered.map(f => f.t));
+            if (groupStr) onLockOT(ot.ch, groupStr);
+          }}
+          title={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
+        >
+          <img src={padlock} alt="lock" className={`w-4 h-4 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} />
+        </button>
+      )}
+
       {ot && ot.ch.length > 1 && typeof flatIndex === 'number' && flatIndex >= 0 && (
         <button
-          className="absolute top-1 left-1 px-1 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 leading-none"
-          onClick={() => {
+          className="absolute top-1 left-2 px-1 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 leading-none"
+          onClick={(e) => {
+            e.stopPropagation();
             if (lockedValue) return; // avoid splitting when locked
             if (onSplitGroup) onSplitGroup(flatIndex!);
           }}

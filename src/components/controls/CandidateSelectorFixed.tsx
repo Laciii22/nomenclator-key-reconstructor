@@ -35,7 +35,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
         return (
           <div key={ch} className="flex items-center gap-3">
             <div className="w-10 font-mono text-center">
-              <span className="inline-block px-2 py-0.5 rounded bg-gray-100 border border-gray-200" title={lockedVal ? `Zamknuté: ${lockedVal}` : undefined}>{ch}</span>
+              <span className={`inline-block px-2 py-0.5 rounded border ${lockedVal ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'}`} title={lockedVal ? `Zamknuté: ${lockedVal}` : undefined}>{ch}</span>
             </div>
             <select
               className={`border border-gray-300 rounded p-1 text-sm flex-1 ${disabledSelect ? 'bg-green-50 cursor-not-allowed' : ''}`}

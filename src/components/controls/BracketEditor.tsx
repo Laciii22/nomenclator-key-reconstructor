@@ -37,7 +37,7 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
         </div>
       </div>
       {bracketWarning && (
-        <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded p-2 mb-2">{bracketWarning}</div>
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-2">{bracketWarning}</div>
       )}
       <div className="flex flex-wrap gap-2 items-center">
         {uniqueZTTokenTexts.map(({ text, allBracketed }) => (

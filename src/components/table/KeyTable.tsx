@@ -3,6 +3,7 @@ import type { KeyTableProps } from '../types';
 import { buildShiftOnlyColumns as buildColumns } from '../../utils/shiftMapping';
 import { computePairsFromColumns, aggregatePairsByOT } from '../../utils/columns';
 import { getGroupSize } from '../../utils/parseStrategies';
+import padlock from '../../assets/icons/padlock.png';
 
 
 
@@ -95,20 +96,20 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                     <>
                       {isLocked ? (
                         <button
-                          className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                          className="text-xs px-2 py-1 rounded bg-green-100 hover:bg-green-200 text-green-800 border border-green-300"
                           onClick={() => onUnlockOT && onUnlockOT(row.ot)}
                           title={`Unlock ${row.ot}`}
                         >
-                          Unlock
+                          <img src={padlock} alt="unlock" className="w-4 h-4" />
                         </button>
                       ) : (
                         <button
-                          className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200"
+                          className="text-xs px-2 py-1 rounded bg-yellow-100 hover:bg-yellow-200 text-yellow-800 border border-yellow-300"
                           onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
                           disabled={row.ztList.length === 0}
                           title={row.ztList.length ? `Lock ${row.ot} = ${row.ztList[0]}` : 'Nothing to lock'}
                         >
-                          Lock
+                          <img src={padlock} alt="lock" className="w-4 h-4" />
                         </button>
                       )}
                     </>
