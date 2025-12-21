@@ -44,6 +44,10 @@ export type OTCellProps = {
   flatIndex?: number; // positional index among OT cells (fixedLength mode)
   onInsertAfterGroup?: (flatIndex: number) => void; // trigger raw insertion prompt upstream
   onSplitGroup?: (flatIndex: number) => void; // split merged OT group back into singles
+  // allowExpandFromStart: when true, OTCell may expand a single assigned
+  // start index to a full fixed-length group by taking subsequent global
+  // indices (only used in fixed-length mode).
+  allowExpandFromStart?: boolean;
 };
 
 export type ZTTokenProps = {
@@ -55,6 +59,12 @@ export type ZTTokenProps = {
   isLocked?: boolean;
 };
 
-export type Pair = { ot: string; zt: string };
 
 export type Column = { ot: OTChar | null; zt: number[]; deception?: boolean };
+
+// New prop used by OTCell to decide whether it's safe to expand a single
+// assigned start index into a full fixed-length group by taking subsequent
+// global token indices. MappingTable computes safety and passes this flag.
+export type OTCellControlProps = {
+  allowExpandFromStart?: boolean;
+};

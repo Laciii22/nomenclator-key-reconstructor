@@ -26,6 +26,9 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 							<div className="text-gray-400 text-sm">(prázdny riadok)</div>
 						) : (
 							cols.map((col, cIdx) => (
+									// Determine whether it's safe to expand a single assigned index
+									// into a full fixed-length group. We disallow expansion when any of
+									// the would-be indices are already assigned to other cells.
 									<OTCell
 										key={cIdx}
 										ot={col.ot ?? null}
@@ -41,6 +44,28 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 										isFixedLength={groupSize > 1}
 										groupSize={groupSize}
 										flatIndex={flatIndices[rIdx][cIdx]}
+										// compute allowExpandFromStart for this cell
+										allowExpandFromStart={(() => {
+											if (!col.zt || col.zt.length === 0) return false;
+											if (col.zt.length >= groupSize) return false; // already full
+											if (groupSize <= 1) return false;
+											const start = col.zt[0];
+											// build a set of indices owned by other cells
+											const otherOwned = new Set<number>();
+											for (let rr = 0; rr < rows.length; rr++) {
+												for (let cc = 0; cc < rows[rr].length; cc++) {
+													if (rr === rIdx && cc === cIdx) continue;
+													for (const idx of rows[rr][cc].zt) otherOwned.add(idx);
+												}
+											}
+											for (let k = 1; k < groupSize; k++) {
+												const idx = start + k;
+												if (otherOwned.has(idx)) return false;
+												// also ensure index exists in ztTokens
+												if (idx >= ztTokens.length) return false;
+											}
+											return true;
+										})()}
 										onInsertAfterGroup={(fi) => {
 											if (!canInsertRaw || fi < 0) return;
 											const input = window.prompt('Pridať raw znaky (bez medzier):', '');

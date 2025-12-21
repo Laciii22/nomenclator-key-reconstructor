@@ -14,7 +14,7 @@ import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup }) => {
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup, allowExpandFromStart }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}`, data: { row, col, isKlamac: !ot, flatIndex } });
 
   // Map token indices to token objects and filter undefined
@@ -24,15 +24,20 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
     // Only expand to `groupSize` when this is a real OT cell (not a deception placeholder)
     const isRealOtCell = !!ot;
     if (isRealOtCell && isFixedLength && groupSize > 1) {
-      // If the column already contains a full group, respect those indices; otherwise expand from the first index
+      // If the column already contains a full group, respect those indices.
+      // Otherwise, only expand from the single start index when allowed
+      // (MappingTable computes `allowExpandFromStart` to avoid overlap).
       if (tokenIndices.length >= groupSize) {
         displayedIndices = tokenIndices.slice(0, groupSize);
-      } else {
+      } else if (tokenIndices.length === 1 && allowExpandFromStart) {
         const start = tokenIndices[0];
         for (let k = 0; k < groupSize; k++) {
           const idx = start + k;
           if (idx < tokens.length) displayedIndices.push(idx);
         }
+      } else {
+        // fallback: show actual assigned indices only
+        displayedIndices = tokenIndices.slice();
       }
     } else {
       // For deception cells or non-fixed mode, show only the actual indices assigned
