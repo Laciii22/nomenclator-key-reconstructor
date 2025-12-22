@@ -10,6 +10,7 @@ import { parseSeparatorRaw } from '../utils/parse/separator';
 import { parseFixedRaw } from '../utils/parse/fixed';
 import buildLogicalTokens from '../utils/parse/logicalTokens';
 import { resolveMergeFromEvent } from '../utils/dnd';
+import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import type { DragEndEvent } from '@dnd-kit/core';
 
 export function useNomenklator() {
@@ -264,6 +265,32 @@ export function useNomenklator() {
     setSelectionError(err);
   }
 
+  // Choose suggestions where exactly one candidate has score==1 for that OT char.
+  // If any OT char has more than one score==1 candidate, abort and set an error.
+  function chooseScoreOneSuggestions() {
+    const picks: Record<string, string> = {};
+    const ambiguous: string[] = [];
+    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    for (const [ch, list] of Object.entries(candidatesByChar)) {
+      // build candidate options to know which candidates are disabled by ordering/reserved rules
+      const opts = list.map((c, idx) => buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize: gs, reservedTokens, selectionVal: selections[ch], lockedVal: lockedKeys?.[ch], sharedColumns: columns }));
+      const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
+      if (enabledScore1.length > 1) {
+        ambiguous.push(ch);
+        continue;
+      }
+      if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
+    }
+    // Apply only the unambiguous picks, preserving existing selections for others
+    if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
+    if (ambiguous.length) {
+      setSelectionError(`Ambiguous suggestions for ${ambiguous.join(', ')} (multiple score==1)`);
+      return false;
+    }
+    setSelectionError(null);
+    return true;
+  }
+
   function editZtToken(effIndex: number, newText: string) {
     // Map effective index (skipping bracketed tokens) back to original index
     const br = new Set(bracketedIndices);
@@ -351,6 +378,40 @@ export function useNomenklator() {
     if (!active || !over) return;
     const src = active.data?.current as any;
     const dst = over.data?.current as any;
+
+    // If both source and target are ZT tokens, allow swapping only when adjacent
+    if (src?.type === 'zt' && dst?.type === 'zt') {
+      const srcIndex = src.tokenIndex as number | undefined;
+      const dstIndex = dst.tokenIndex as number | undefined;
+      if (typeof srcIndex === 'number' && typeof dstIndex === 'number') {
+        if (Math.abs(srcIndex - dstIndex) === 1) {
+          // Prevent swaps when either token sits inside a locked OT cell
+          const tokenIndexIsLocked = (ti: number) => {
+            for (const row of columns) {
+              for (const cell of row) {
+                if (cell.zt && cell.zt.includes(ti)) {
+                  if (cell.ot && typeof lockedKeys?.[cell.ot.ch] === 'string') return true;
+                }
+              }
+            }
+            return false;
+          };
+          if (tokenIndexIsLocked(srcIndex) || tokenIndexIsLocked(dstIndex)) return;
+
+          const tokensArr = ztTokens.map(t => t.text);
+          // swap
+          const tmp = tokensArr[srcIndex];
+          tokensArr[srcIndex] = tokensArr[dstIndex];
+          tokensArr[dstIndex] = tmp;
+          if (ztParseMode === 'separator') setZtRawForMode('separator', tokensArr.join(separator));
+          else setZtRawForMode('fixedLength', tokensArr.join(''));
+          if (analysisDone) setPendingAutoRefresh(true);
+        }
+      }
+      return;
+    }
+
+    // Otherwise, treat as OT-cell merge operation
     const resolved = resolveMergeFromEvent(evt, columns);
     if (!resolved) return;
     joinOTAt(resolved.fromFlat, resolved.targetFlat);
@@ -417,6 +478,7 @@ export function useNomenklator() {
     onDragEnd,
     toggleBracketGroupByText,
     previewSelection,
+    chooseScoreOneSuggestions,
     applySelection,
     editZtToken,
     insertRawCharsAfterPosition,

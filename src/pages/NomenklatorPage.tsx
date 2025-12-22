@@ -47,6 +47,7 @@ const NomenklatorPage: React.FC = () => {
     toggleBracketGroupByText,
     previewSelection,
     applySelection,
+    chooseScoreOneSuggestions,
     editZtToken,
     insertRawCharsAfterPosition,
     splitOTAt,
@@ -143,10 +144,10 @@ const NomenklatorPage: React.FC = () => {
                       >
                         Clear all
                       </button>
-                      
+
                       <button
                         className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                        onClick={previewSelection}
+                        onClick={() => { chooseScoreOneSuggestions(); }}
                       >Preview selection</button>
                     <button
                       className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white"

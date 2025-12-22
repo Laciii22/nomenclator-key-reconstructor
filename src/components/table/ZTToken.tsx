@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { ZTTokenProps } from '../types';
 import ZTTokenEditor from './ZTTokenEditor';
 import { colors } from '../../utils/colors';
@@ -19,16 +19,23 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `zt-${token.id}`,
     data: { type: 'zt', token, tokenIndex, row, col },
+    disabled: Boolean(isLocked),
+  });
+
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: `zt-drop-${tokenIndex}`,
+    data: { type: 'zt', tokenIndex, row, col },
   });
 
   const [editing, setEditing] = useState(false);
 
   return (
-    <span ref={setNodeRef} style={{ touchAction: 'none' }}>
+    <span ref={setDropRef} style={{ display: 'inline-block' }}>
+      <span ref={setNodeRef} style={{ touchAction: 'none' }}>
       {editing ? (
         <ZTTokenEditor
           tokenText={token.text}
-          isLocked={isLocked}
+          isLocked={!!isLocked}
           onCommit={(next) => { if (onEdit) onEdit(tokenIndex, next); setEditing(false); }}
           onCancel={() => setEditing(false)}
         />
@@ -48,6 +55,7 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
           {token.text}
         </span>
       )}
+      </span>
     </span>
   );
 };
