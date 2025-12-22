@@ -423,7 +423,7 @@ export function useNomenklator() {
   }, [customOtGroups, otRows, analysisDone]);
 
   // Insert raw characters after the group belonging to flat OT position (only fixedLength mode)
-  function insertRawCharsAfterPosition(positionIndex: number, text: string) {
+  function insertRawCharsAfterPosition(positionIndex: number, text: string, replace = false) {
     if (ztParseMode !== 'fixedLength') return;
     const chars = Array.from(text).filter(ch => ch.trim() !== '');
     if (!chars.length) return;
@@ -434,9 +434,15 @@ export function useNomenklator() {
     // Determine insertion point = 1 + max index of target group (or end if none)
     const afterIndex = target && target.indices.length ? Math.max(...target.indices) + 1 : effectiveZtTokens.length;
     const rawArr = effectiveZtTokens.map(t => t.text);
-    // Insert at afterIndex (bounded to array length)
+    // Insert or replace at computed position
     const safeIndex = Math.min(afterIndex, rawArr.length);
-    rawArr.splice(safeIndex, 0, ...chars);
+    if (replace && target) {
+      const startIndex = target && target.indices && target.indices.length ? Math.min(...target.indices) : safeIndex;
+      const deleteCount = target && target.indices ? target.indices.length : 0;
+      rawArr.splice(startIndex, deleteCount, ...chars);
+    } else {
+      rawArr.splice(safeIndex, 0, ...chars);
+    }
     // Update fixed-length raw only (do not touch separator raw)
     setZtRawForMode('fixedLength', rawArr.join(''));
     if (analysisDone) setPendingAutoRefresh(true);

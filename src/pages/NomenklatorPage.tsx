@@ -233,7 +233,7 @@ const NomenklatorPage: React.FC = () => {
                 onEditToken={editZtToken}
                 selections={selections}
                 groupSize={ztParseMode === 'fixedLength' ? fixedLength : 1}
-                onInsertRawCharsAfterPosition={(pos, text) => insertRawCharsAfterPosition(pos, text)}
+                onInsertRawCharsAfterPosition={(pos, text, replace) => insertRawCharsAfterPosition(pos, text, replace)}
                 onSplitGroup={(fi: number) => splitOTAt(fi)}
                 canInsertRaw={ztParseMode === 'fixedLength'}
                 canSplitGroup={true}

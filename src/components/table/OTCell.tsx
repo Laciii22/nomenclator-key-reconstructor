@@ -4,7 +4,6 @@ import type { OTCellProps } from '../types';
 import ZTTokenComp from './ZTToken';
 import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
 import padlock from '../../assets/icons/padlock.png';
-import { colors } from '../../utils/colors';
 
 
 /**
@@ -100,6 +99,24 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
           className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
           onClick={() => onInsertAfterGroup && onInsertAfterGroup(flatIndex!)}
           title="Add raw ZT token to this group"
+        >+</button>
+      )}
+      {/* In separator mode show a similar + to edit the token for this OT cell */}
+      {!isFixedLength && ot && !lockedValue && filtered.length > 0 && (
+        <button
+          className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!onEditToken) return;
+            // Pre-fill with the current group/token text (use first token index)
+            const cur = filtered.map(f => f.t.text).join('');
+            const input = window.prompt('Edit token for this OT (no spaces):', cur);
+            if (input != null && input.trim() !== '') {
+              const firstIdx = filtered[0].idx;
+              onEditToken(firstIdx, input.trim());
+            }
+          }}
+          title="Edit raw ZT token for this OT"
         >+</button>
       )}
       {ot && (

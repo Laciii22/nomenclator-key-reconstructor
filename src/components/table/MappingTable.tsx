@@ -3,7 +3,7 @@ import type { MappingTableProps } from '../types';
 import OTCell from './OTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
 
-function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertRawCharsAfterPosition?: (positionIndex:number, text:string)=>void; onSplitGroup?: (flatIndex:number)=>void; canInsertRaw?: boolean; canSplitGroup?: boolean }) {
+function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertRawCharsAfterPosition?: (positionIndex:number, text:string, replace?: boolean)=>void; onSplitGroup?: (flatIndex:number)=>void; canInsertRaw?: boolean; canSplitGroup?: boolean }) {
 	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true } = props;
 
 	const rows = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, groupSize), [otRows, ztTokens, lockedKeys, selections, groupSize]);
@@ -69,8 +69,13 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 										})()}
 										onInsertAfterGroup={(fi) => {
 											if (!canInsertRaw || fi < 0) return;
-											const input = window.prompt('Add raw chars (no spaces):', '');
-											if (input && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input);
+											// compute current group text for this flat index
+											const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+											for (const row of rows) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
+											const target = flatColumns.filter(f => f.otCh != null)[fi];
+											const current = target && target.indices.length ? target.indices.map(i => ztTokens[i]?.text || '').join('') : '';
+											const input = window.prompt('Edit raw chars for this group (no spaces):', current);
+											if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input, true);
 										}}
 										onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
 									/>
