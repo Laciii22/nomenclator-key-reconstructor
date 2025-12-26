@@ -1,4 +1,4 @@
-import type { ZTToken } from '../../components/types';
+import type { ZTToken } from '../../types/domain';
 
 export function buildLogicalTokens(ztTokens: ZTToken[], groupSize: number): ZTToken[] {
   if (!groupSize || groupSize <= 1) return ztTokens;

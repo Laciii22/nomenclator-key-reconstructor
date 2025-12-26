@@ -1,18 +1,17 @@
 import React, { useMemo, useRef, useState } from 'react';
-import type { Column, KeysPerOTMode, OTChar, ZTToken } from '../components/types';
+import type { KeysPerOTMode, OTChar } from '../components/types';
 import { useLocalSettings } from './useLocalSettings';
-import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
-import { computeRowAlloc } from '../utils/allocation';
-import { getExpectedZTIndicesForOT } from '../utils/grouping';
-import { buildShiftOnlyColumns } from '../utils/shiftMapping';
-import { uniqueGroupTexts, toggleBracketByGroupText } from '../utils/parse/fixedLength';
-import { parseSeparatorRaw } from '../utils/parse/separator';
-import { parseFixedRaw } from '../utils/parse/fixed';
-import buildLogicalTokens from '../utils/parse/logicalTokens';
+import type { SelectionMap } from '../utils/analyzer';
 import { resolveMergeFromEvent } from '../utils/dnd';
 import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import type { DragEndEvent } from '@dnd-kit/core';
-import { computePairsFromColumns } from '../utils/columns';
+import { useParsing } from './useParsing';
+import { useMapping } from './useMapping';
+import { useAnalysis } from './useAnalysis';
+import { useNomenklatorPersistence } from './useNomenklatorPersistence';
+import { useNomenklatorStatus } from './useNomenklatorStatus';
+import { useAutoPickScoreOneSequential } from './useAutoPickScoreOneSequential';
+import { useDebouncedCallback } from './useDebouncedCallback';
 
 export function useNomenklator() {
   const [settings, setSettings] = useLocalSettings({ keysPerOTMode: 'single' });
@@ -20,22 +19,11 @@ export function useNomenklator() {
 
   // Inputs & modes
   const [otRaw, setOtRaw] = useState('');
-  const [ztParseMode, setZtParseMode] = useState<'separator' | 'fixedLength'>('separator');
-  // Separate raw inputs per parse mode so edits in one mode don't overwrite the other
-  const [ztRawSeparator, setZtRawSeparator] = useState('');
-  const [ztRawFixed, setZtRawFixed] = useState('');
-  const ztRaw = ztParseMode === 'fixedLength' ? ztRawFixed : ztRawSeparator;
-  const setZtRawActive = (v: string) => { if (ztParseMode === 'fixedLength') setZtRawFixed(v); else setZtRawSeparator(v); };
-  const setZtRawForMode = (mode: 'separator' | 'fixedLength', v: string) => { if (mode === 'fixedLength') setZtRawFixed(v); else setZtRawSeparator(v); };
-  const [separator, setSeparator] = useState<string>(':');
-  const [fixedLength, setFixedLength] = useState<number>(1);
   const [keysPerOTMode, setKeysPerOTMode] = useState<KeysPerOTMode>('single');
 
   // Locks & selections
   const [lockedKeys, setLockedKeys] = useState<Record<string, string>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
-  const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
-  const [analysisDone, setAnalysisDone] = useState(false);
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
   const isDraggingRef = useRef(false);
 
@@ -43,10 +31,8 @@ export function useNomenklator() {
   const [klamacStatus, setKlamacStatus] = useState<'none' | 'needsKlamac' | 'ok' | 'invalid'>('none');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  // parsing hook owns bracket state, but we keep warning/error state in return
   const [bracketWarning, setBracketWarning] = useState<string | null>(null);
-
-  // Brackets
-  const [bracketedIndices, setBracketedIndices] = useState<number[]>([]);
 
   // Highlighting: single OT character to visually emphasize across the grid
   const [highlightedOTChar, setHighlightedOTChar] = useState<string | null>(null);
@@ -71,28 +57,30 @@ export function useNomenklator() {
     return chars.map((ch, i) => ({ id: `ot_${i}`, ch }));
   }, [otRaw, customOtGroups]);
 
-  // Raw ZT tokens are always single characters in fixedLength mode (for easier editing)
-  // In separator mode they are split by separator.
-  const ztTokens = useMemo<ZTToken[]>(() => {
-    // delegate parsing & status determination to mode-specific helpers
-    if (ztParseMode === 'separator') {
-      const res = parseSeparatorRaw(ztRaw, separator, otChars.length);
-      setKlamacStatus(res.klamacStatus);
-      setStatusMessage(res.statusMessage);
-      return res.tokens;
-    }
-    const res = parseFixedRaw(ztRaw, fixedLength || 1, otChars.length);
-    setKlamacStatus(res.klamacStatus);
-    setStatusMessage(res.statusMessage);
-    return res.tokens;
-  }, [ztRaw, ztParseMode, separator, fixedLength, otChars.length]);
-  
-
-  const effectiveZtTokens = useMemo(() => {
-    if (!bracketedIndices.length) return ztTokens;
-    const br = new Set(bracketedIndices);
-    return ztTokens.filter((_, i) => !br.has(i));
-  }, [ztTokens, bracketedIndices]);
+  const parsing = useParsing({ otCount: otChars.length });
+  const {
+    ztParseMode,
+    setZtParseMode,
+    ztRaw,
+    setZtRaw,
+    setZtRawForMode,
+    separator,
+    setSeparator,
+    fixedLength,
+    setFixedLength,
+    groupSize,
+    ztTokens,
+    effectiveZtTokens,
+    bracketedIndices,
+    setBracketedIndices,
+    toggleBracketGroupByText,
+    uniqueZTTokenTexts,
+    klamacStatus: klamacStatusFromParse,
+    statusMessage: statusMessageFromParse,
+    bracketWarning: bracketWarningFromParse,
+    setZtRawSeparator,
+    setZtRawFixed,
+  } = parsing;
 
   const COLS = 12;
   const otRows = useMemo(() => {
@@ -101,302 +89,85 @@ export function useNomenklator() {
     return rows.length ? rows : [[]];
   }, [otChars]);
 
-  // Base shift-only columns mapping with deception cells (no manual shifts)
-  const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-  const baseColumns: Column[][] = useMemo(
-    () => buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections, groupSize),
-    [otRows, effectiveZtTokens, lockedKeys, selections, groupSize],
+  const mapping = useMapping({
+    otRows,
+    effectiveZtTokens,
+    lockedKeys,
+    selections,
+    ztParseMode,
+    groupSize,
+  });
+
+  const { columns, manualOtCounts, shiftMeta } = mapping;
+
+  const analysis = useAnalysis({
+    otRows,
+    ztParseMode,
+    fixedLength,
+    effectiveZtTokens,
+    columns,
+    keysPerOTMode,
+    lockedKeys,
+    setSelections,
+  });
+
+  const { candidatesByChar, analysisDone, runAnalysis, refreshAnalysisPreserve } = analysis;
+
+  // Now that analysisDone is known, let status hook compute the derived post-analysis status as well.
+  useNomenklatorStatus({
+    klamacStatusFromParse,
+    statusMessageFromParse,
+    bracketWarningFromParse,
+    setKlamacStatus,
+    setStatusMessage,
+    setBracketWarning,
+    analysisDone,
+    otChars,
+    ztTokens,
+    effectiveZtTokens,
+    ztParseMode,
+    fixedLength,
+    bracketedIndices,
+  });
+
+  // Debounce refreshes so rapid edits/locks don't block typing/dragging.
+  const { debounced: refreshAnalysisPreserveDebounced, cancel: cancelRefreshDebounce } = useDebouncedCallback(
+    () => {
+      if (!analysisDone) return;
+      refreshAnalysisPreserve();
+    },
+    150
   );
 
-  // Manual per-OT token counts for fixed-length mode to support interactive shifting.
-  // Null means "use baseColumns as-is"; counts are lazily initialized on first shift.
-  const [manualOtCounts, setManualOtCounts] = useState<number[] | null>(null);
+  useAutoPickScoreOneSequential({
+    candidatesByChar,
+    otRows,
+    ztTokens,
+    bracketedIndices,
+    setSelections,
+  });
 
-  // Clear manual shifts when leaving fixed-length mode or when OT/ZT structure changes
-  // so that we never apply stale counts to a different layout.
-  React.useEffect(() => {
-    if (ztParseMode !== 'fixedLength') {
-      setManualOtCounts(null);
-      return;
-    }
-    setManualOtCounts(null);
-  }, [ztParseMode, otRows, effectiveZtTokens.length, groupSize]);
-
-  // Build final columns. In separator mode or when manual ranges are not available,
-  // fall back to baseColumns. In fixedLength mode with manual ranges, we derive
-  // per-OT token assignments from the ranges and push any remaining indices into
-  // deception cells at the end of the last row.
-  const columns: Column[][] = useMemo(() => {
-    if (ztParseMode !== 'fixedLength' || !manualOtCounts || manualOtCounts.length === 0) {
-      return baseColumns;
-    }
-
-    // Flatten OT layout (skip blanks) to match counts ordering
-    const filteredRows = otRows.map(r => r.filter(c => c.ch !== ''));
-    const totalOtCells = filteredRows.reduce((acc, r) => acc + r.length, 0);
-    if (manualOtCounts.length !== totalOtCells) {
-      return baseColumns;
-    }
-
-    const result: Column[][] = [];
-    let ptr = 0; // index into effectiveZtTokens
-    let flatIndex = 0;
-
-    for (let r = 0; r < filteredRows.length; r++) {
-      const rowChars = filteredRows[r];
-      const rowCols: Column[] = [];
-      for (let c = 0; c < rowChars.length; c++) {
-        const ot = rowChars[c];
-        const count = Math.max(0, manualOtCounts[flatIndex] || 0);
-        const indices: number[] = [];
-        for (let k = 0; k < count && ptr < effectiveZtTokens.length; k++) {
-          indices.push(ptr++);
-        }
-        rowCols.push({ ot, zt: indices });
-        flatIndex++;
-      }
-      result.push(rowCols);
-    }
-
-    // Any remaining tokens after OT cells become a single deception cell
-    if (effectiveZtTokens.length && result.length) {
-      const lastRow = result[result.length - 1];
-      if (ptr < effectiveZtTokens.length) {
-        const remaining: number[] = [];
-        for (let i = ptr; i < effectiveZtTokens.length; i++) remaining.push(i);
-        if (remaining.length) lastRow.push({ ot: null, zt: remaining, deception: true });
-      }
-    }
-
-    return result;
-  }, [ztParseMode, manualOtCounts, baseColumns, otRows, effectiveZtTokens.length]);
-
-  // Auto-select candidates with score==1 matching sequential expected indices
-  React.useEffect(() => {
-    if (!Object.keys(candidatesByChar).length) return;
-    const expected = getExpectedZTIndicesForOT(otRows, ztTokens, bracketedIndices);
-    setSelections(prev => {
-      const next = { ...prev };
-      for (const [ch, list] of Object.entries(candidatesByChar)) {
-        if (next[ch]) continue;
-        const score1 = list.filter(c => c.score === 1);
-        if (score1.length !== 1) continue;
-        const token = score1[0].token;
-        const indices = ztTokens.map((t, i) => t.text === token ? i : -1).filter(i => i >= 0);
-        const exp = expected[ch] || [];
-        if (indices.length === exp.length && indices.every((v, i) => v === exp[i])) next[ch] = token;
-      }
-      return next;
-    });
-  }, [candidatesByChar, otRows, ztTokens, bracketedIndices]);
-
-  // Hydration (avoid stale stale locks + brackets)
-  React.useEffect(() => {
-    if (hydrated.current) return;
-    setOtRaw(settings.otRaw ?? '');
-    // initialize both mode-specific raws from saved value to avoid surprising empty fields
-    setZtRawSeparator(settings.ztRaw ?? '');
-    setZtRawFixed(settings.ztRaw ?? '');
-    setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
-    setLockedKeys({});
-    setBracketedIndices([]);
-    setCustomOtGroups(null);
-    hydrated.current = true;
-  }, [settings]);
-
-  // Minimal persistence
-  React.useEffect(() => { setSettings(p => (p.otRaw === otRaw ? p : { ...p, otRaw })); }, [otRaw]);
-  React.useEffect(() => { setSettings(p => (p.ztRaw === ztRaw ? p : { ...p, ztRaw })); }, [ztRaw]);
-  React.useEffect(() => { setSettings(p => (p.keysPerOTMode === keysPerOTMode ? p : { ...p, keysPerOTMode })); }, [keysPerOTMode]);
-
-  // Bracket validity post parse-change
-  React.useEffect(() => {
-    setBracketWarning(null);
-    setBracketedIndices(prev => {
-      if (!prev.length) return prev;
-      const max = ztTokens.length;
-      const filtered = prev.filter(i => i >= 0 && i < max);
-      if (filtered.length !== prev.length) setBracketWarning('Some deception brackets no longer exist after parse change — removed.');
-      return filtered;
-    });
-  }, [ztTokens.length]);
-
-  // Status update after analysis w.r.t. brackets
-  React.useEffect(() => {
-    const OT = otChars.length;
-    if (OT === 0 || ztTokens.length === 0) { setKlamacStatus('none'); setStatusMessage(null); return; }
-    if (!analysisDone) return;
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const effChars = effectiveZtTokens.length;
-    const effGroups = Math.floor(effChars / groupSize);
-    const leftover = effChars % groupSize;
-    if (leftover !== 0) {
-      setKlamacStatus('invalid');
-      setStatusMessage(`Deception incorrectly selected: incomplete groups (missing ${groupSize - leftover} characters).`);
-      return;
-    }
-    if (effGroups < OT) { setKlamacStatus('invalid'); setStatusMessage(`Wrong deception selected: OT (${OT}) > ZT (${effGroups}).`); }
-    else if (effGroups > OT) { setKlamacStatus('needsKlamac'); setStatusMessage(`Excess groups: ${effGroups - OT}. Choose another deception token.`); }
-    else { setKlamacStatus('ok'); setStatusMessage(null); }
-  }, [analysisDone, bracketedIndices, effectiveZtTokens.length, otChars.length, ztTokens.length, ztParseMode, fixedLength]);
-
-  // Ensure analyzer candidates also reflect the current OT→ZT grouping as seen in the
-  // mapping table: when a cell currently carries a concrete group (e.g. "33" under O),
-  // add that group as an extra candidate token for that OT character if it's missing.
-  function augmentCandidatesWithCurrentMapping(base: Record<string, Candidate[]>): Record<string, Candidate[]> {
-    if (ztParseMode !== 'fixedLength') return base;
-    const gs = fixedLength || 1;
-    // `columns` indices are over `effectiveZtTokens` (deception removed), not raw ztTokens.
-    const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs);
-    const currentByChar: Record<string, string> = {};
-    for (const p of pairs) {
-      if (!p.zt) continue;
-      currentByChar[p.ot] = p.zt;
-    }
-
-    if (!Object.keys(currentByChar).length) return base;
-
-    const result: Record<string, Candidate[]> = { ...base };
-    for (const [ch, grp] of Object.entries(currentByChar)) {
-      const existing = result[ch] ?? [];
-      if (existing.some(c => c.token === grp)) {
-        result[ch] = existing;
-        continue;
-      }
-      const bestScore = existing.length ? Math.max(...existing.map(c => c.score)) : 1;
-      const occurrences = existing[0]?.occurrences ?? 1;
-      const extra: Candidate = {
-        token: grp,
-        length: 1,
-        support: 1,
-        occurrences,
-        score: bestScore,
-      };
-      result[ch] = [...existing, extra];
-    }
-    return result;
-  }
-
-  // In fixed-length mode, score should reflect the current grouping visible in the grid.
-  // This makes scores stable even when manual shifting produces groups that don't exist
-  // as clean sequential logical tokens (e.g. user is repairing corrupted text).
-  function applyFixedLengthScoresFromColumns(base: Record<string, Candidate[]>): Record<string, Candidate[]> {
-    if (ztParseMode !== 'fixedLength') return base;
-    const gs = fixedLength || 1;
-
-    // Count how many OT cells exist for each character.
-    const otCellCounts: Record<string, number> = {};
-    for (const row of otRows) {
-      for (const cell of row) {
-        if (!cell || cell.ch === '') continue;
-        otCellCounts[cell.ch] = (otCellCounts[cell.ch] || 0) + 1;
-      }
-    }
-
-    // Count how many times each group token appears in the CURRENT mapping.
-    const mappedPairs = computePairsFromColumns(columns, effectiveZtTokens, gs);
-    const tokenCounts: Record<string, number> = {};
-    for (const p of mappedPairs) {
-      if (!p.zt) continue;
-      tokenCounts[p.zt] = (tokenCounts[p.zt] || 0) + 1;
-    }
-
-    const out: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(base)) {
-      const cellCount = otCellCounts[ch] || 0;
-      out[ch] = list.map(c => {
-        const tokenCount = tokenCounts[c.token] || 0;
-        let score = 0;
-        if (cellCount > 0 || tokenCount > 0) {
-          score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
-        }
-        return {
-          ...c,
-          support: tokenCount,
-          occurrences: cellCount,
-          score,
-        };
-      });
-    }
-    return out;
-  }
-
-  function runAnalysis() {
-    // Build logical tokens (group substrings) for analysis when in fixedLength mode
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    // Use effectiveZtTokens so analysis respects deception brackets.
-    const logicalTokens = buildLogicalTokens(effectiveZtTokens, groupSize);
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens); // proportional allocation based on logical groups
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
-    const augmented = applyFixedLengthScoresFromColumns(
-      augmentCandidatesWithCurrentMapping(res.candidatesByChar),
-    );
-    const sorted: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(augmented)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
-    setCandidatesByChar(sorted);
-    setSelections({});
-    setAnalysisDone(true);
-  }
-
-  // Preserve existing selections where the token still appears in refreshed candidates
-  function refreshAnalysisPreserve() {
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(effectiveZtTokens, groupSize);
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
-    const augmented = applyFixedLengthScoresFromColumns(
-      augmentCandidatesWithCurrentMapping(res.candidatesByChar),
-    );
-    const sorted: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(augmented)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
-    setCandidatesByChar(sorted);
-    setSelections(prev => {
-      const next: SelectionMap = {};
-      for (const [ch, sel] of Object.entries(prev)) {
-        const list = sorted[ch];
-        if (list && list.some(c => c.token === sel)) next[ch] = sel;
-      }
-      return next;
-    });
-  }
+  useNomenklatorPersistence({
+    settings,
+    setSettings,
+    hydratedRef: hydrated,
+    otRaw,
+    setOtRaw,
+    ztRaw,
+    setZtRawSeparator,
+    setZtRawFixed,
+    keysPerOTMode,
+    setKeysPerOTMode,
+    setLockedKeys,
+    setBracketedIndices,
+    setCustomOtGroups,
+  });
 
   function onLockOT(ot: string, val: string) { setLockedKeys(prev => ({ ...prev, [ot]: val })); }
   function onUnlockOT(ot: string) { setLockedKeys(prev => { const c = { ...prev }; delete c[ot]; return c; }); }
   // drag behavior intentionally disabled in simplified mode
 
-  function toggleBracketGroupByText(text: string) {
-    if (!text) return;
-    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
-      setBracketedIndices(prev => toggleBracketByGroupText(text, ztTokens, fixedLength || 1, prev));
-      return;
-    }
-    const same = ztTokens.map((t, i) => t.text === text ? i : -1).filter(i => i >= 0);
-    setBracketedIndices(prev => {
-      const set = new Set(prev);
-      const all = same.every(i => set.has(i));
-      if (all) same.forEach(i => set.delete(i)); else same.forEach(i => set.add(i));
-      return Array.from(set).sort((a, b) => a - b);
-    });
-  }
-
-  const uniqueZTTokenTexts = useMemo(() => {
-    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
-      return uniqueGroupTexts(ztTokens, fixedLength || 1, bracketedIndices);
-    }
-    const seen = new Set<string>();
-    const br = new Set(bracketedIndices);
-    const map = new Map<string, number[]>();
-    ztTokens.forEach((t, i) => { (map.get(t.text) || map.set(t.text, []).get(t.text))?.push(i); });
-    const out: { text: string; allBracketed: boolean }[] = [];
-    for (const t of ztTokens) {
-      if (seen.has(t.text)) continue; seen.add(t.text);
-      const idxs = map.get(t.text) || [];
-      out.push({ text: t.text, allBracketed: idxs.length > 0 && idxs.every(i => br.has(i)) });
-    }
-    return out;
-  }, [ztTokens, bracketedIndices, ztParseMode, fixedLength]);
+  // uniqueZTTokenTexts comes from parsing hook
 
   function previewSelection() {
     const totalCells = otRows.reduce((a, r) => a + r.filter(c => c.ch !== '').length, 0);
@@ -416,6 +187,7 @@ export function useNomenklator() {
       }
     }
     setSelectionError(err);
+    return err;
   }
 
   // Choose suggestions where exactly one candidate has score==1 for that OT char.
@@ -481,8 +253,8 @@ export function useNomenklator() {
   }
 
   function applySelection() {
-    previewSelection();
-    if (selectionError) return;
+    const err = previewSelection();
+    if (err) return;
     const newLocks: Record<string, string> = {};
     for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) newLocks[ch] = seq as string;
     if (Object.keys(newLocks).length) setLockedKeys(prev => ({ ...prev, ...newLocks }));
@@ -520,6 +292,7 @@ export function useNomenklator() {
 
   function onDragStart() {
     isDraggingRef.current = true;
+    cancelRefreshDebounce();
   }
 
   function onDragEnd(evt: DragEndEvent) {
@@ -572,8 +345,8 @@ export function useNomenklator() {
 
   // Re-run analysis when OT grouping changes and we already have results
   React.useEffect(() => {
-    if (analysisDone) refreshAnalysisPreserve();
-  }, [customOtGroups, otRows, analysisDone]);
+    if (analysisDone) refreshAnalysisPreserveDebounced();
+  }, [customOtGroups, otRows, analysisDone, refreshAnalysisPreserveDebounced]);
 
   // Insert raw characters after the group belonging to flat OT position (only fixedLength mode)
   function insertRawCharsAfterPosition(positionIndex: number, text: string, replace = false) {
@@ -604,125 +377,10 @@ export function useNomenklator() {
   // Auto refresh analysis after raw edits/insertions when analysis already computed
   React.useEffect(() => {
     if (pendingAutoRefresh && analysisDone) {
-      refreshAnalysisPreserve();
+      refreshAnalysisPreserveDebounced();
       setPendingAutoRefresh(false);
     }
-  }, [pendingAutoRefresh, analysisDone, ztTokens, fixedLength, ztParseMode]);
-
-  // Compute simple shift availability metadata per flat OT index for fixed-length mode.
-  // Uses manualOtCounts when present; otherwise derives counts from the current baseColumns
-  // so arrows are enabled as long as a logical shift is possible.
-  const shiftMeta = useMemo(() => {
-    if (ztParseMode !== 'fixedLength') {
-      return [] as { canShiftLeft: boolean; canShiftRight: boolean }[];
-    }
-
-    const maxLen = groupSize || 1;
-    let counts: number[] = [];
-
-    if (manualOtCounts && manualOtCounts.length) {
-      counts = manualOtCounts;
-    } else {
-      // Derive counts from the current baseColumns (non-deception OT cells only)
-      const out: number[] = [];
-      for (const row of baseColumns) {
-        for (const col of row) {
-          if (!col.ot) continue;
-          out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
-        }
-      }
-      counts = out;
-    }
-
-    if (!counts.length) {
-      return [] as { canShiftLeft: boolean; canShiftRight: boolean }[];
-    }
-
-    // Only allow shifts that won't make this OT cell empty: require at least 2 chars.
-    return counts.map((len, idx) => ({
-      canShiftLeft: idx > 0 && len > 1,
-      canShiftRight: idx < counts.length - 1 && len > 1,
-    }));
-  }, [ztParseMode, manualOtCounts, baseColumns, groupSize]);
-
-  function shiftGroupRight(flatIndex: number) {
-    if (ztParseMode !== 'fixedLength') return;
-    const maxLen = groupSize || 1;
-    setManualOtCounts(prev => {
-      // Lazily initialize counts from current baseColumns
-      const baseCounts: number[] = prev && prev.length
-        ? [...prev]
-        : (() => {
-            const out: number[] = [];
-            for (const row of baseColumns) {
-              for (const col of row) {
-                if (!col.ot) continue;
-                out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
-              }
-            }
-            return out;
-          })();
-      if (!baseCounts.length) return prev;
-      if (flatIndex < 0 || flatIndex >= baseCounts.length - 1) return prev;
-      const counts = [...baseCounts];
-      // Don't allow this OT to become empty by shifting away its last char
-      if (counts[flatIndex] <= 1) return prev;
-
-      // Move one character from this cell to the next
-      counts[flatIndex] -= 1;
-      counts[flatIndex + 1] += 1;
-
-      // Cascade overflow to the right to respect maxLen
-      for (let i = flatIndex + 1; i < counts.length - 1; i++) {
-        if (counts[i] > maxLen) {
-          const overflow = counts[i] - maxLen;
-          counts[i] -= overflow;
-          counts[i + 1] += overflow;
-        }
-      }
-
-      return counts;
-    });
-  }
-
-  function shiftGroupLeft(flatIndex: number) {
-    if (ztParseMode !== 'fixedLength') return;
-    const maxLen = groupSize || 1;
-    setManualOtCounts(prev => {
-      const baseCounts: number[] = prev && prev.length
-        ? [...prev]
-        : (() => {
-            const out: number[] = [];
-            for (const row of baseColumns) {
-              for (const col of row) {
-                if (!col.ot) continue;
-                out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
-              }
-            }
-            return out;
-          })();
-      if (!baseCounts.length) return prev;
-      if (flatIndex <= 0 || flatIndex >= baseCounts.length) return prev; // need neighbour on the left
-      const counts = [...baseCounts];
-      // Don't allow this OT to become empty by shifting away its last char
-      if (counts[flatIndex] <= 1) return prev;
-
-      // Move one character from this cell to the previous one
-      counts[flatIndex] -= 1;
-      counts[flatIndex - 1] += 1;
-
-      // Cascade overflow to the left to respect maxLen
-      for (let i = flatIndex - 1; i > 0; i--) {
-        if (counts[i] > maxLen) {
-          const overflow = counts[i] - maxLen;
-          counts[i] -= overflow;
-          counts[i - 1] += overflow;
-        }
-      }
-
-      return counts;
-    });
-  }
+  }, [pendingAutoRefresh, analysisDone, ztTokens, fixedLength, ztParseMode, refreshAnalysisPreserveDebounced]);
 
   // When manual shift counts change in fixed-length mode and analysis has been
   // run at least once, automatically refresh suggestions so the dropdowns
@@ -732,13 +390,19 @@ export function useNomenklator() {
     if (ztParseMode !== 'fixedLength') return;
     if (!analysisDone) return;
     if (!manualOtCounts) return;
-    refreshAnalysisPreserve();
-  }, [manualOtCounts, analysisDone, ztParseMode]);
+    refreshAnalysisPreserveDebounced();
+  }, [manualOtCounts, analysisDone, ztParseMode, refreshAnalysisPreserveDebounced]);
+
+  // Keep candidates in sync with lock/bracket changes once analysis exists.
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    refreshAnalysisPreserveDebounced();
+  }, [analysisDone, lockedKeys, bracketedIndices, ztParseMode, fixedLength, refreshAnalysisPreserveDebounced]);
 
   return {
     // inputs
     otRaw, setOtRaw,
-    ztRaw, setZtRaw: setZtRawActive,
+    ztRaw, setZtRaw,
     ztParseMode, setZtParseMode,
     separator, setSeparator,
     fixedLength, setFixedLength,
@@ -768,8 +432,8 @@ export function useNomenklator() {
     editZtToken,
     insertRawCharsAfterPosition,
     shiftMeta,
-    shiftGroupRight,
-    shiftGroupLeft,
+    shiftGroupRight: mapping.shiftRight,
+    shiftGroupLeft: mapping.shiftLeft,
     joinOTAt,
     splitOTAt,
     // highlighting

@@ -50,6 +50,8 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
     ? tokensFromIndices(tokens, displayedIndices).map((t, i) => ({ t, idx: displayedIndices[i] }))
     : [];
 
+  const isEmptyRealOtCell = Boolean(ot) && !deception && filtered.length === 0;
+
   const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({
     id: ot ? `ot-${row}-${col}` : `ot-empty-${row}-${col}`,
     data: { type: 'ot', flatIndex, sourceRow: row, sourceCol: col },
@@ -59,7 +61,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
   return (
     <div
       ref={setNodeRef}
-      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''} ${ot && highlightedOTChar === ot.ch ? 'ring-2 ring-purple-400 bg-purple-50' : ''}`}
+      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : isEmptyRealOtCell ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''} ${ot && highlightedOTChar === ot.ch ? 'ring-2 ring-purple-400 bg-purple-50' : ''}`}
     >
       <div className="text-center font-mono text-base mb-1 flex items-center justify-center gap-1">
         {isFixedLength && ot && !lockedValue && typeof flatIndex === 'number' && flatIndex >= 0 && (
@@ -108,7 +110,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
       </div>
       <div className="flex flex-wrap gap-2 justify-center">
         {filtered.length === 0 ? (
-          <span className="text-gray-300">—</span>
+          <span className={isEmptyRealOtCell ? 'text-red-500' : 'text-gray-300'}>—</span>
         ) : (
           filtered.map(({ t, idx }, i) => (
             <ZTTokenComp
@@ -159,10 +161,12 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
               if (onUnlockOT) onUnlockOT(ot.ch);
               return;
             }
+            if (isEmptyRealOtCell) return;
             const groupStr = joinTokenTexts(filtered.map(f => f.t));
             if (groupStr) onLockOT(ot.ch, groupStr);
           }}
-          title={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
+          disabled={!lockedValue && isEmptyRealOtCell}
+          title={lockedValue ? `Unlock ${ot.ch}` : (isEmptyRealOtCell ? 'Cannot lock an empty cell' : `Lock ${ot.ch}`)}
           aria-label={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
           aria-pressed={!!lockedValue}
         >

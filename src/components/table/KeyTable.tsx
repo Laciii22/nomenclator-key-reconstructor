@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import type { KeyTableProps } from '../types';
 import { buildShiftOnlyColumns as buildColumns } from '../../utils/shiftMapping';
 import { computePairsFromColumns, aggregatePairsByOT } from '../../utils/columns';
@@ -28,6 +28,17 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
 
   const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, getGroupSize(ztParseMode, groupSize)), [colsForMode, ztTokens, ztParseMode, groupSize]);
 
+  // Track OT chars that have at least one empty mapped cell.
+  // This is separate from the aggregated display (which can omit empty entries
+  // when a non-empty key exists) but still represents an error state in the grid.
+  const hasEmptyCellByOT = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const p of pairs) {
+      if (p.zt === '') map[p.ot] = true;
+    }
+    return map;
+  }, [pairs]);
+
   // Aggregate by OT character: collect ZT groups
   const aggregated = useMemo(() => aggregatePairsByOT(pairs, keysPerOTMode), [pairs, keysPerOTMode]);
 
@@ -36,17 +47,35 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
     return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
   }, [aggregated]);
 
+  const errorByOT = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    for (const row of sortedAggregated) {
+      const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
+      const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
+      const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
+      const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
+      const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
+      out[row.ot] = Boolean(isViolationSingle || lockedMismatch || row.ztList.length === 0 || hasEmptyCell);
+    }
+    return out;
+  }, [hasEmptyCellByOT, keysPerOTMode, lockedKeys, sortedAggregated]);
+
+  // If a previously-highlighted OT is no longer eligible for the highlight icon,
+  // automatically turn off the highlight so cells don't stay highlighted.
+  useEffect(() => {
+    if (!highlightedOTChar) return;
+    if (!onToggleHighlightOT) return;
+    if (errorByOT[highlightedOTChar]) return;
+    onToggleHighlightOT(highlightedOTChar);
+  }, [errorByOT, highlightedOTChar, onToggleHighlightOT]);
+
   if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(no pairs)</div>;
 
   // Determine if there are any violations (errors) and compute bulk locks
   let hasError = false;
   const bulkLocks: Record<string, string> = {};
   for (const row of sortedAggregated) {
-    const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
-    const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1; // now based only on non-empty keys
-    const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
-    const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
-    if (isViolationSingle || lockedMismatch || row.ztList.length === 0) {
+    if (errorByOT[row.ot]) {
       hasError = true;
     }
     if (row.ztList.length > 0) {
@@ -84,7 +113,9 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
             const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
             const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
             const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
-            const trClass = (isViolationSingle || lockedMismatch) ? 'bg-red-50' : '';
+            const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
+            const isRowError = Boolean(errorByOT[row.ot]);
+            const trClass = isRowError ? 'bg-red-50' : '';
             return (
               <tr key={row.ot} className={`border-t border-gray-100 ${trClass}`}>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.ot}</td>
@@ -92,6 +123,7 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                   <span className="whitespace-nowrap">{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
                   {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
                   {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
+                  {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
                 </td>
                 <td className="px-3 py-2">
                   {onLockOT || onUnlockOT ? (
@@ -110,16 +142,16 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                         <button
                           className={`text-xs px-2 py-1 rounded ${colors.unlockedBtn}`}
                           onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
-                          disabled={row.ztList.length === 0}
-                          title={row.ztList.length ? `Lock ${row.ot} = ${row.ztList[0]}` : 'Nothing to lock'}
-                          aria-label={row.ztList.length ? `Lock ${row.ot} to ${row.ztList[0]}` : `Nothing to lock for ${row.ot}`}
+                          disabled={isRowError || row.ztList.length === 0}
+                          title={isRowError ? 'Fix the red error state first' : (row.ztList.length ? `Lock ${row.ot} = ${row.ztList[0]}` : 'Nothing to lock')}
+                          aria-label={isRowError ? `Cannot lock ${row.ot} while errors exist` : (row.ztList.length ? `Lock ${row.ot} to ${row.ztList[0]}` : `Nothing to lock for ${row.ot}`)}
                           aria-pressed={false}
                         >
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
                         </button>
                       )}
                         {/* Highlighter icon shown for error rows */}
-                        { (isViolationSingle || lockedMismatch || row.ztList.length === 0) && onToggleHighlightOT ? (
+                        { isRowError && onToggleHighlightOT ? (
                           <button
                             className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedOTChar === row.ot ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
                             onClick={() => onToggleHighlightOT(row.ot)}

@@ -1,5 +1,6 @@
 
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
+import { computePairsFromColumns } from './columns';
 
 // SelectionMap: mapuje OT znak na vybraný ZT token (nebo null)
 export type SelectionMap = Record<string, string | null>;
@@ -21,6 +22,69 @@ export type AnalysisResult = {
   proposedRowGroups: number[][]; // adjusted counts per cell
   candidatesByChar: Record<string, Candidate[]>; // all candidates for UI selection
 };
+
+type ColumnLike = { ot: { ch: string } | null; zt: number[] }[][];
+
+function countOtCellsByChar(otRows: OTChar[][]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of otRows) {
+    for (const cell of row) {
+      if (!cell || cell.ch === '') continue;
+      out[cell.ch] = (out[cell.ch] || 0) + 1;
+    }
+  }
+  return out;
+}
+
+function scoreRatio(a: number, b: number): number {
+  if (a === 0 && b === 0) return 0;
+  return Math.min(a, b) / Math.max(a, b);
+}
+
+export function separatorModeScore(params: {
+  token: string;
+  otChar: string;
+  otRows: OTChar[][];
+  effectiveZtTokens: ZTToken[];
+}): { support: number; occurrences: number; score: number } {
+  const { token, otChar, otRows, effectiveZtTokens } = params;
+  const otCellCounts = countOtCellsByChar(otRows);
+  const occurrences = otCellCounts[otChar] || 0;
+  const support = effectiveZtTokens.reduce((acc, t) => acc + (t.text === token ? 1 : 0), 0);
+  return { support, occurrences, score: scoreRatio(support, occurrences) };
+}
+
+export function fixedModeScore(params: {
+  token: string;
+  otChar: string;
+  columns: ColumnLike;
+  effectiveZtTokens: ZTToken[];
+  groupSize: number;
+}): { support: number; occurrences: number; score: number } {
+  const { token, otChar, columns, effectiveZtTokens, groupSize } = params;
+  const pairs = computePairsFromColumns(columns, effectiveZtTokens, groupSize);
+
+  const otCellCounts: Record<string, number> = {};
+  for (const p of pairs) otCellCounts[p.ot] = (otCellCounts[p.ot] || 0) + 1;
+
+  const tokenCounts: Record<string, number> = {};
+  const mappedTokensByChar: Record<string, Set<string>> = {};
+  for (const p of pairs) {
+    if (!p.zt) continue;
+    tokenCounts[p.zt] = (tokenCounts[p.zt] || 0) + 1;
+    (mappedTokensByChar[p.ot] ||= new Set()).add(p.zt);
+  }
+
+  const occurrences = otCellCounts[otChar] || 0;
+  const support = tokenCounts[token] || 0;
+
+  // Mapping-derived candidate for this OT char is high-confidence.
+  if (mappedTokensByChar[otChar]?.has(token)) {
+    return { support, occurrences, score: 1.0 };
+  }
+
+  return { support, occurrences, score: scoreRatio(support, occurrences) };
+}
 
 function clone2D(arr: number[][]): number[][] { return arr.map(r => [...r]); }
 

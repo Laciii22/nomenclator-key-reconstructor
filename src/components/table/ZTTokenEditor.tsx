@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { ZTTokenProps } from '../types';
 
 type EditorProps = {
   tokenText: string;
