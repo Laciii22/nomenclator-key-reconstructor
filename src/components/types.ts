@@ -29,6 +29,12 @@ export type MappingTableProps = {
   onEditToken?: (tokenIndex: number, newText: string) => void;
   selections?: Record<string, string | null>;
   highlightedOTChar?: string | null;
+  // Optional precomputed columns (used when fixed-length shifting is enabled)
+  columns?: Column[][];
+  // Optional shift controls for fixed-length mode
+  shiftMeta?: Array<{ canShiftLeft: boolean; canShiftRight: boolean }>;
+  onShiftGroupLeft?: (flatIndex: number) => void;
+  onShiftGroupRight?: (flatIndex: number) => void;
 };
 
 export type OTCellProps = {
@@ -52,6 +58,11 @@ export type OTCellProps = {
   // indices (only used in fixed-length mode).
   allowExpandFromStart?: boolean;
   highlightedOTChar?: string | null;
+  // Optional shift controls (fixed-length mode) operating on flat OT index
+  onShiftLeft?: (flatIndex: number) => void;
+  onShiftRight?: (flatIndex: number) => void;
+  canShiftLeft?: boolean;
+  canShiftRight?: boolean;
 };
 
 export type ZTTokenProps = {

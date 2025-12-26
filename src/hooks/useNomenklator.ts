@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import type { KeysPerOTMode, OTChar, ZTToken } from '../components/types';
+import type { Column, KeysPerOTMode, OTChar, ZTToken } from '../components/types';
 import { useLocalSettings } from './useLocalSettings';
 import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';
@@ -12,6 +12,7 @@ import buildLogicalTokens from '../utils/parse/logicalTokens';
 import { resolveMergeFromEvent } from '../utils/dnd';
 import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import type { DragEndEvent } from '@dnd-kit/core';
+import { computePairsFromColumns } from '../utils/columns';
 
 export function useNomenklator() {
   const [settings, setSettings] = useLocalSettings({ keysPerOTMode: 'single' });
@@ -100,11 +101,75 @@ export function useNomenklator() {
     return rows.length ? rows : [[]];
   }, [otChars]);
 
-  // Shift-only columns mapping with deception cells
-  const columns = useMemo(() => {
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    return buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections, groupSize);
-  }, [otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode, fixedLength]);
+  // Base shift-only columns mapping with deception cells (no manual shifts)
+  const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+  const baseColumns: Column[][] = useMemo(
+    () => buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections, groupSize),
+    [otRows, effectiveZtTokens, lockedKeys, selections, groupSize],
+  );
+
+  // Manual per-OT token counts for fixed-length mode to support interactive shifting.
+  // Null means "use baseColumns as-is"; counts are lazily initialized on first shift.
+  const [manualOtCounts, setManualOtCounts] = useState<number[] | null>(null);
+
+  // Clear manual shifts when leaving fixed-length mode or when OT/ZT structure changes
+  // so that we never apply stale counts to a different layout.
+  React.useEffect(() => {
+    if (ztParseMode !== 'fixedLength') {
+      setManualOtCounts(null);
+      return;
+    }
+    setManualOtCounts(null);
+  }, [ztParseMode, otRows, effectiveZtTokens.length, groupSize]);
+
+  // Build final columns. In separator mode or when manual ranges are not available,
+  // fall back to baseColumns. In fixedLength mode with manual ranges, we derive
+  // per-OT token assignments from the ranges and push any remaining indices into
+  // deception cells at the end of the last row.
+  const columns: Column[][] = useMemo(() => {
+    if (ztParseMode !== 'fixedLength' || !manualOtCounts || manualOtCounts.length === 0) {
+      return baseColumns;
+    }
+
+    // Flatten OT layout (skip blanks) to match counts ordering
+    const filteredRows = otRows.map(r => r.filter(c => c.ch !== ''));
+    const totalOtCells = filteredRows.reduce((acc, r) => acc + r.length, 0);
+    if (manualOtCounts.length !== totalOtCells) {
+      return baseColumns;
+    }
+
+    const result: Column[][] = [];
+    let ptr = 0; // index into effectiveZtTokens
+    let flatIndex = 0;
+
+    for (let r = 0; r < filteredRows.length; r++) {
+      const rowChars = filteredRows[r];
+      const rowCols: Column[] = [];
+      for (let c = 0; c < rowChars.length; c++) {
+        const ot = rowChars[c];
+        const count = Math.max(0, manualOtCounts[flatIndex] || 0);
+        const indices: number[] = [];
+        for (let k = 0; k < count && ptr < effectiveZtTokens.length; k++) {
+          indices.push(ptr++);
+        }
+        rowCols.push({ ot, zt: indices });
+        flatIndex++;
+      }
+      result.push(rowCols);
+    }
+
+    // Any remaining tokens after OT cells become a single deception cell
+    if (effectiveZtTokens.length && result.length) {
+      const lastRow = result[result.length - 1];
+      if (ptr < effectiveZtTokens.length) {
+        const remaining: number[] = [];
+        for (let i = ptr; i < effectiveZtTokens.length; i++) remaining.push(i);
+        if (remaining.length) lastRow.push({ ot: null, zt: remaining, deception: true });
+      }
+    }
+
+    return result;
+  }, [ztParseMode, manualOtCounts, baseColumns, otRows, effectiveZtTokens.length]);
 
   // Auto-select candidates with score==1 matching sequential expected indices
   React.useEffect(() => {
@@ -175,15 +240,100 @@ export function useNomenklator() {
     else { setKlamacStatus('ok'); setStatusMessage(null); }
   }, [analysisDone, bracketedIndices, effectiveZtTokens.length, otChars.length, ztTokens.length, ztParseMode, fixedLength]);
 
+  // Ensure analyzer candidates also reflect the current OT→ZT grouping as seen in the
+  // mapping table: when a cell currently carries a concrete group (e.g. "33" under O),
+  // add that group as an extra candidate token for that OT character if it's missing.
+  function augmentCandidatesWithCurrentMapping(base: Record<string, Candidate[]>): Record<string, Candidate[]> {
+    if (ztParseMode !== 'fixedLength') return base;
+    const gs = fixedLength || 1;
+    // `columns` indices are over `effectiveZtTokens` (deception removed), not raw ztTokens.
+    const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs);
+    const currentByChar: Record<string, string> = {};
+    for (const p of pairs) {
+      if (!p.zt) continue;
+      currentByChar[p.ot] = p.zt;
+    }
+
+    if (!Object.keys(currentByChar).length) return base;
+
+    const result: Record<string, Candidate[]> = { ...base };
+    for (const [ch, grp] of Object.entries(currentByChar)) {
+      const existing = result[ch] ?? [];
+      if (existing.some(c => c.token === grp)) {
+        result[ch] = existing;
+        continue;
+      }
+      const bestScore = existing.length ? Math.max(...existing.map(c => c.score)) : 1;
+      const occurrences = existing[0]?.occurrences ?? 1;
+      const extra: Candidate = {
+        token: grp,
+        length: 1,
+        support: 1,
+        occurrences,
+        score: bestScore,
+      };
+      result[ch] = [...existing, extra];
+    }
+    return result;
+  }
+
+  // In fixed-length mode, score should reflect the current grouping visible in the grid.
+  // This makes scores stable even when manual shifting produces groups that don't exist
+  // as clean sequential logical tokens (e.g. user is repairing corrupted text).
+  function applyFixedLengthScoresFromColumns(base: Record<string, Candidate[]>): Record<string, Candidate[]> {
+    if (ztParseMode !== 'fixedLength') return base;
+    const gs = fixedLength || 1;
+
+    // Count how many OT cells exist for each character.
+    const otCellCounts: Record<string, number> = {};
+    for (const row of otRows) {
+      for (const cell of row) {
+        if (!cell || cell.ch === '') continue;
+        otCellCounts[cell.ch] = (otCellCounts[cell.ch] || 0) + 1;
+      }
+    }
+
+    // Count how many times each group token appears in the CURRENT mapping.
+    const mappedPairs = computePairsFromColumns(columns, effectiveZtTokens, gs);
+    const tokenCounts: Record<string, number> = {};
+    for (const p of mappedPairs) {
+      if (!p.zt) continue;
+      tokenCounts[p.zt] = (tokenCounts[p.zt] || 0) + 1;
+    }
+
+    const out: Record<string, Candidate[]> = {};
+    for (const [ch, list] of Object.entries(base)) {
+      const cellCount = otCellCounts[ch] || 0;
+      out[ch] = list.map(c => {
+        const tokenCount = tokenCounts[c.token] || 0;
+        let score = 0;
+        if (cellCount > 0 || tokenCount > 0) {
+          score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
+        }
+        return {
+          ...c,
+          support: tokenCount,
+          occurrences: cellCount,
+          score,
+        };
+      });
+    }
+    return out;
+  }
+
   function runAnalysis() {
     // Build logical tokens (group substrings) for analysis when in fixedLength mode
     const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(ztTokens, groupSize);
+    // Use effectiveZtTokens so analysis respects deception brackets.
+    const logicalTokens = buildLogicalTokens(effectiveZtTokens, groupSize);
     const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens); // proportional allocation based on logical groups
     const baseCounts = alloc.groups.map(r => r.map(v => v));
     const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
+    const augmented = applyFixedLengthScoresFromColumns(
+      augmentCandidatesWithCurrentMapping(res.candidatesByChar),
+    );
     const sorted: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(res.candidatesByChar)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
+    for (const [ch, list] of Object.entries(augmented)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
     setCandidatesByChar(sorted);
     setSelections({});
     setAnalysisDone(true);
@@ -192,12 +342,15 @@ export function useNomenklator() {
   // Preserve existing selections where the token still appears in refreshed candidates
   function refreshAnalysisPreserve() {
     const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(ztTokens, groupSize);
+    const logicalTokens = buildLogicalTokens(effectiveZtTokens, groupSize);
     const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
     const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
+    const augmented = applyFixedLengthScoresFromColumns(
+      augmentCandidatesWithCurrentMapping(res.candidatesByChar),
+    );
     const sorted: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(res.candidatesByChar)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
+    for (const [ch, list] of Object.entries(augmented)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
     setCandidatesByChar(sorted);
     setSelections(prev => {
       const next: SelectionMap = {};
@@ -456,6 +609,132 @@ export function useNomenklator() {
     }
   }, [pendingAutoRefresh, analysisDone, ztTokens, fixedLength, ztParseMode]);
 
+  // Compute simple shift availability metadata per flat OT index for fixed-length mode.
+  // Uses manualOtCounts when present; otherwise derives counts from the current baseColumns
+  // so arrows are enabled as long as a logical shift is possible.
+  const shiftMeta = useMemo(() => {
+    if (ztParseMode !== 'fixedLength') {
+      return [] as { canShiftLeft: boolean; canShiftRight: boolean }[];
+    }
+
+    const maxLen = groupSize || 1;
+    let counts: number[] = [];
+
+    if (manualOtCounts && manualOtCounts.length) {
+      counts = manualOtCounts;
+    } else {
+      // Derive counts from the current baseColumns (non-deception OT cells only)
+      const out: number[] = [];
+      for (const row of baseColumns) {
+        for (const col of row) {
+          if (!col.ot) continue;
+          out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
+        }
+      }
+      counts = out;
+    }
+
+    if (!counts.length) {
+      return [] as { canShiftLeft: boolean; canShiftRight: boolean }[];
+    }
+
+    // Only allow shifts that won't make this OT cell empty: require at least 2 chars.
+    return counts.map((len, idx) => ({
+      canShiftLeft: idx > 0 && len > 1,
+      canShiftRight: idx < counts.length - 1 && len > 1,
+    }));
+  }, [ztParseMode, manualOtCounts, baseColumns, groupSize]);
+
+  function shiftGroupRight(flatIndex: number) {
+    if (ztParseMode !== 'fixedLength') return;
+    const maxLen = groupSize || 1;
+    setManualOtCounts(prev => {
+      // Lazily initialize counts from current baseColumns
+      const baseCounts: number[] = prev && prev.length
+        ? [...prev]
+        : (() => {
+            const out: number[] = [];
+            for (const row of baseColumns) {
+              for (const col of row) {
+                if (!col.ot) continue;
+                out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
+              }
+            }
+            return out;
+          })();
+      if (!baseCounts.length) return prev;
+      if (flatIndex < 0 || flatIndex >= baseCounts.length - 1) return prev;
+      const counts = [...baseCounts];
+      // Don't allow this OT to become empty by shifting away its last char
+      if (counts[flatIndex] <= 1) return prev;
+
+      // Move one character from this cell to the next
+      counts[flatIndex] -= 1;
+      counts[flatIndex + 1] += 1;
+
+      // Cascade overflow to the right to respect maxLen
+      for (let i = flatIndex + 1; i < counts.length - 1; i++) {
+        if (counts[i] > maxLen) {
+          const overflow = counts[i] - maxLen;
+          counts[i] -= overflow;
+          counts[i + 1] += overflow;
+        }
+      }
+
+      return counts;
+    });
+  }
+
+  function shiftGroupLeft(flatIndex: number) {
+    if (ztParseMode !== 'fixedLength') return;
+    const maxLen = groupSize || 1;
+    setManualOtCounts(prev => {
+      const baseCounts: number[] = prev && prev.length
+        ? [...prev]
+        : (() => {
+            const out: number[] = [];
+            for (const row of baseColumns) {
+              for (const col of row) {
+                if (!col.ot) continue;
+                out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
+              }
+            }
+            return out;
+          })();
+      if (!baseCounts.length) return prev;
+      if (flatIndex <= 0 || flatIndex >= baseCounts.length) return prev; // need neighbour on the left
+      const counts = [...baseCounts];
+      // Don't allow this OT to become empty by shifting away its last char
+      if (counts[flatIndex] <= 1) return prev;
+
+      // Move one character from this cell to the previous one
+      counts[flatIndex] -= 1;
+      counts[flatIndex - 1] += 1;
+
+      // Cascade overflow to the left to respect maxLen
+      for (let i = flatIndex - 1; i > 0; i--) {
+        if (counts[i] > maxLen) {
+          const overflow = counts[i] - maxLen;
+          counts[i] -= overflow;
+          counts[i - 1] += overflow;
+        }
+      }
+
+      return counts;
+    });
+  }
+
+  // When manual shift counts change in fixed-length mode and analysis has been
+  // run at least once, automatically refresh suggestions so the dropdowns
+  // immediately reflect the new OT→ZT mapping (e.g. O → 33) without needing
+  // to click "Run analysis" again.
+  React.useEffect(() => {
+    if (ztParseMode !== 'fixedLength') return;
+    if (!analysisDone) return;
+    if (!manualOtCounts) return;
+    refreshAnalysisPreserve();
+  }, [manualOtCounts, analysisDone, ztParseMode]);
+
   return {
     // inputs
     otRaw, setOtRaw,
@@ -488,6 +767,9 @@ export function useNomenklator() {
     applySelection,
     editZtToken,
     insertRawCharsAfterPosition,
+    shiftMeta,
+    shiftGroupRight,
+    shiftGroupLeft,
     joinOTAt,
     splitOTAt,
     // highlighting

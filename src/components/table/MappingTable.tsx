@@ -4,9 +4,12 @@ import OTCell from './OTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
 
 function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertRawCharsAfterPosition?: (positionIndex:number, text:string, replace?: boolean)=>void; onSplitGroup?: (flatIndex:number)=>void; canInsertRaw?: boolean; canSplitGroup?: boolean }) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true } = props;
+	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight } = props;
 
-	const rows = useMemo(() => buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, groupSize), [otRows, ztTokens, lockedKeys, selections, groupSize]);
+	const rows = useMemo(
+		() => (columns && columns.length ? columns : buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, groupSize)),
+		[columns, otRows, ztTokens, lockedKeys, selections, groupSize],
+	);
 
 	// Flat index of OT cells (skip deception) for insertion prompt in fixedLength mode
 	const flatIndices = useMemo(() => {
@@ -20,7 +23,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 	return (
 		<div className={`space-y-4 ${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
 			{rows.map((cols, rIdx) => (
-				<div key={rIdx} className="mb-4">
+					<div key={rIdx} className="mb-4">
 					<div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.max(cols.length, 1)}, minmax(0, 1fr))` }}>
 						{cols.length === 0 ? (
 							<div className="text-gray-400 text-sm">(empty row)</div>
@@ -29,7 +32,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 									// Determine whether it's safe to expand a single assigned index
 									// into a full fixed-length group. We disallow expansion when any of
 									// the would-be indices are already assigned to other cells.
-									<OTCell
+										<OTCell
 										highlightedOTChar={props.highlightedOTChar}
 										key={cIdx}
 										ot={col.ot ?? null}
@@ -42,9 +45,9 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 										lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
 										deception={Boolean(col.deception || col.ot == null)}
 										onEditToken={onEditToken}
-										isFixedLength={groupSize > 1}
-										groupSize={groupSize}
-										flatIndex={flatIndices[rIdx][cIdx]}
+											isFixedLength={groupSize > 1}
+											groupSize={groupSize}
+											flatIndex={flatIndices[rIdx][cIdx]}
 										// compute allowExpandFromStart for this cell
 										allowExpandFromStart={(() => {
 											if (!col.zt || col.zt.length === 0) return false;
@@ -78,6 +81,19 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 											if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input, true);
 										}}
 										onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
+											// Shift controls (fixed-length mode)
+											onShiftLeft={onShiftGroupLeft}
+											onShiftRight={onShiftGroupRight}
+											canShiftLeft={(() => {
+												const fi = flatIndices[rIdx][cIdx];
+												if (!shiftMeta || fi < 0) return false;
+												return !!shiftMeta[fi]?.canShiftLeft;
+											})()}
+											canShiftRight={(() => {
+												const fi = flatIndices[rIdx][cIdx];
+												if (!shiftMeta || fi < 0) return false;
+												return !!shiftMeta[fi]?.canShiftRight;
+											})()}
 									/>
 							))
 						)}

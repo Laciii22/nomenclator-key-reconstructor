@@ -1,5 +1,5 @@
 import type { ZTToken } from '../../types/domain';
-import { logicalGroups } from './fixedLength';
+// import { logicalGroups } from './fixedLength';
 
 export function parseFixedRaw(raw: string, groupSize: number, otCount: number) {
   const s = raw.trim();

@@ -10,7 +10,6 @@ import CandidateSelectorFixed from '../components/controls/CandidateSelectorFixe
 import CandidateSelectorSeparator from '../components/controls/CandidateSelectorSeparator';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap } from '../utils/analyzer';
-import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 
 const NomenklatorPage: React.FC = () => {
 
@@ -45,12 +44,15 @@ const NomenklatorPage: React.FC = () => {
     onDragEnd,
     
     toggleBracketGroupByText,
-    previewSelection,
     applySelection,
     chooseScoreOneSuggestions,
     editZtToken,
     insertRawCharsAfterPosition,
     splitOTAt,
+    columns,
+    shiftMeta,
+    shiftGroupRight,
+    shiftGroupLeft,
     // highlighting
     highlightedOTChar,
     toggleHighlightForOT,
@@ -61,9 +63,6 @@ const NomenklatorPage: React.FC = () => {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   );
-
-  // Shared columns grid: same builder for both tables
-  const sharedColumns = React.useMemo(() => buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode === 'fixedLength' ? fixedLength : 1), [otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode, fixedLength]);
 
   return (
     <AppLayout>
@@ -171,7 +170,7 @@ const NomenklatorPage: React.FC = () => {
                     effectiveZtTokens={effectiveZtTokens}
                     fixedLength={fixedLength}
                     reservedTokens={reservedTokens}
-                    sharedColumns={sharedColumns}
+                    sharedColumns={columns}
                   />
                 ) : (
                   <CandidateSelectorSeparator
@@ -182,7 +181,7 @@ const NomenklatorPage: React.FC = () => {
                     otRows={otRows}
                     effectiveZtTokens={effectiveZtTokens}
                     reservedTokens={reservedTokens}
-                    sharedColumns={sharedColumns}
+                    sharedColumns={columns}
                   />
                 )}
               </div>
@@ -202,7 +201,7 @@ const NomenklatorPage: React.FC = () => {
               onUnlockOT={onUnlockOT}
               ztParseMode={ztParseMode}
               groupSize={ztParseMode==='fixedLength'? fixedLength : 1}
-              columns={sharedColumns}
+              columns={columns}
               highlightedOTChar={highlightedOTChar}
               onToggleHighlightOT={toggleHighlightForOT}
               onLockAll={(locks) => {
@@ -238,6 +237,10 @@ const NomenklatorPage: React.FC = () => {
                 canInsertRaw={ztParseMode === 'fixedLength'}
                 canSplitGroup={true}
                 highlightedOTChar={highlightedOTChar}
+                columns={columns}
+                shiftMeta={shiftMeta}
+                onShiftGroupRight={shiftGroupRight}
+                onShiftGroupLeft={shiftGroupLeft}
               />
             </div>
       </div>

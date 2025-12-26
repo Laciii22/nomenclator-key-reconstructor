@@ -15,7 +15,7 @@ import padlock from '../../assets/icons/padlock.png';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup, allowExpandFromStart, highlightedOTChar }) => {
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup, allowExpandFromStart, highlightedOTChar, onShiftLeft, onShiftRight, canShiftLeft, canShiftRight }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}`, data: { row, col, isKlamac: !ot, flatIndex } });
 
   // Map token indices to token objects and filter undefined
@@ -61,7 +61,22 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
       ref={setNodeRef}
       className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''} ${ot && highlightedOTChar === ot.ch ? 'ring-2 ring-purple-400 bg-purple-50' : ''}`}
     >
-      <div className="text-center font-mono text-base mb-1">
+      <div className="text-center font-mono text-base mb-1 flex items-center justify-center gap-1">
+        {isFixedLength && ot && !lockedValue && typeof flatIndex === 'number' && flatIndex >= 0 && (
+          <button
+            type="button"
+            className={`px-1 py-0.5 text-xs rounded border border-transparent ${canShiftLeft ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 cursor-default'}`}
+            onClick={e => {
+              e.stopPropagation();
+              if (!canShiftLeft || !onShiftLeft) return;
+              onShiftLeft(flatIndex);
+            }}
+            disabled={!canShiftLeft}
+            title={canShiftLeft ? 'Shift one character to the left' : undefined}
+          >
+            &lt;
+          </button>
+        )}
         {ot ? (
           <span
             ref={setDragRef}
@@ -74,6 +89,21 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
           </span>
         ) : (
           <span className="inline-block px-1 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-md" title="Probable deception token">!</span>
+        )}
+        {isFixedLength && ot && !lockedValue && typeof flatIndex === 'number' && flatIndex >= 0 && (
+          <button
+            type="button"
+            className={`px-1 py-0.5 text-xs rounded border border-transparent ${canShiftRight ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 cursor-default'}`}
+            onClick={e => {
+              e.stopPropagation();
+              if (!canShiftRight || !onShiftRight) return;
+              onShiftRight(flatIndex);
+            }}
+            disabled={!canShiftRight}
+            title={canShiftRight ? 'Shift one character to the right' : undefined}
+          >
+            &gt;
+          </button>
         )}
       </div>
       <div className="flex flex-wrap gap-2 justify-center">

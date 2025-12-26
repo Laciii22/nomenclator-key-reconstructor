@@ -49,7 +49,12 @@ export function buildCandidateOptions(params: {
   for (let i = 0; i < flatColumns.length; i++) if (flatColumns[i].otCh == null) deceptionTotal += (flatColumns[i].indices || []).length;
 
   let orderInvalid = false;
-  if (groupSize === 1) {
+  if (occ.length === 0) {
+    // Token does not exist in the logical ZT stream (e.g. manually implied group
+    // like "33" when only "11" and "23" physically occur). Allow it as a
+    // manual override and don't enforce ordering in this case.
+    orderInvalid = false;
+  } else if (groupSize === 1) {
     const expectedStart = cellFlatIndex;
     orderInvalid = !(cellFlatIndex >= 0 && occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal));
   } else {
