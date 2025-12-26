@@ -58,6 +58,9 @@ export type OTCellProps = {
   // indices (only used in fixed-length mode).
   allowExpandFromStart?: boolean;
   highlightedOTChar?: string | null;
+  // True when this OT's chosen ZT value is also chosen by another OT.
+  // Used to mark conflicts visually (red cell).
+  hasDuplicateKey?: boolean;
   // Optional shift controls (fixed-length mode) operating on flat OT index
   onShiftLeft?: (flatIndex: number) => void;
   onShiftRight?: (flatIndex: number) => void;

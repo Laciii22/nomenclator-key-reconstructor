@@ -15,7 +15,7 @@ import padlock from '../../assets/icons/padlock.png';
  * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
  * - startIndex: Flat index into the ZT token stream for the first token in this cell.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup, allowExpandFromStart, highlightedOTChar, onShiftLeft, onShiftRight, canShiftLeft, canShiftRight }) => {
+const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup, allowExpandFromStart, highlightedOTChar, hasDuplicateKey, onShiftLeft, onShiftRight, canShiftLeft, canShiftRight }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}`, data: { row, col, isKlamac: !ot, flatIndex } });
 
   // Map token indices to token objects and filter undefined
@@ -51,6 +51,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
     : [];
 
   const isEmptyRealOtCell = Boolean(ot) && !deception && filtered.length === 0;
+  const isDuplicateKey = Boolean(ot) && !deception && Boolean(hasDuplicateKey);
 
   const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({
     id: ot ? `ot-${row}-${col}` : `ot-empty-${row}-${col}`,
@@ -61,7 +62,7 @@ const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onL
   return (
     <div
       ref={setNodeRef}
-      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : isEmptyRealOtCell ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''} ${ot && highlightedOTChar === ot.ch ? 'ring-2 ring-purple-400 bg-purple-50' : ''}`}
+      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : (isEmptyRealOtCell || isDuplicateKey) ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''} ${ot && highlightedOTChar === ot.ch ? 'ring-2 ring-purple-400 bg-purple-50' : ''}`}
     >
       <div className="text-center font-mono text-base mb-1 flex items-center justify-center gap-1">
         {isFixedLength && ot && !lockedValue && typeof flatIndex === 'number' && flatIndex >= 0 && (

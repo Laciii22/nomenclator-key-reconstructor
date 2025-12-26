@@ -47,6 +47,25 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
     return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
   }, [aggregated]);
 
+  // Duplicate displayed ZT keys across different OT characters.
+  // This matches what the KeyTable shows (and what users reason about).
+  const duplicateKeyByOT = useMemo(() => {
+    const tokenToOTs: Record<string, Set<string>> = {};
+    for (const row of sortedAggregated) {
+      const primary = row.ztList?.[0] ?? '';
+      const token = typeof primary === 'string' ? primary.trim() : '';
+      if (!token) continue;
+      (tokenToOTs[token] ||= new Set()).add(row.ot);
+    }
+
+    const dupTokenByOT: Record<string, string> = {};
+    for (const [token, ots] of Object.entries(tokenToOTs)) {
+      if (ots.size <= 1) continue;
+      for (const ot of ots) dupTokenByOT[ot] = token;
+    }
+    return dupTokenByOT;
+  }, [sortedAggregated]);
+
   const errorByOT = useMemo(() => {
     const out: Record<string, boolean> = {};
     for (const row of sortedAggregated) {
@@ -55,10 +74,11 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
       const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
       const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
       const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
-      out[row.ot] = Boolean(isViolationSingle || lockedMismatch || row.ztList.length === 0 || hasEmptyCell);
+      const hasDuplicateChosenKey = typeof duplicateKeyByOT[row.ot] === 'string';
+      out[row.ot] = Boolean(isViolationSingle || lockedMismatch || row.ztList.length === 0 || hasEmptyCell || hasDuplicateChosenKey);
     }
     return out;
-  }, [hasEmptyCellByOT, keysPerOTMode, lockedKeys, sortedAggregated]);
+  }, [duplicateKeyByOT, hasEmptyCellByOT, keysPerOTMode, lockedKeys, sortedAggregated]);
 
   // If a previously-highlighted OT is no longer eligible for the highlight icon,
   // automatically turn off the highlight so cells don't stay highlighted.
@@ -114,6 +134,7 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
             const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
             const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
             const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
+            const hasDuplicateChosenKey = typeof duplicateKeyByOT[row.ot] === 'string';
             const isRowError = Boolean(errorByOT[row.ot]);
             const trClass = isRowError ? 'bg-red-50' : '';
             return (
@@ -124,6 +145,7 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                   {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
                   {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
                   {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
+                  {hasDuplicateChosenKey && <span className="ml-2 text-red-600">(duplicate)</span>}
                 </td>
                 <td className="px-3 py-2">
                   {onLockOT || onUnlockOT ? (

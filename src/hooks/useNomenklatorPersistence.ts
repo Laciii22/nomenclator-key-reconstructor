@@ -5,7 +5,7 @@ import type { LocalSettings } from './useLocalSettings';
 export function useNomenklatorPersistence(params: {
   settings: LocalSettings;
   setSettings: React.Dispatch<React.SetStateAction<LocalSettings>>;
-  hydratedRef: React.MutableRefObject<boolean>;
+  hydratedRef: React.RefObject<boolean>;
 
   otRaw: string;
   setOtRaw: React.Dispatch<React.SetStateAction<string>>;

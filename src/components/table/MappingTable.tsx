@@ -20,6 +20,65 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 		}));
 	}, [rows]);
 
+	// Detect duplicate displayed ZT group text across different OT characters.
+	// This is based on what each OT cell actually shows.
+	const duplicateOTChars = useMemo(() => {
+		const tokenToOTs: Record<string, Set<string>> = {};
+		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
+				const col = rows[rIdx][cIdx];
+				if (!col.ot) continue;
+				if (col.deception) continue;
+				if (!col.zt || col.zt.length === 0) continue;
+
+				// Reproduce OTCell's displayed-index logic (only the bits that matter for group text).
+				let displayedIndices: number[] = [];
+				if (groupSize > 1) {
+					if (col.zt.length >= groupSize) {
+						displayedIndices = col.zt.slice(0, groupSize);
+					} else {
+						// compute allowExpandFromStart (same rules as in the JSX below)
+						const start = col.zt[0];
+						const otherOwned = new Set<number>();
+						for (let rr = 0; rr < rows.length; rr++) {
+							for (let cc = 0; cc < rows[rr].length; cc++) {
+								if (rr === rIdx && cc === cIdx) continue;
+								for (const idx of rows[rr][cc].zt) otherOwned.add(idx);
+							}
+						}
+						let allowExpand = true;
+						for (let k = 1; k < groupSize; k++) {
+							const idx = start + k;
+							if (otherOwned.has(idx)) { allowExpand = false; break; }
+							if (idx >= ztTokens.length) { allowExpand = false; break; }
+						}
+						if (col.zt.length === 1 && allowExpand) {
+							for (let k = 0; k < groupSize; k++) {
+								const idx = start + k;
+								if (idx < ztTokens.length) displayedIndices.push(idx);
+							}
+						} else {
+							displayedIndices = col.zt.slice();
+						}
+					}
+				} else {
+					displayedIndices = col.zt.slice();
+				}
+
+				const groupText = displayedIndices.map(i => ztTokens[i]?.text ?? '').join('').trim();
+				if (!groupText) continue;
+				(tokenToOTs[groupText] ||= new Set()).add(col.ot.ch);
+			}
+		}
+
+		const dup = new Set<string>();
+		for (const ots of Object.values(tokenToOTs)) {
+			if (ots.size <= 1) continue;
+			for (const ot of ots) dup.add(ot);
+		}
+		return dup;
+	}, [groupSize, rows, ztTokens]);
+
 	return (
 		<div className={`space-y-4 ${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
 			{rows.map((cols, rIdx) => (
@@ -44,6 +103,7 @@ function MappingTable(props: MappingTableProps & { groupSize?: number; onInsertR
 										onUnlockOT={onUnlockOT}
 										lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
 										deception={Boolean(col.deception || col.ot == null)}
+										hasDuplicateKey={Boolean(col.ot && duplicateOTChars.has(col.ot.ch))}
 										onEditToken={onEditToken}
 											isFixedLength={groupSize > 1}
 											groupSize={groupSize}
