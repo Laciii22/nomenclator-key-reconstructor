@@ -1,20 +1,38 @@
+/**
+ * BracketEditor: Interface for marking deception/null tokens.
+ * 
+ * Allows users to exclude tokens from analysis by "bracketing" them.
+ * Useful when ZT has extra tokens that don't correspond to OT characters.
+ */
+
 import React from 'react';
 import type { ZTToken } from '../../types/domain';
 
 export interface UniqueZTTokenText {
+  /** The token text value */
   text: string;
+  /** True if all occurrences of this token are currently bracketed */
   allBracketed: boolean;
 }
 
 interface BracketEditorProps {
+  /** All ZT tokens */
   ztTokens: ZTToken[];
+  /** Whether analysis has been run (editor only shows after analysis) */
   analysisDone: boolean;
+  /** Warning message about bracket validity */
   bracketWarning: string | null;
+  /** Unique token texts with bracket status */
   uniqueZTTokenTexts: UniqueZTTokenText[];
+  /** Callback to toggle bracket status for a token text */
   onToggleText: (text: string) => void;
+  /** Callback to clear all brackets */
   onClear: () => void;
 }
 
+/**
+ * Control panel for marking tokens as deception/null.
+ */
 const BracketEditor: React.FC<BracketEditorProps> = ({
   ztTokens,
   analysisDone,

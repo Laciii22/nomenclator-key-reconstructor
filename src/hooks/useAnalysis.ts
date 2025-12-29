@@ -28,6 +28,7 @@ export function useAnalysis(params: {
 
   const [candidatesByChar, setCandidatesByChar] = React.useState<Record<string, Candidate[]>>({});
   const [analysisDone, setAnalysisDone] = React.useState(false);
+  const [isAnalyzing, setIsAnalyzing] = React.useState(false);
 
   const augmentCandidatesWithCurrentMapping = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ztParseMode !== 'fixedLength') return base;
@@ -87,18 +88,27 @@ export function useAnalysis(params: {
   }, [columns, effectiveZtTokens, fixedLength, otRows, ztParseMode]);
 
   const runAnalysis = React.useCallback(() => {
-    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(effectiveZtTokens, gs);
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
+    setIsAnalyzing(true);
+    
+    // Use setTimeout to allow UI to update with loading state
+    setTimeout(() => {
+      try {
+        const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+        const logicalTokens = buildLogicalTokens(effectiveZtTokens, gs);
+        const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
+        const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
+        const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
 
-    const augmented = applyScores(augmentCandidatesWithCurrentMapping(res.candidatesByChar));
+        const augmented = applyScores(augmentCandidatesWithCurrentMapping(res.candidatesByChar));
 
-    setCandidatesByChar(sortCandidates(augmented));
-    setSelections({});
-    setAnalysisDone(true);
+        setCandidatesByChar(sortCandidates(augmented));
+        setSelections({});
+        setAnalysisDone(true);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }, 0);
   }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
@@ -125,6 +135,7 @@ export function useAnalysis(params: {
   return {
     candidatesByChar,
     analysisDone,
+    isAnalyzing,
     runAnalysis,
     refreshAnalysisPreserve,
     augmentCandidatesWithCurrentMapping,

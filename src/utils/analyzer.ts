@@ -1,26 +1,53 @@
+/**
+ * Analysis engine for suggesting OT→ZT mappings based on frequency analysis.
+ * 
+ * The analyzer compares OT character frequencies with ZT token frequencies
+ * and proposes candidate mappings using a similarity score.
+ */
 
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
 import { computePairsFromColumns } from './columns';
 
-// SelectionMap: mapuje OT znak na vybraný ZT token (nebo null)
+/**
+ * Maps each OT character to its selected ZT token (or null if unselected).
+ */
 export type SelectionMap = Record<string, string | null>;
 
+/**
+ * Options for the analysis algorithm.
+ */
 export type AnalysisOptions = {
+  /** Whether each OT char can map to single or multiple ZT tokens */
   keysPerOTMode: KeysPerOTMode;
 };
 
+/**
+ * A candidate ZT token for a specific OT character,
+ * with confidence scoring based on frequency analysis.
+ */
 export type Candidate = {
-  token: string; // single token value
-  length: number; // always 1 (number of tokens)
-  support: number; // how many times this token appears in ZT
-  occurrences: number; // total ZT token count
-  score: number; // support/occurrences ratio
+  /** The cipher token value */
+  token: string;
+  /** Number of tokens in this sequence (always 1 for current implementation) */
+  length: number;
+  /** How many times this token appears in the cipher text */
+  support: number;
+  /** How many times the OT character appears */
+  occurrences: number;
+  /** Confidence score (0-1): similarity of frequencies */
+  score: number;
 };
 
+/**
+ * Result of frequency analysis, containing suggested mappings and candidates.
+ */
 export type AnalysisResult = {
-  proposedLocks: Record<string, string>; // otChar -> token
-  proposedRowGroups: number[][]; // adjusted counts per cell
-  candidatesByChar: Record<string, Candidate[]>; // all candidates for UI selection
+  /** Suggested OT→ZT locks (includes existing locked keys) */
+  proposedLocks: Record<string, string>;
+  /** Adjusted token allocation counts per grid cell */
+  proposedRowGroups: number[][];
+  /** All candidate tokens for each OT character, sorted by score */
+  candidatesByChar: Record<string, Candidate[]>;
 };
 
 type ColumnLike = { ot: { ch: string } | null; zt: number[] }[][];
@@ -182,7 +209,7 @@ export function analyze(
     for (const t of ztTokens) freq[t.text] = (freq[t.text] || 0) + 1;
     const candidatesByChar: Record<string, Candidate[]> = {};
     for (const ch of Object.keys(charPositions)) {
-      const cellCount = charPositions[ch].length; // počet buniek pre tento OT znak
+      const cellCount = charPositions[ch].length; // number of cells for this OT character
       candidatesByChar[ch] = uniqueTokens.map(tok => {
         const tokenCount = freq[tok] || 0;
         let score = 0;

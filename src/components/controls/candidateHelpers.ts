@@ -1,6 +1,6 @@
 import { buildOccMap } from '../../utils/parseStrategies';
-import type { ZTToken } from '../../types/domain';
-type SharedColumns = { ot?: { ch: string } | null; zt?: number[] }[][];
+import type { ZTToken, OTChar } from '../../types/domain';
+import type { Column } from '../types';
 
 export type CandidateOption = {
   token: string;
@@ -10,7 +10,7 @@ export type CandidateOption = {
   score: number;
 };
 
-export function computeFlatIndexForChar(otRows: any[], ch: string) {
+export function computeFlatIndexForChar(otRows: OTChar[][], ch: string) {
   let idx2 = 0;
   for (const row of otRows) {
     for (const cell of row) {
@@ -27,13 +27,13 @@ export function buildCandidateOptions(params: {
   c: { token: string; score: number; length?: number };
   idx: number;
   ch: string;
-  otRows: any[];
+  otRows: OTChar[][];
   effectiveZtTokens: ZTToken[];
   groupSize: number;
   reservedTokens: Set<string>;
   selectionVal: string | null | undefined;
   lockedVal: string | undefined;
-  sharedColumns: SharedColumns;
+  sharedColumns: Column[][];
 }): CandidateOption {
   const { c, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns } = params;
   const takenByOther = reservedTokens.has(c.token) && selectionVal !== c.token && lockedVal !== c.token;

@@ -1,14 +1,33 @@
+/**
+ * Custom hook for parsing OT and ZT inputs.
+ * 
+ * Manages:
+ * - Parse mode selection (separator vs. fixed-length)
+ * - Raw input storage per mode
+ * - Token parsing and validation
+ * - Deception/null token marking (bracketing)
+ * 
+ * @param params Configuration with OT count for validation
+ * @returns Parsing state and controls
+ */
+
 import * as React from 'react';
 import type { ZTToken } from '../types/domain';
 import { parseFixedRaw } from '../utils/parse/fixed';
 import { parseSeparatorRaw } from '../utils/parse/separator';
 import { toggleBracketByGroupText, uniqueGroupTexts } from '../utils/parse/fixedLength';
 
+/** Parsing mode for ZT tokens */
 export type ZtParseMode = 'separator' | 'fixedLength';
 
+/** Status of OT/ZT alignment validation */
 export type KlamacStatus = 'none' | 'needsKlamac' | 'ok' | 'invalid';
 
+/**
+ * Hook for managing ZT token parsing and validation.
+ */
 export function useParsing(params: {
+  /** Number of OT characters (for validation) */
   otCount: number;
 }) {
   const { otCount } = params;

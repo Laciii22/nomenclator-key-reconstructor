@@ -1,16 +1,19 @@
 import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
+import type { OTChar, ZTToken } from '../../types/domain';
+import type { Candidate } from '../../utils/analyzer';
+import type { Column } from '../types';
 
 type Props = {
-  candidatesByChar: Record<string, any[]>;
+  candidatesByChar: Record<string, Candidate[]>;
   lockedKeys: Record<string, string>;
-  selections: Record<string, any>;
-  setSelections: any;
-  otRows: any[];
-  effectiveZtTokens: any[];
+  selections: Record<string, string | null>;
+  setSelections: React.Dispatch<React.SetStateAction<Record<string, string | null>>>;
+  otRows: OTChar[][];
+  effectiveZtTokens: ZTToken[];
   fixedLength: number;
   reservedTokens: Set<string>;
-  sharedColumns: any;
+  sharedColumns: Column[][];
 };
 
 const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, otRows, effectiveZtTokens, fixedLength, reservedTokens, sharedColumns }) => {
@@ -27,7 +30,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
         if (lockedVal && !extendedList.some(c => c.token === lockedVal)) {
           extendedList.unshift({ token: lockedVal, length: 1, support: 0, occurrences: 0, score: 1 });
         }
-        const sortedByScore = extendedList.sort((a:any,b:any)=> {
+        const sortedByScore = extendedList.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
           return a.token.localeCompare(b.token);
         });
@@ -43,11 +46,11 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
               disabled={disabledSelect}
               onChange={(e) => {
                 const val = e.target.value || '';
-                setSelections((prev: any) => ({ ...prev, [ch]: val === '' ? null : val }));
+                setSelections((prev) => ({ ...prev, [ch]: val === '' ? null : val }));
               }}
             >
               <option value="">None</option>
-              {sortedByScore.filter((c:any) => c.length === 1).map((c:any, idx:number) => {
+              {sortedByScore.filter((c) => c.length === 1).map((c, idx) => {
                 const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns });
                 return (
                   <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>

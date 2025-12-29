@@ -1,15 +1,34 @@
+/**
+ * Custom hook for managing OT/ZT allocation mapping.
+ * 
+ * Computes the grid layout (columns) that maps OT cells to ZT token indices.
+ * Supports manual token shifting in fixed-length mode.
+ * 
+ * @param params OT rows, ZT tokens, locks, selections, and parse mode
+ * @returns Computed columns and shift controls
+ */
+
 import * as React from 'react';
 import type { Column } from '../components/types';
 import type { OTChar, ZTToken } from '../types/domain';
 import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 import { canShiftLeft, canShiftRight, deriveCountsFromColumns, shiftLeft, shiftRight } from '../mapping/manualShift';
 
+/**
+ * Hook for computing and managing the OT→ZT allocation grid.
+ */
 export function useMapping(params: {
+  /** Rows of plain text characters */
   otRows: OTChar[][];
+  /** Cipher tokens (after deception filtering) */
   effectiveZtTokens: ZTToken[];
+  /** Locked OT→ZT mappings */
   lockedKeys: Record<string, string>;
+  /** Current manual selections */
   selections: Record<string, string | null>;
+  /** Parse mode */
   ztParseMode: 'separator' | 'fixedLength';
+  /** Size of token groups */
   groupSize: number;
 }) {
   const { otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode, groupSize } = params;

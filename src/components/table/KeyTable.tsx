@@ -9,7 +9,7 @@ import { colors } from '../../utils/colors';
 
 
 
-// (Removed proportional distributeRow; KeyTable mirrors deterministic mapping)
+type SharedColumns = Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
 
 /**
  * KeyTable displays the reconstructed nomenclator key pairs OT → ZT.
@@ -21,7 +21,7 @@ import { colors } from '../../utils/colors';
 const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>> }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
-    if (columns && columns.length) return columns as Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
+    if (columns && columns.length) return columns as SharedColumns;
     const gs = getGroupSize(ztParseMode, groupSize);
     return buildColumns(otRows, ztTokens, lockedKeys, selections, gs);
   }, [columns, otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
@@ -86,6 +86,8 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
     if (!highlightedOTChar) return;
     if (!onToggleHighlightOT) return;
     if (errorByOT[highlightedOTChar]) return;
+    // The highlighter is an "error navigation" affordance; once the error condition
+    // is gone, keeping the highlight on becomes distracting.
     onToggleHighlightOT(highlightedOTChar);
   }, [errorByOT, highlightedOTChar, onToggleHighlightOT]);
 
@@ -181,7 +183,7 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                             aria-label={`Highlight OT ${row.ot}`}
                             aria-pressed={highlightedOTChar === row.ot}
                           >
-                            <img src={highlighter} alt="" aria-hidden="true" className="w-4 h-4" />
+                            <img src={highlighter} alt="highlight" aria-hidden="true" className="w-4 h-4" />
                           </button>
                         ) : null}
                     </>
@@ -196,4 +198,7 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
   );
 };
 
-export default KeyTable;
+KeyTable.displayName = 'KeyTable';
+
+export default React.memo(KeyTable);
+

@@ -1,13 +1,34 @@
+/**
+ * Shift-based column mapping for fixed-length mode.
+ * 
+ * Builds the OT→ZT allocation grid by respecting locked/selected mappings
+ * and creating deception cells when necessary to align forced groups.
+ * 
+ * The algorithm:
+ * 1. Iterates through OT cells in row-major order
+ * 2. For unlocked cells: allocates groupSize tokens greedily
+ * 3. For locked/selected cells: scans forward to find matching token group,
+ *    creating deception cells for skipped tokens
+ * 4. Handles edge cases like protecting upcoming forced groups
+ */
+
 import type { OTChar } from '../types/domain';
 import type { Column } from '../components/types';
 import type { ZTToken } from '../types/domain';
 
-//This is for fixed-length mode only
-// Build shift-only columns with deception (!) cells without reordering original token indices.
-// Forced map combines lockedKeys + selections (selections do not overwrite locks).
+/**
+ * Build allocation columns for fixed-length mode with lock/selection awareness.
+ * 
+ * @param otRows OT character rows
+ * @param ztTokens Raw ZT tokens (individual characters in fixed-length mode)
+ * @param lockedKeys User-confirmed OT→ZT mappings
+ * @param selections Current manual selections
+ * @param groupSize Size of token groups
+ * @returns Column layout with deception cells
+ */
 export function buildShiftOnlyColumns(
   otRows: OTChar[][],
-  ztTokens: ZTToken[], // raw tokens (single chars when fixedLength mode)
+  ztTokens: ZTToken[],
   lockedKeys?: Record<string, string>,
   selections?: Record<string, string | null>,
   groupSize: number = 1,

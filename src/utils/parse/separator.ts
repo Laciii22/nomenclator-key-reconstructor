@@ -1,5 +1,20 @@
+/**
+ * Parser for delimiter-separated cipher text.
+ * 
+ * Splits the raw text by a separator character/string.
+ * Validates that the token count matches the OT character count.
+ */
+
 import type { ZTToken } from '../../types/domain';
 
+/**
+ * Parse raw cipher text using delimiter separation.
+ * 
+ * @param raw The raw cipher text
+ * @param separator The delimiter between tokens
+ * @param otCount Number of OT characters (for validation)
+ * @returns Parsed tokens and validation status
+ */
 export function parseSeparatorRaw(raw: string, separator: string, otCount: number) {
   const s = raw.trim();
   if (!s) return { tokens: [] as ZTToken[], klamacStatus: 'none' as const, statusMessage: null as string | null };

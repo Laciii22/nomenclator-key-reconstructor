@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { KeysPerOTMode } from '../components/types';
 import type { LocalSettings } from './useLocalSettings';
+import type { OTChar } from '../types/domain';
 
 export function useNomenklatorPersistence(params: {
   settings: LocalSettings;
@@ -19,7 +20,7 @@ export function useNomenklatorPersistence(params: {
 
   setLockedKeys: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setBracketedIndices: React.Dispatch<React.SetStateAction<number[]>>;
-  setCustomOtGroups: React.Dispatch<React.SetStateAction<any>>;
+  setCustomOtGroups: React.Dispatch<React.SetStateAction<OTChar[] | null>>;
 }) {
   const {
     settings,

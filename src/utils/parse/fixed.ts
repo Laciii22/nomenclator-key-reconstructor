@@ -1,6 +1,20 @@
-import type { ZTToken } from '../../types/domain';
-// import { logicalGroups } from './fixedLength';
+/**
+ * Parser for fixed-length cipher text.
+ * 
+ * Splits the raw text into fixed-size character groups.
+ * Validates that the text length is compatible with the group size.
+ */
 
+import type { ZTToken } from '../../types/domain';
+
+/**
+ * Parse raw cipher text using fixed-length grouping.
+ * 
+ * @param raw The raw cipher text (all characters)
+ * @param groupSize Number of characters per group
+ * @param otCount Number of OT characters (for validation)
+ * @returns Parsed tokens and validation status
+ */
 export function parseFixedRaw(raw: string, groupSize: number, otCount: number) {
   const s = raw.trim();
   if (!s) return { tokens: [] as ZTToken[], klamacStatus: 'none' as const, statusMessage: null as string | null };

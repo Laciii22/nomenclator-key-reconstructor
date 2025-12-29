@@ -1,6 +1,22 @@
+/**
+ * Utilities for mapping OT characters to expected ZT token indices.
+ * 
+ * Handles deception/null tokens (bracketed) by skipping them in the alignment.
+ */
+
 import type { OTChar, ZTToken } from '../types/domain';
 
-// Sequential expected ZT indices per OT char (skips bracketed (deception) tokens)
+/**
+ * Compute expected ZT indices for each OT character.
+ * 
+ * Aligns OT characters with ZT tokens sequentially, skipping
+ * any tokens marked as deception/null (bracketed).
+ * 
+ * @param otRowsLocal Rows of OT characters
+ * @param ztTokensLocal All ZT tokens
+ * @param bracketed Indices of tokens marked as deception/null
+ * @returns Map of OT char → array of expected ZT indices
+ */
 export function getExpectedZTIndicesForOT(
   otRowsLocal: OTChar[][],
   ztTokensLocal: ZTToken[],

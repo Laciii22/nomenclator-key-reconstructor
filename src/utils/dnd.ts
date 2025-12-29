@@ -1,13 +1,38 @@
-import type { DragEndEvent } from '@dnd-kit/core';
+/**
+ * Utilities for drag-and-drop operations in the mapping grid.
+ * 
+ * Currently supports merging adjacent OT cells by dragging one onto the next.
+ */
 
-// Resolve a drag-end event into flat merge positions (fromFlat, targetFlat)
-// Returns null when the drop does not represent a valid immediate-right merge.
-export function resolveMergeFromEvent(evt: DragEndEvent, columns: any[]) {
+import type { DragEndEvent } from '@dnd-kit/core';
+import type { Column } from '../components/types';
+
+interface DragData {
+  sourceRow?: number;
+  sourceCol?: number;
+  row?: number;
+  col?: number;
+  isKlamac?: boolean;
+}
+
+/**
+ * Resolve a drag-end event into a valid merge operation.
+ * 
+ * A merge is valid when:
+ * - Source and target are both OT cells
+ * - Target is exactly one column to the right of source
+ * - Neither cell is a deception/null cell
+ * 
+ * @param evt The drag end event from @dnd-kit
+ * @param columns The current allocation grid
+ * @returns Flat indices for source and target, or null if invalid
+ */
+export function resolveMergeFromEvent(evt: DragEndEvent, columns: Column[][]) {
   const active = evt.active;
   const over = evt.over;
   if (!active || !over) return null;
-  const src = (active.data as any)?.current;
-  const dst = (over.data as any)?.current;
+  const src = active.data?.current as DragData | undefined;
+  const dst = over.data?.current as DragData | undefined;
 
   // Reject drops onto special (klamac) targets
   if (dst && dst.isKlamac) return null;

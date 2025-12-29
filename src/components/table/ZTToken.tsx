@@ -1,60 +1,64 @@
-import React, { useState } from 'react';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
+/**
+ * ZTToken: A draggable cipher token component.
+ * 
+ * Represents a single ZT (cipher text) token in the grid.
+ * Supports drag-and-drop for manual token reordering.
+ * Shows visual state for locked tokens and drag operations.
+ */
+
+import React from 'react';
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import type { ZTTokenProps } from '../types';
-import ZTTokenEditor from './ZTTokenEditor';
 import { colors } from '../../utils/colors';
 
-
+interface DragData {
+  type?: 'zt' | 'ot';
+  tokenIndex?: number;
+}
 
 /**
- * ZTTokenComp renders a draggable token representing a piece of the cipher text (ZT).
- *
- * Drag payload includes:
- * - type: 'zt'
- * - token: the token data
- * - tokenIndex: flat index in the ZT stream
- * - row/col: source cell coordinates
+ * A draggable ZT token component with lock state and swap affordances.
  */
-const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit, isLocked }) => {
+const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked }) => {
+  const { active } = useDndContext();
+  const activeData = (active?.data?.current ?? {}) as DragData;
+  const activeType = activeData?.type;
+  const isDraggingZT = activeType === 'zt';
+  const activeTokenIndex = typeof activeData?.tokenIndex === 'number' ? activeData.tokenIndex : null;
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `zt-${token.id}`,
     data: { type: 'zt', token, tokenIndex, row, col },
     disabled: Boolean(isLocked),
   });
 
-  const { setNodeRef: setDropRef } = useDroppable({
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `zt-drop-${tokenIndex}`,
     data: { type: 'zt', tokenIndex, row, col },
   });
 
-  const [editing, setEditing] = useState(false);
+  // Visual-only drop affordance for swapping tokens.
+  // Real enforcement still happens in the drag-end handler.
+  const isAdjacentSwapTarget = isDraggingZT && activeTokenIndex != null && Math.abs(activeTokenIndex - tokenIndex) === 1;
+  const canAcceptZtSwap = Boolean(isAdjacentSwapTarget && !isLocked);
+  const isValidZtHover = isOver && canAcceptZtSwap;
+  const isInvalidZtHover = isOver && isDraggingZT && !canAcceptZtSwap;
 
   return (
-    <span ref={setDropRef} style={{ display: 'inline-block' }}>
+    <span
+      ref={setDropRef}
+      style={{ display: 'inline-block' }}
+      className={`${isAdjacentSwapTarget ? 'ring-1 ring-green-200 rounded' : ''} ${isValidZtHover ? 'ring-2 ring-green-300 rounded bg-green-50' : ''} ${isInvalidZtHover ? 'ring-2 ring-red-300 rounded bg-red-50' : ''}`}
+    >
       <span ref={setNodeRef} style={{ touchAction: 'none' }}>
-      {editing ? (
-        <ZTTokenEditor
-          tokenText={token.text}
-          isLocked={!!isLocked}
-          onCommit={(next) => { if (onEdit) onEdit(tokenIndex, next); setEditing(false); }}
-          onCancel={() => setEditing(false)}
-        />
-      ) : (
         <span
           {...attributes}
           {...listeners}
-          className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? colors.tokenLocked : colors.tokenUnlocked} ${isDragging ? 'opacity-50' : ''}`}
-          title={isLocked ? 'Locked token – cannot edit' : 'Click to edit, drag to move'}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isLocked) return;
-            setEditing(true);
-          }}
-          aria-pressed={isLocked}
+          className={`inline-block text-xs px-0.5 rounded font-mono border select-none ${isLocked ? `cursor-default ${colors.tokenLocked}` : `${isDragging ? 'cursor-grabbing opacity-60' : 'cursor-grab'} ${colors.tokenUnlocked}`} ${isDragging ? 'shadow-sm' : ''}`}
+          title={isLocked ? 'Locked token' : 'Drag to move'}
         >
           {token.text}
         </span>
-      )}
       </span>
     </span>
   );
