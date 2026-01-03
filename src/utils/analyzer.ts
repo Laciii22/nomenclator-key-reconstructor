@@ -10,8 +10,10 @@ import { computePairsFromColumns } from './columns';
 
 /**
  * Maps each OT character to its selected ZT token (or null if unselected).
+ * - In 'single' mode: string | null (one token per character)
+ * - In 'multiple' mode: string[] (multiple homophones per character)
  */
-export type SelectionMap = Record<string, string | null>;
+export type SelectionMap = Record<string, string | string[] | null>;
 
 /**
  * Options for the analysis algorithm.
@@ -19,6 +21,8 @@ export type SelectionMap = Record<string, string | null>;
 export type AnalysisOptions = {
   /** Whether each OT char can map to single or multiple ZT tokens */
   keysPerOTMode: KeysPerOTMode;
+  /** Size of token groups in fixed-length mode (1 for separator mode) */
+  groupSize?: number;
 };
 
 /**
@@ -42,8 +46,8 @@ export type Candidate = {
  * Result of frequency analysis, containing suggested mappings and candidates.
  */
 export type AnalysisResult = {
-  /** Suggested OT→ZT locks (includes existing locked keys) */
-  proposedLocks: Record<string, string>;
+  /** Suggested OT→ZT locks (includes existing locked keys, single-key: string, multi-key: string[]) */
+  proposedLocks: Record<string, string | string[]>;
   /** Adjusted token allocation counts per grid cell */
   proposedRowGroups: number[][];
   /** All candidate tokens for each OT character, sorted by score */
@@ -87,9 +91,10 @@ export function fixedModeScore(params: {
   columns: ColumnLike;
   effectiveZtTokens: ZTToken[];
   groupSize: number;
+  keysPerOTMode?: KeysPerOTMode;
 }): { support: number; occurrences: number; score: number } {
-  const { token, otChar, columns, effectiveZtTokens, groupSize } = params;
-  const pairs = computePairsFromColumns(columns, effectiveZtTokens, groupSize);
+  const { token, otChar, columns, effectiveZtTokens, groupSize, keysPerOTMode = 'single' } = params;
+  const pairs = computePairsFromColumns(columns, effectiveZtTokens, groupSize, keysPerOTMode);
 
   const otCellCounts: Record<string, number> = {};
   for (const p of pairs) otCellCounts[p.ot] = (otCellCounts[p.ot] || 0) + 1;
@@ -146,10 +151,23 @@ export function analyze(
   ztTokens: ZTToken[],
   rowGroups: number[][],
   _options: AnalysisOptions,
-  lockedKeys?: Record<string, string>
+  lockedKeys?: Record<string, string | string[]>
 ): AnalysisResult {
   // Multi-length token sequence heuristic (per-character best sequence of up to K tokens)
   const flatOT = flattenOT(otRows);
+  
+  // Normalize locked keys to single-key format for backward compatibility
+  // In multi-key mode, we only use the first token for allocation purposes
+  const normalizedLocks: Record<string, string> = {};
+  if (lockedKeys) {
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      if (Array.isArray(val)) {
+        if (val.length > 0) normalizedLocks[ch] = val[0];
+      } else if (val) {
+        normalizedLocks[ch] = val;
+      }
+    }
+  }
 
   // Helpers extracted from original implementation
   function applyLockedLengths(workingGroups: number[][], flat: (OTChar | null)[], lockedLenIncoming: Record<string, number>) {
@@ -203,18 +221,62 @@ export function analyze(
     return charPositions;
   }
 
-  function buildCandidates(ztTokens: ZTToken[], charPositions: Record<string, number[]>) {
+  function buildCandidates(ztTokens: ZTToken[], charPositions: Record<string, number[]>, keysPerOTMode: KeysPerOTMode, groupSize: number = 1) {
     const uniqueTokens = Array.from(new Set(ztTokens.map(t => t.text)));
     const freq: Record<string, number> = {};
     for (const t of ztTokens) freq[t.text] = (freq[t.text] || 0) + 1;
+    
+    // Calculate deception count: total ZT tokens minus total OT characters
+    // Note: ztTokens here are already logical tokens (after buildLogicalTokens),
+    // so the count is already in groups, not individual characters
+    const totalOTChars = Object.values(charPositions).reduce((sum, positions) => sum + positions.length, 0);
+    const deceptionCount = ztTokens.length - totalOTChars;
+    
+    console.log('buildCandidates DEBUG:', {
+      totalZTTokens: ztTokens.length,
+      totalOTChars,
+      deceptionCount,
+      keysPerOTMode,
+      groupSize,
+      ztTokenTexts: ztTokens.map(t => t.text),
+      charPositions
+    });
+    
     const candidatesByChar: Record<string, Candidate[]> = {};
     for (const ch of Object.keys(charPositions)) {
       const cellCount = charPositions[ch].length; // number of cells for this OT character
-      candidatesByChar[ch] = uniqueTokens.map(tok => {
+      const cellPositions = charPositions[ch]; // which positions this character appears at
+      
+      // In multi-key mode, only consider tokens at positions where this character appears
+      // With deception tokens, allow ±deceptionCount offset from character positions
+      const validTokens = keysPerOTMode === 'multiple'
+        ? uniqueTokens.filter(tok => {
+            // Find all positions where this token appears in ZT
+            const tokenPositions: number[] = [];
+            for (let i = 0; i < ztTokens.length; i++) {
+              if (ztTokens[i].text === tok) tokenPositions.push(i);
+            }
+            // Check if any token position is within ±deceptionCount range of OT character positions
+            return tokenPositions.some(tp => 
+              cellPositions.some(cp => Math.abs(tp - cp) <= deceptionCount)
+            );
+          })
+        : uniqueTokens;
+      
+      candidatesByChar[ch] = validTokens.map(tok => {
         const tokenCount = freq[tok] || 0;
         let score = 0;
         if (cellCount > 0 || tokenCount > 0) {
-          score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
+          if (keysPerOTMode === 'multiple') {
+            // In multi-key mode: score = 1.0 if token frequency exactly matches how many times
+            // we'd expect it as a homophone. E.g., if A appears 3 times and token "11" appears 1 time,
+            // it's a perfect candidate if we select 3 different homophones each appearing once.
+            // Score represents "fitness" - higher is better
+            score = Math.min(tokenCount / cellCount, 1.0);
+          } else {
+            // Single-key mode: expect 1:1 mapping
+            score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
+          }
         }
         return {
           token: tok,
@@ -284,9 +346,9 @@ export function analyze(
 
   // If there are incoming locked keys, adjust rowGroups to honor their lengths before computing starts
   const workingGroups: number[][] = clone2D(rowGroups);
-  if (lockedKeys && Object.keys(lockedKeys).length > 0) {
+  if (normalizedLocks && Object.keys(normalizedLocks).length > 0) {
     const lockedLenIncoming: Record<string, number> = {};
-    for (const [ch] of Object.entries(lockedKeys)) lockedLenIncoming[ch] = 1;
+    for (const [ch] of Object.entries(normalizedLocks)) lockedLenIncoming[ch] = 1;
     const cells = flattenGroups(workingGroups);
     let total = 0;
     for (const cell of cells) total += cell.count;
@@ -296,10 +358,11 @@ export function analyze(
 
   // Count occurrences per char and per token
   const charPositions = computeCharPositions(flatOT);
-  const candidatesByChar = buildCandidates(ztTokens, charPositions);
+  const groupSize = _options.groupSize || 1;
+  const candidatesByChar = buildCandidates(ztTokens, charPositions, _options.keysPerOTMode, groupSize);
 
   // Build proposed rowGroups honoring incoming lockedKeys only (no auto locks)
-  const proposed = buildProposedRowGroups(rowGroups, flatOT, lockedKeys);
+  const proposed = buildProposedRowGroups(rowGroups, flatOT, normalizedLocks);
 
   return {
     proposedLocks: { ...(lockedKeys || {}) },

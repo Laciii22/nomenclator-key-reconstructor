@@ -5,6 +5,7 @@ import type { SelectionMap } from '../utils/analyzer';
 import { resolveMergeFromEvent } from '../utils/dnd';
 import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import type { DragEndEvent } from '@dnd-kit/core';
+import { normalizeToArray, getReservedTokens } from '../utils/multiKeyHelpers';
 import { useParsing } from './useParsing';
 import { useMapping } from './useMapping';
 import { useAnalysis } from './useAnalysis';
@@ -54,7 +55,7 @@ export function useNomenklator() {
   const [keysPerOTMode, setKeysPerOTMode] = useState<KeysPerOTMode>('single');
 
   // Locks & selections
-  const [lockedKeys, setLockedKeys] = useState<Record<string, string>>({});
+  const [lockedKeys, setLockedKeys] = useState<Record<string, string | string[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
   const isDraggingRef = useRef(false);
@@ -75,13 +76,14 @@ export function useNomenklator() {
 
   // Derived sets
   const reservedTokens = useMemo(() => {
-    const set = new Set<string>();
-    // Keep already-chosen tokens unavailable to other OTs to avoid the UI
-    // suggesting collisions that the user would immediately have to undo.
-    for (const v of Object.values(lockedKeys)) if (v) set.add(v);
-    for (const v of Object.values(selections)) if (v) set.add(v);
-    return set;
-  }, [lockedKeys, selections]);
+    if (keysPerOTMode === 'multiple') {
+      // In multi-key mode, tokens can be used by multiple OT characters (homophones)
+      // So we don't mark them as reserved
+      return new Set<string>();
+    }
+    // Single-key mode: use helper to gather all reserved tokens
+    return getReservedTokens(lockedKeys, selections);
+  }, [lockedKeys, selections, keysPerOTMode]);
 
   // Optional custom grouping of OT characters (supports merging adjacent OT cells)
   const [customOtGroups, setCustomOtGroups] = useState<OTChar[] | null>(null);
@@ -99,16 +101,26 @@ export function useNomenklator() {
   }, [customOtGroups, otChars]);
 
   const countMergeableOccurrences = useCallback((groups: OTChar[], pattern: string) => {
-    return countMergeableOccurrencesHelper(groups, pattern, lockedKeys);
+    // Normalize to single-key format for this helper
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+    return countMergeableOccurrencesHelper(groups, pattern, normalizedLocks);
   }, [lockedKeys]);
 
   const mergeAllOccurrences = useCallback((pattern: string) => {
     const flat = getFlatOTGroups();
-    const res = mergeAllOccurrencesHelper(flat, pattern, lockedKeys);
+    // Normalize to single-key format for this helper
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+    const res = mergeAllOccurrencesHelper(flat, pattern, normalizedLocks);
     if (!res) return;
     setCustomOtGroups(res.nextGroups);
     setMergeAllPrompt(res.remaining > 0 ? { pattern: res.target, remaining: res.remaining } : null);
-  }, [countMergeableOccurrences, getFlatOTGroups, lockedKeys]);
+  }, [getFlatOTGroups, lockedKeys]);
 
   const dismissMergeAllPrompt = useCallback(() => {
     setMergeAllPrompt(null);
@@ -170,6 +182,7 @@ export function useNomenklator() {
     selections,
     ztParseMode,
     groupSize,
+    keysPerOTMode,
   });
 
   const { columns, manualOtCounts, shiftMeta } = mapping;
@@ -238,16 +251,37 @@ export function useNomenklator() {
   });
 
   const onLockOT = useCallback((ot: string, val: string) => {
-    setLockedKeys(prev => ({ ...prev, [ot]: val }));
-  }, []);
-
-  const onUnlockOT = useCallback((ot: string) => {
     setLockedKeys(prev => {
+      if (keysPerOTMode === 'multiple') {
+        // In multi-key mode, add to array
+        const current = Array.isArray(prev[ot]) ? prev[ot] : [];
+        if (current.includes(val)) return prev; // already locked
+        return { ...prev, [ot]: [...current, val] };
+      }
+      // Single-key mode: replace
+      return { ...prev, [ot]: val };
+    });
+  }, [keysPerOTMode]);
+
+  const onUnlockOT = useCallback((ot: string, specificToken?: string) => {
+    setLockedKeys(prev => {
+      if (keysPerOTMode === 'multiple' && specificToken) {
+        // In multi-key mode, remove specific token
+        const current = Array.isArray(prev[ot]) ? prev[ot] : [];
+        const filtered = current.filter(t => t !== specificToken);
+        if (filtered.length === 0) {
+          const c = { ...prev };
+          delete c[ot];
+          return c;
+        }
+        return { ...prev, [ot]: filtered };
+      }
+      // Single-key mode or clear all: remove entire key
       const c = { ...prev };
       delete c[ot];
       return c;
     });
-  }, []);
+  }, [keysPerOTMode]);
   // drag behavior intentionally disabled in simplified mode
 
   // uniqueZTTokenTexts comes from parsing hook
@@ -276,21 +310,54 @@ export function useNomenklator() {
   }, [bracketedIndices.length, effectiveZtTokens.length, fixedLength, otRows, setSelectionError, ztParseMode]);
 
   // Choose suggestions where exactly one candidate has score==1 for that OT char.
+  // In multi-key mode, allow multiple high-scoring candidates per character (homophones).
   // If any OT char has more than one score==1 candidate, abort and set an error.
   const chooseScoreOneSuggestions = useCallback(() => {
-    const picks: Record<string, string> = {};
+    const picks: Record<string, string | string[]> = {};
     const ambiguous: string[] = [];
     const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    
     for (const [ch, list] of Object.entries(candidatesByChar)) {
       // build candidate options to know which candidates are disabled by ordering/reserved rules
-      const opts = list.map((c, idx) => buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize: gs, reservedTokens, selectionVal: selections[ch], lockedVal: lockedKeys?.[ch], sharedColumns: columns }));
-      const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
-      if (enabledScore1.length > 1) {
-        ambiguous.push(ch);
-        continue;
+      const lockedVal = lockedKeys?.[ch];
+      const normalizedLockedVal = Array.isArray(lockedVal) ? lockedVal[0] : lockedVal;
+      const selectionVal = selections[ch];
+      const normalizedSelectionVal = Array.isArray(selectionVal) ? selectionVal[0] : (selectionVal ?? undefined);
+      const opts = list.map((c, idx) => buildCandidateOptions({ 
+        c, 
+        idx, 
+        ch, 
+        otRows, 
+        effectiveZtTokens, 
+        groupSize: gs, 
+        reservedTokens, 
+        selectionVal: normalizedSelectionVal, 
+        lockedVal: normalizedLockedVal, 
+        sharedColumns: columns 
+      }));
+      
+      if (keysPerOTMode === 'multiple') {
+        // In multi-key mode, select top N candidates based on score (homophones)
+        const highScoreCandidates = opts
+          .map((opt, i) => ({ opt, candidate: list[i] }))
+          .filter(({ opt, candidate }) => !opt.disabled && candidate.score >= 0.5)
+          .sort((a, b) => b.candidate.score - a.candidate.score)
+          .slice(0, 3); // Top 3 candidates
+        
+        if (highScoreCandidates.length > 0) {
+          picks[ch] = highScoreCandidates.map(({ opt }) => opt.token);
+        }
+      } else {
+        // Single-key mode: exactly one score==1 candidate
+        const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
+        if (enabledScore1.length > 1) {
+          ambiguous.push(ch);
+          continue;
+        }
+        if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
       }
-      if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
     }
+    
     // Apply only the unambiguous picks, preserving existing selections for others
     if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
     if (ambiguous.length) {
@@ -299,7 +366,7 @@ export function useNomenklator() {
     }
     setSelectionError(null);
     return true;
-  }, [candidatesByChar, columns, effectiveZtTokens, fixedLength, lockedKeys, otRows, reservedTokens, selections, setSelectionError, setSelections, ztParseMode]);
+  }, [candidatesByChar, columns, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, reservedTokens, selections, setSelectionError, setSelections, ztParseMode]);
 
   const editZtToken = useCallback((effIndex: number, newText: string) => {
     // Map effective index (skipping bracketed tokens) back to original index
@@ -309,7 +376,11 @@ export function useNomenklator() {
     const oldTokenText = ztTokens[orig].text;
     // Disallow editing of a token value that is currently locked: otherwise the
     // UI would silently invalidate the lock the user explicitly set.
-    const lockedValues = new Set(Object.values(lockedKeys));
+    const lockedValues = new Set<string>();
+    for (const val of Object.values(lockedKeys)) {
+      const tokens = normalizeToArray(val);
+      tokens.forEach(t => lockedValues.add(t));
+    }
     if (lockedValues.has(oldTokenText)) return; // locked -> ignore edit
     const trimmed = newText.trim();
     if (!trimmed) return; // avoid empty tokens
@@ -327,8 +398,16 @@ export function useNomenklator() {
     // Revalidate locks: any lock whose value no longer exists is dropped
     const existingSet = new Set(tokensArr);
     setLockedKeys(prev => {
-      const next: Record<string,string> = {};
-      for (const [k,v] of Object.entries(prev)) if (existingSet.has(v)) next[k] = v; // keep only surviving lock values
+      const next: Record<string, string | string[]> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        // Handle both single and multi-key formats
+        if (Array.isArray(v)) {
+          const surviving = v.filter(token => existingSet.has(token));
+          if (surviving.length > 0) next[k] = surviving;
+        } else if (existingSet.has(v)) {
+          next[k] = v;
+        }
+      }
       return next;
     });
     // Rebuild raw string
@@ -341,15 +420,36 @@ export function useNomenklator() {
   const applySelection = useCallback(() => {
     const err = previewSelection();
     if (err) return;
-    const newLocks: Record<string, string> = {};
-    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) newLocks[ch] = seq as string;
-    if (Object.keys(newLocks).length) setLockedKeys(prev => ({ ...prev, ...newLocks }));
-  }, [lockedKeys, previewSelection, selections]);
+    const newLocks: Record<string, string | string[]> = {};
+    for (const [ch, seq] of Object.entries(selections)) {
+      if (!seq) continue;
+      if (keysPerOTMode === 'multiple') {
+        // In multi-key mode, merge with existing locks
+        const existing = normalizeToArray(lockedKeys[ch]);
+        const selected = normalizeToArray(seq);
+        const merged = [...new Set([...existing, ...selected])];
+        if (merged.length > 0) newLocks[ch] = merged;
+      } else {
+        // Single-key mode: only lock if not already locked
+        if (!lockedKeys[ch]) newLocks[ch] = seq as string;
+      }
+    }
+    if (Object.keys(newLocks).length) {
+      setLockedKeys(prev => ({ ...prev, ...newLocks }));
+      // Clear selections after applying
+      setSelections({});
+    }
+  }, [keysPerOTMode, lockedKeys, previewSelection, selections, setSelections]);
 
   // Merge adjacent OT groups: fromIndex merged into toIndex (concatenate text), only if toIndex is adjacent (fromIndex+1)
   const joinOTAt = useCallback((fromIndex: number, toIndex: number) => {
     const flat: OTChar[] = getFlatOTGroups();
-    const res = tryJoinAdjacentOtGroups(flat, fromIndex, toIndex, lockedKeys);
+    // Normalize to single-key format for this helper
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+    const res = tryJoinAdjacentOtGroups(flat, fromIndex, toIndex, normalizedLocks);
     if (!res) return;
     setCustomOtGroups(res.nextGroups);
 
@@ -406,8 +506,13 @@ export function useNomenklator() {
         if (Math.abs(srcIndex - dstIndex) === 1) {
           // Prevent swaps when either token sits inside a locked OT cell.
           // Locks are a user assertion; swapping tokens under a lock would be surprising.
-          if (tokenIndexIsLockedInColumns(columns, lockedKeys, srcIndex)) return;
-          if (tokenIndexIsLockedInColumns(columns, lockedKeys, dstIndex)) return;
+          // Normalize to single-key format for this helper
+          const normalizedLocks: Record<string, string> = {};
+          for (const [ch, val] of Object.entries(lockedKeys)) {
+            normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+          }
+          if (tokenIndexIsLockedInColumns(columns, normalizedLocks, srcIndex)) return;
+          if (tokenIndexIsLockedInColumns(columns, normalizedLocks, dstIndex)) return;
 
           const tokensArr = ztTokens.map(t => t.text);
           // swap
@@ -462,8 +567,10 @@ export function useNomenklator() {
 
   // When manual shift counts change in fixed-length mode and analysis has been
   // run at least once, automatically refresh suggestions so the dropdowns
-  // immediately reflect the new OT→ZT mapping (e.g. O → 33) without needing
-  // to click "Run analysis" again.
+  // When manual shifts occur, refresh analysis to update candidate scores based on new column positions.
+  // This ensures suggestions reflect the current grid layout (e.g., after shifting O from pos 4 to 5,
+  // candidates for O should match tokens at the new position).
+  // Watch manualOtCounts instead of columns to avoid triggering on selection changes.
   React.useEffect(() => {
     if (ztParseMode !== 'fixedLength') return;
     if (!analysisDone) return;

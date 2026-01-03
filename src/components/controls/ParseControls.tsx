@@ -93,10 +93,13 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           id="keysPerOT"
           className="border border-gray-300 rounded p-1 text-sm"
           value={keysPerOTMode}
-          onChange={(e) => onKeysPerOTModeChange(e.target.value as KeysPerOTMode)}
+          onChange={(e) => {
+            console.log('Keys per OT mode changed to:', e.target.value);
+            onKeysPerOTModeChange(e.target.value as KeysPerOTMode);
+          }}
         >
-          <option value="single">One OT character per key set</option>
-          <option value="multiple" disabled>Multiple keys per character (coming soon)</option>
+          <option value="single">One key per OT character</option>
+          <option value="multiple">Multiple keys per character (homophones)</option>
         </select>
         <button
           className="ml-auto inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

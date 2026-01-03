@@ -144,7 +144,6 @@ const OTCell: React.FC<OTCellProps> = ({
   const isHighlighted = Boolean(ot && highlightedOTChar === ot.ch);
   const canShowFixedLengthActions = Boolean(
     isFixedLength 
-    && ot 
     && !lockedValue 
     && typeof flatIndex === 'number' 
     && flatIndex >= 0
@@ -201,7 +200,11 @@ const OTCell: React.FC<OTCellProps> = ({
     return (
       <button
         type="button"
-        className={`px-1 py-0.5 text-xs rounded border border-transparent ${canShift ? 'text-gray-700 hover:bg-gray-100' : 'text-gray-300 cursor-default'}`}
+        className={`px-1 py-0.5 text-xs rounded border ${
+          canShift 
+            ? 'border-gray-300 hover:bg-gray-100 hover:border-gray-400' 
+            : 'border-transparent opacity-30 cursor-not-allowed'
+        }`}
         onClick={e => {
           e.stopPropagation();
           if (!canShift || !onShift) return;
@@ -210,21 +213,23 @@ const OTCell: React.FC<OTCellProps> = ({
         disabled={!canShift}
         title={title}
       >
-        {icon}
+        <img src={icon} alt={direction} className="w-2 h-2" />
       </button>
     );
   };
 
   // Helper to get OT label className
   const getOtLabelClassName = (
-    locked: string | null | undefined, 
+    locked: string | string[] | null | undefined, 
     dragging: boolean, 
     highlighted: boolean
   ) => {
     const baseClasses = 'inline-block px-1 rounded font-mono text-sm font-bold select-none';
     
+    const isLocked = locked && (typeof locked === 'string' || locked.length > 0);
+    
     let stateClasses: string;
-    if (locked) {
+    if (isLocked) {
       stateClasses = 'cursor-default bg-green-200 text-neutral-950 border-green-300';
     } else if (dragging) {
       stateClasses = 'cursor-grabbing opacity-60 bg-yellow-100 text-yellow-800 border-yellow-300';
@@ -265,7 +270,7 @@ const OTCell: React.FC<OTCellProps> = ({
             {...attributes}
             {...(!lockedValue ? listeners : {})}
             className={getOtLabelClassName(lockedValue, isDragging, isHighlighted)}
-            title={lockedValue ? `OT: ${ot.ch} — locked (${lockedValue})` : `OT: ${ot.ch}`}
+            title={lockedValue ? `OT: ${ot.ch} — locked (${Array.isArray(lockedValue) ? lockedValue.join(', ') : lockedValue})` : `OT: ${ot.ch}`}
           >
             {ot.ch}
           </span>
@@ -351,6 +356,7 @@ const OTCell: React.FC<OTCellProps> = ({
         >
         <img
           src = {minus}
+          className="h-2 w-2"
         />
 
         </button>

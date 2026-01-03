@@ -1,14 +1,14 @@
 import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
 import type { OTChar, ZTToken } from '../../types/domain';
-import type { Candidate } from '../../utils/analyzer';
+import type { Candidate, SelectionMap } from '../../utils/analyzer';
 import type { Column } from '../types';
 
 type Props = {
   candidatesByChar: Record<string, Candidate[]>;
   lockedKeys: Record<string, string>;
-  selections: Record<string, string | null>;
-  setSelections: React.Dispatch<React.SetStateAction<Record<string, string | null>>>;
+  selections: SelectionMap;
+  setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
   otRows: OTChar[][];
   effectiveZtTokens: ZTToken[];
   fixedLength: number;
@@ -24,7 +24,8 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
       {Object.entries(candidatesByChar).sort((a,b)=> a[0].localeCompare(b[0])).map(([ch, list]) => {
         const lockedVal = lockedKeys[ch];
         const selectionVal = selections[ch];
-        const currentValue = selectionVal ?? lockedVal ?? '';
+        const normalizedSelectionVal = Array.isArray(selectionVal) ? selectionVal[0] : (selectionVal ?? null);
+        const currentValue = normalizedSelectionVal ?? lockedVal ?? '';
         const disabledSelect = Boolean(lockedVal);
         const extendedList = [...list];
         if (lockedVal && !extendedList.some(c => c.token === lockedVal)) {
@@ -51,7 +52,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
             >
               <option value="">None</option>
               {sortedByScore.filter((c) => c.length === 1).map((c, idx) => {
-                const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns });
+                const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal: normalizedSelectionVal, lockedVal, sharedColumns });
                 return (
                   <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>
                 );

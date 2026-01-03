@@ -1,11 +1,12 @@
 import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
+import type { SelectionMap } from '../../utils/analyzer';
 
 type Props = {
   candidatesByChar: Record<string, any[]>;
   lockedKeys: Record<string, string>;
-  selections: Record<string, any>;
-  setSelections: any;
+  selections: SelectionMap;
+  setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
   otRows: any[];
   effectiveZtTokens: any[];
   reservedTokens: Set<string>;

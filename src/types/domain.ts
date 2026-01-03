@@ -39,11 +39,14 @@ export type KeysPerOTMode = 'single' | 'multiple';
 
 /**
  * User-confirmed mappings that shouldn't change during re-analysis.
- * Maps OT character → ZT token text.
+ * - In 'single' mode: string (one token per character)
+ * - In 'multiple' mode: string[] (multiple homophones per character)
  */
-export type LockedKeys = Record<string, string>;
+export type LockedKeys = Record<string, string | string[]>;
 
 /**
- * Maps each OT character to a selected ZT token (or null if unselected).
+ * Maps each OT character to selected ZT token(s) (or null if unselected).
+ * - In 'single' mode: string | null (one token per character)
+ * - In 'multiple' mode: string[] (multiple homophones per character)
  */
-export type SelectionMap = Record<string, string | null>;
+export type SelectionMap = Record<string, string | string[] | null>;

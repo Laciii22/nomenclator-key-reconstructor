@@ -6,6 +6,7 @@ import { getGroupSize } from '../../utils/parseStrategies';
 import padlock from '../../assets/icons/padlock.png';
 import highlighter from '../../assets/icons/highlighter.png';
 import { colors } from '../../utils/colors';
+import { normalizeToArray } from '../../utils/multiKeyHelpers';
 
 
 
@@ -16,6 +17,7 @@ type SharedColumns = Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
  *
  * - Computes pairs by walking the same allocation that MappingTable uses (rowGroups or proportional fallback).
  * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
+ * - In 'multiple' mode, it displays all homophone tokens for each character.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
 const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>> }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT }) => {
@@ -23,10 +25,26 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
     const gs = getGroupSize(ztParseMode, groupSize);
-    return buildColumns(otRows, ztTokens, lockedKeys, selections, gs);
+    
+    // Normalize to single-key format for buildColumns
+    const normalizedLocks: Record<string, string> = {};
+    if (lockedKeys) {
+      for (const [ch, val] of Object.entries(lockedKeys)) {
+        normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+      }
+    }
+    
+    const normalizedSelections: Record<string, string | null> = {};
+    if (selections) {
+      for (const [ch, val] of Object.entries(selections)) {
+        normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
+      }
+    }
+    
+    return buildColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, gs);
   }, [columns, otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
 
-  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, getGroupSize(ztParseMode, groupSize)), [colsForMode, ztTokens, ztParseMode, groupSize]);
+  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, getGroupSize(ztParseMode, groupSize), keysPerOTMode), [colsForMode, ztTokens, ztParseMode, groupSize, keysPerOTMode]);
 
   // Track OT chars that have at least one empty mapped cell.
   // This is separate from the aggregated display (which can omit empty entries
@@ -71,14 +89,33 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
     for (const row of sortedAggregated) {
       const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
       const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
-      const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
-      const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
+      const lockedTokens = normalizeToArray(lockedKeys?.[row.ot]);
+      const isLocked = lockedTokens.length > 0;
+      
+      let lockedMismatch = false;
+      if (isLocked && row.ztList.length > 0) {
+        if (keysPerOTMode === 'multiple') {
+          // In multi-key mode, check if all locked tokens are in the ztList
+          lockedMismatch = !lockedTokens.every(lt => row.ztList.includes(lt));
+        } else {
+          // In single-key mode, check if the first token matches
+          lockedMismatch = lockedTokens[0] !== row.ztList[0];
+        }
+      }
+      
       const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
-      const hasDuplicateChosenKey = typeof duplicateKeyByOT[row.ot] === 'string';
-      out[row.ot] = Boolean(isViolationSingle || lockedMismatch || row.ztList.length === 0 || hasEmptyCell || hasDuplicateChosenKey);
+      const hasDuplicateChosenKey = keysPerOTMode === 'single' && typeof duplicateKeyByOT[row.ot] === 'string';
+      
+      // Check for invalid token length in fixed-length mode
+      let hasInvalidLength = false;
+      if (ztParseMode === 'fixedLength' && groupSize > 1) {
+        hasInvalidLength = row.ztList.some(token => token.length !== groupSize);
+      }
+      
+      out[row.ot] = Boolean(isViolationSingle || lockedMismatch || row.ztList.length === 0 || hasEmptyCell || hasDuplicateChosenKey || hasInvalidLength);
     }
     return out;
-  }, [duplicateKeyByOT, hasEmptyCellByOT, keysPerOTMode, lockedKeys, sortedAggregated]);
+  }, [duplicateKeyByOT, hasEmptyCellByOT, keysPerOTMode, lockedKeys, sortedAggregated, ztParseMode, groupSize]);
 
   // If a previously-highlighted OT is no longer eligible for the highlight icon,
   // automatically turn off the highlight so cells don't stay highlighted.
@@ -95,13 +132,17 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
 
   // Determine if there are any violations (errors) and compute bulk locks
   let hasError = false;
-  const bulkLocks: Record<string, string> = {};
+  const bulkLocks: Record<string, string | string[]> = {};
   for (const row of sortedAggregated) {
     if (errorByOT[row.ot]) {
       hasError = true;
     }
     if (row.ztList.length > 0) {
-      bulkLocks[row.ot] = row.ztList[0];
+      if (keysPerOTMode === 'multiple') {
+        bulkLocks[row.ot] = row.ztList; // All tokens
+      } else {
+        bulkLocks[row.ot] = row.ztList[0]; // First token only
+      }
     }
   }
 
@@ -120,10 +161,10 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
           </button>
         )}
       </div>
-      <table className="w-full text-sm table-fixed">
+      <table className="w-full text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="text-left px-3 py-2">OT</th>
+            <th className="text-left px-3 py-2 w-16">OT</th>
             <th className="text-left px-3 py-2">ZT</th>
             <th className="text-left px-3 py-2 w-24">&nbsp;</th>
           </tr>
@@ -133,21 +174,78 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
             // violation rules for keysPerOTMode='single': more than one unique or lock mismatch
             const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
             const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
-            const isLocked = !!lockedKeys && typeof lockedKeys[row.ot] === 'string';
-            const lockedMismatch = isLocked && row.ztList.length > 0 && lockedKeys![row.ot] !== row.ztList[0];
+            const lockedTokens = normalizeToArray(lockedKeys?.[row.ot]);
+            const isLocked = lockedTokens.length > 0;
+            
+            let lockedMismatch = false;
+            if (isLocked && row.ztList.length > 0) {
+              if (keysPerOTMode === 'multiple') {
+                lockedMismatch = !lockedTokens.every(lt => row.ztList.includes(lt));
+              } else {
+                lockedMismatch = lockedTokens[0] !== row.ztList[0];
+              }
+            }
+            
             const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
-            const hasDuplicateChosenKey = typeof duplicateKeyByOT[row.ot] === 'string';
+            const hasDuplicateChosenKey = keysPerOTMode === 'single' && typeof duplicateKeyByOT[row.ot] === 'string';
+            
+            // Check for invalid token length in fixed-length mode
+            let hasInvalidLength = false;
+            if (ztParseMode === 'fixedLength' && groupSize > 1) {
+              hasInvalidLength = row.ztList.some(token => token.length !== groupSize);
+            }
+            
             const isRowError = Boolean(errorByOT[row.ot]);
             const trClass = isRowError ? 'bg-red-50' : '';
             return (
               <tr key={row.ot} className={`border-t border-gray-100 ${trClass}`}>
                 <td className="px-3 py-2 font-mono whitespace-nowrap">{row.ot}</td>
-                <td className="px-3 py-2 font-mono whitespace-nowrap">
-                  <span className="whitespace-nowrap">{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
-                  {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
-                  {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
-                  {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
-                  {hasDuplicateChosenKey && <span className="ml-2 text-red-600">(duplicate)</span>}
+                <td className="px-3 py-2 font-mono">
+                  {keysPerOTMode === 'multiple' && row.ztList.length > 0 ? (
+                    <div>
+                      <div className="flex flex-wrap gap-1">
+                        {row.ztList.map((zt, idx) => {
+                          const isLockedToken = lockedTokens.includes(zt);
+                          return (
+                            <span
+                              key={idx}
+                              className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs ${
+                                isLockedToken
+                                  ? 'bg-green-100 text-green-800 border border-green-300'
+                                  : 'bg-gray-100 text-gray-800 border border-gray-300'
+                              }`}
+                              title={isLockedToken ? 'Locked' : undefined}
+                            >
+                              {zt}
+                              {isLockedToken && <img src={padlock} alt="Locked" className="w-2 h-2" />}
+                            </span>
+                          );
+                        })}
+                        {row.ztList.length > 1 && (
+                          <span className="text-xs text-gray-500 self-center">
+                            ({row.ztList.length} homophones)
+                          </span>
+                        )}
+                      </div>
+                      {/* Error messages for multi-key mode */}
+                      {(lockedMismatch || hasEmptyCell || hasInvalidLength) && (
+                        <div className="mt-1 text-xs text-red-600">
+                          {lockedMismatch && <div>(lock mismatch)</div>}
+                          {hasEmptyCell && <div>(missing)</div>}
+                          {hasInvalidLength && <div>(invalid length)</div>}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <span className="whitespace-nowrap">{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
+                      {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
+                      {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
+                      {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
+                      {hasDuplicateChosenKey && <span className="ml-2 text-red-600">(duplicate)</span>}
+                      {hasInvalidLength && <span className="ml-2 text-red-600">(invalid length)</span>}
+                    </>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   {onLockOT || onUnlockOT ? (
@@ -165,10 +263,19 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
                       ) : (
                         <button
                           className={`text-xs px-2 py-1 rounded ${colors.unlockedBtn}`}
-                          onClick={() => onLockOT && row.ztList.length > 0 && onLockOT(row.ot, row.ztList[0])}
+                          onClick={() => {
+                            if (!onLockOT || row.ztList.length === 0) return;
+                            if (keysPerOTMode === 'multiple') {
+                              // Lock all tokens for this character
+                              row.ztList.forEach(zt => onLockOT(row.ot, zt));
+                            } else {
+                              // Lock first token only
+                              onLockOT(row.ot, row.ztList[0]);
+                            }
+                          }}
                           disabled={isRowError || row.ztList.length === 0}
-                          title={isRowError ? 'Fix the red error state first' : (row.ztList.length ? `Lock ${row.ot} = ${row.ztList[0]}` : 'Nothing to lock')}
-                          aria-label={isRowError ? `Cannot lock ${row.ot} while errors exist` : (row.ztList.length ? `Lock ${row.ot} to ${row.ztList[0]}` : `Nothing to lock for ${row.ot}`)}
+                          title={isRowError ? 'Fix the red error state first' : (row.ztList.length ? `Lock ${row.ot}` : 'Nothing to lock')}
+                          aria-label={isRowError ? `Cannot lock ${row.ot} while errors exist` : (row.ztList.length ? `Lock ${row.ot}` : `Nothing to lock for ${row.ot}`)}
                           aria-pressed={false}
                         >
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />

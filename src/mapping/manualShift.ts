@@ -11,13 +11,14 @@ import type { Column } from '../components/types';
 
 /**
  * Extract per-OT-cell token counts from columns.
+ * Includes deception cells (ot: null) for complete grid representation.
  * Clamps each cell's count to maxLen.
  */
 export function deriveCountsFromColumns(baseColumns: Column[][], maxLen: number): number[] {
   const out: number[] = [];
   for (const row of baseColumns) {
     for (const col of row) {
-      if (!col.ot) continue;
+      // Include both OT cells and deception cells
       out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
     }
   }
@@ -27,17 +28,63 @@ export function deriveCountsFromColumns(baseColumns: Column[][], maxLen: number)
 /**
  * Check if a cell can shift tokens to the left.
  * Requires >1 token and a cell to the left.
+ * Simulates the shift to ensure no cell exceeds maxLen.
  */
-export function canShiftLeft(counts: number[], index: number): boolean {
-  return index > 0 && index < counts.length && (counts[index] ?? 0) > 1;
+export function canShiftLeft(counts: number[], index: number, maxLen: number): boolean {
+  if (index <= 0 || index >= counts.length || (counts[index] ?? 0) <= 1) {
+    return false;
+  }
+  
+  // Simulate the shift to check if it would violate maxLen
+  const simulated = [...counts];
+  simulated[index] -= 1;
+  simulated[index - 1] += 1;
+  
+  // Simulate cascade
+  for (let i = index - 1; i >= 0; i--) {
+    if (simulated[i] > maxLen) {
+      if (i === 0) {
+        // First cell would exceed maxLen with nowhere to cascade
+        return false;
+      }
+      const overflow = simulated[i] - maxLen;
+      simulated[i] -= overflow;
+      simulated[i - 1] += overflow;
+    }
+  }
+  
+  return true;
 }
 
 /**
  * Check if a cell can shift tokens to the right.
  * Requires >1 token and a cell to the right.
+ * Simulates the shift to ensure no cell exceeds maxLen.
  */
-export function canShiftRight(counts: number[], index: number): boolean {
-  return index >= 0 && index < counts.length - 1 && (counts[index] ?? 0) > 1;
+export function canShiftRight(counts: number[], index: number, maxLen: number): boolean {
+  if (index < 0 || index >= counts.length - 1 || (counts[index] ?? 0) <= 1) {
+    return false;
+  }
+  
+  // Simulate the shift to check if it would violate maxLen
+  const simulated = [...counts];
+  simulated[index] -= 1;
+  simulated[index + 1] += 1;
+  
+  // Simulate cascade
+  for (let i = index + 1; i < simulated.length; i++) {
+    if (simulated[i] > maxLen) {
+      if (i === simulated.length - 1) {
+        // Last cell would exceed maxLen with nowhere to cascade
+        return false;
+      }
+      const overflow = simulated[i] - maxLen;
+      simulated[i] -= overflow;
+      simulated[i + 1] += overflow;
+    }
+  }
+  
+  return true;
 }
 
 /**
@@ -52,8 +99,12 @@ export function shiftRight(countsIn: number[], index: number, maxLen: number): n
   counts[index + 1] += 1;
 
   // Cascade overflow to the right to respect maxLen
-  for (let i = index + 1; i < counts.length - 1; i++) {
+  for (let i = index + 1; i < counts.length; i++) {
     if (counts[i] > maxLen) {
+      if (i === counts.length - 1) {
+        // Should not happen if canShiftRight was checked
+        return countsIn;
+      }
       const overflow = counts[i] - maxLen;
       counts[i] -= overflow;
       counts[i + 1] += overflow;
@@ -75,8 +126,12 @@ export function shiftLeft(countsIn: number[], index: number, maxLen: number): nu
   counts[index - 1] += 1;
 
   // Cascade overflow to the left to respect maxLen
-  for (let i = index - 1; i > 0; i--) {
+  for (let i = index - 1; i >= 0; i--) {
     if (counts[i] > maxLen) {
+      if (i === 0) {
+        // Should not happen if canShiftLeft was checked
+        return countsIn;
+      }
       const overflow = counts[i] - maxLen;
       counts[i] -= overflow;
       counts[i - 1] += overflow;

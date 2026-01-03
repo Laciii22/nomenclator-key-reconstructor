@@ -8,6 +8,7 @@ import BracketEditor from '../components/controls/BracketEditor';
 import ParseControls from '../components/controls/ParseControls';
 import CandidateSelectorFixed from '../components/controls/CandidateSelectorFixed';
 import CandidateSelectorSeparator from '../components/controls/CandidateSelectorSeparator';
+import CandidateSelectorMulti from '../components/controls/CandidateSelectorMulti';
 import HelpModal from '../components/common/HelpModal';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap } from '../utils/analyzer';
@@ -117,11 +118,15 @@ const NomenklatorPage: React.FC = () => {
     applySelection();
   }, [applySelection]);
 
-  const onLockAll = React.useCallback((locks: Record<string, string>) => {
+  const onLockAll = React.useCallback((locks: Record<string, string | string[]>) => {
     setLockedKeys(prev => ({ ...prev, ...locks }));
     setSelections(prev => {
       const next = { ...prev } as SelectionMap;
-      for (const [ch, val] of Object.entries(locks)) if (val && next[ch] == null) next[ch] = val;
+      for (const [ch, val] of Object.entries(locks)) {
+        if (val && next[ch] == null) {
+          next[ch] = val;
+        }
+      }
       return next;
     });
     queueMicrotask(() => runAnalysis());
@@ -264,10 +269,25 @@ const NomenklatorPage: React.FC = () => {
                   </div>
                 )}
                 
-                {ztParseMode === 'fixedLength' ? (
-                  <CandidateSelectorFixed
+                <div className="text-xs text-gray-500 mb-2">
+                  Mode: {keysPerOTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
+                </div>
+                
+                {keysPerOTMode === 'multiple' ? (
+                  <CandidateSelectorMulti
                     candidatesByChar={candidatesByChar}
                     lockedKeys={lockedKeys}
+                    selections={selections}
+                    setSelections={setSelections}
+                    otRows={otRows}
+                    effectiveZtTokens={effectiveZtTokens}
+                    reservedTokens={reservedTokens}
+                    sharedColumns={columns}
+                  />
+                ) : ztParseMode === 'fixedLength' ? (
+                  <CandidateSelectorFixed
+                    candidatesByChar={candidatesByChar}
+                    lockedKeys={lockedKeys as Record<string, string>}
                     selections={selections}
                     setSelections={setSelections}
                     otRows={otRows}
@@ -279,7 +299,7 @@ const NomenklatorPage: React.FC = () => {
                 ) : (
                   <CandidateSelectorSeparator
                     candidatesByChar={candidatesByChar}
-                    lockedKeys={lockedKeys}
+                    lockedKeys={lockedKeys as Record<string, string>}
                     selections={selections}
                     setSelections={setSelections}
                     otRows={otRows}

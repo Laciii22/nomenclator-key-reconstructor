@@ -18,7 +18,7 @@ export function useNomenklatorPersistence(params: {
   keysPerOTMode: KeysPerOTMode;
   setKeysPerOTMode: React.Dispatch<React.SetStateAction<KeysPerOTMode>>;
 
-  setLockedKeys: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setLockedKeys: React.Dispatch<React.SetStateAction<Record<string, string | string[]>>>;
   setBracketedIndices: React.Dispatch<React.SetStateAction<number[]>>;
   setCustomOtGroups: React.Dispatch<React.SetStateAction<OTChar[] | null>>;
 }) {

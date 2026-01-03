@@ -21,17 +21,29 @@ type MappingTableExtraProps = {
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight } = props;
 
-	const rows = useMemo(
-		() => (columns && columns.length ? columns : buildShiftOnlyColumns(otRows, ztTokens, lockedKeys, selections, groupSize)),
-		[columns, otRows, ztTokens, lockedKeys, selections, groupSize],
-	);
+	const rows = useMemo(() => {
+		if (columns && columns.length) return columns;
+		
+		// Fallback: normalize multi-key to single-key for buildShiftOnlyColumns
+		const normalizedLocks: Record<string, string> = {};
+		for (const [ch, val] of Object.entries(lockedKeys || {})) {
+			normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+		}
+		const normalizedSelections: Record<string, string | null> = {};
+		for (const [ch, val] of Object.entries(selections || {})) {
+			normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
+		}
+		
+		return buildShiftOnlyColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, groupSize);
+	}, [columns, otRows, ztTokens, lockedKeys, selections, groupSize]);
 
-	// Flat index of OT cells (skip deception) for insertion prompt in fixedLength mode
+	// Flat index of all cells (including deception) for shift operations in fixedLength mode
 	const flatIndices = useMemo(() => {
 		let counter = 0;
 		return rows.map(row => row.map(col => {
-			if (col.ot) { const idx = counter; counter++; return idx; }
-			return -1;
+			const idx = counter;
+			counter++;
+			return idx;
 		}));
 	}, [rows]);
 
@@ -109,7 +121,27 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					<div className="text-gray-400 text-sm">(empty)</div>
 				) : (
 					rows.flatMap((cols, rIdx) =>
-						cols.map((col, cIdx) => (
+						cols.map((col, cIdx) => {
+							// Get actual token text for this cell
+							const currentTokenText = (() => {
+								if (!col.zt || col.zt.length === 0) return '';
+								if (groupSize === 1) {
+									return ztTokens[col.zt[0]]?.text || '';
+								}
+								return col.zt.map(i => ztTokens[i]?.text || '').join('');
+							})();
+							
+							// Check if this specific token is in the locked homophones
+							const lockedHomophones = col.ot ? lockedKeys?.[col.ot.ch] : undefined;
+							const isThisTokenLocked = (() => {
+								if (!col.ot || !lockedHomophones || !currentTokenText) return false;
+								if (Array.isArray(lockedHomophones)) {
+									return lockedHomophones.includes(currentTokenText);
+								}
+								return lockedHomophones === currentTokenText;
+							})();
+							
+							return (
 							<OTCell
 								highlightedOTChar={props.highlightedOTChar}
 								key={`${rIdx}-${cIdx}`}
@@ -120,7 +152,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 								col={cIdx}
 								onLockOT={onLockOT}
 								onUnlockOT={onUnlockOT}
-								lockedValue={col.ot ? lockedKeys?.[col.ot.ch] : undefined}
+								lockedValue={isThisTokenLocked ? currentTokenText : undefined}
 								deception={Boolean(col.deception || col.ot == null)}
 								hasDuplicateKey={Boolean(col.ot && duplicateOTChars.has(col.ot.ch))}
 								onEditToken={onEditToken}
@@ -151,11 +183,14 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 									if (!canInsertRaw || fi < 0) return;
 									const flatColumns: { otCh: string | null; indices: number[] }[] = [];
 									for (const row of rows) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
-									const target = flatColumns.filter(f => f.otCh != null)[fi];
+									const target = flatColumns[fi];
+									if (!target || !target.otCh) return; // Skip deception cells for insert
 									const current = target && target.indices.length ? target.indices.map(i => ztTokens[i]?.text || '').join('') : '';
 									const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this OT (no spaces):';
 									const input = window.prompt(label, current);
-									if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(fi, input, true);
+									// Convert flatIndex (all cells) to OT-only position for onInsertRawCharsAfterPosition
+									const otOnlyIndex = flatColumns.slice(0, fi).filter(f => f.otCh != null).length;
+									if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(otOnlyIndex, input, true);
 								}}
 								onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
 								onShiftLeft={onShiftGroupLeft}
@@ -171,7 +206,8 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 									return !!shiftMeta[fi]?.canShiftRight;
 								})()}
 							/>
-						)),
+							);
+						}),
 					)
 				)}
 			</div>

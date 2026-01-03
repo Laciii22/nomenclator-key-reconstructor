@@ -18,16 +18,16 @@ export type KeyTableProps = {
   ztTokens: ZTToken[];
   /** Whether each OT char can map to one or multiple ZT tokens */
   keysPerOTMode?: KeysPerOTMode;
-  /** User-confirmed mappings that shouldn't change */
-  lockedKeys?: Record<string, string>;
+  /** User-confirmed mappings that shouldn't change (single-key: string, multi-key: string[]) */
+  lockedKeys?: Record<string, string | string[]>;
   /** Callback when user locks an OT→ZT mapping */
   onLockOT?: (ot: string, lockValue: string) => void;
-  /** Callback when user unlocks an OT character */
-  onUnlockOT?: (ot: string) => void;
+  /** Callback when user unlocks an OT character (specificToken for multi-key mode) */
+  onUnlockOT?: (ot: string, specificToken?: string) => void;
   /** Callback to lock all valid pairs at once */
-  onLockAll?: (locks: Record<string, string>) => void;
+  onLockAll?: (locks: Record<string, string | string[]>) => void;
   /** Current manual selections for each OT character */
-  selections?: Record<string, string | null>;
+  selections?: Record<string, string | string[] | null>;
   /** Parsing mode for ZT tokens */
   ztParseMode?: 'separator' | 'fixedLength';
   /** Size of token groups (relevant for fixedLength mode) */
@@ -51,15 +51,15 @@ export type MappingTableProps = {
   /** Callback when user locks an OT→ZT mapping */
   onLockOT?: (ot: string, lockValue: string) => void;
   /** Callback when user unlocks an OT character */
-  onUnlockOT?: (ot: string) => void;
-  /** User-confirmed mappings */
-  lockedKeys?: Record<string, string>;
+  onUnlockOT?: (ot: string, specificToken?: string) => void;
+  /** User-confirmed mappings (single-key: string, multi-key: string[]) */
+  lockedKeys?: Record<string, string | string[]>;
   /** Shows warning icon if deception/null tokens are detected */
   hasDeceptionWarning?: boolean;
   /** Callback when user edits a ZT token inline */
   onEditToken?: (tokenIndex: number, newText: string) => void;
   /** Current manual selections */
-  selections?: Record<string, string | null>;
+  selections?: Record<string, string | string[] | null>;
   /** Currently highlighted OT character */
   highlightedOTChar?: string | null;
   /** Precomputed allocation columns (optional, for performance) */
@@ -89,9 +89,9 @@ export type OTCellProps = {
   /** Callback to lock this OT character */
   onLockOT?: (otChar: string, lockValue: string) => void;
   /** Callback to unlock this OT character */
-  onUnlockOT?: (otChar: string) => void;
-  /** The locked ZT value for this OT (if any) */
-  lockedValue?: string;
+  onUnlockOT?: (otChar: string, specificToken?: string) => void;
+  /** The locked ZT value for this OT (if any), single-key: string, multi-key: string[] */
+  lockedValue?: string | string[];
   /** Callback to edit a token inline */
   onEditToken?: (tokenIndex: number, newText: string) => void;
   /** True if this is a deception/null cell */

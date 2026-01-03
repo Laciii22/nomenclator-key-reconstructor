@@ -17,17 +17,22 @@ type ColumnLike = { ot: { ch: string } | null; zt: number[] };
  * @param cols The allocation grid columns
  * @param ztTokens All ZT tokens for lookup
  * @param groupSize Size of token groups (1 for separator, >1 for fixed-length)
- * @returns Array of OT→ZT pairs (one per OT cell)
+ * @param keysPerOTMode Keys per OT mode: 'single' or 'multiple' (homophones)
+ * @returns Array of OT→ZT pairs (one per column)
  */
 export function computePairsFromColumns(
   cols: ColumnLike[][],
   ztTokens: ZTToken[],
-  groupSize: number = 1
+  groupSize: number = 1,
+  keysPerOTMode: 'single' | 'multiple' = 'single'
 ): Pair[] {
   const out: Pair[] = [];
   for (const row of cols) {
     for (const col of row) {
       if (!col.ot) continue;
+      
+      // In multi-key mode, each column represents one (OT, ZT) pair
+      // In single-key mode, join tokens according to groupSize
       const text = (groupSize === 1)
         ? (() => {
             const idx = col.zt.length ? col.zt[0] : null;

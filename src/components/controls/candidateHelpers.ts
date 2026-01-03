@@ -31,12 +31,17 @@ export function buildCandidateOptions(params: {
   effectiveZtTokens: ZTToken[];
   groupSize: number;
   reservedTokens: Set<string>;
-  selectionVal: string | null | undefined;
-  lockedVal: string | undefined;
+  selectionVal: string | string[] | null | undefined;
+  lockedVal: string | string[] | undefined;
   sharedColumns: Column[][];
 }): CandidateOption {
   const { c, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns } = params;
-  const takenByOther = reservedTokens.has(c.token) && selectionVal !== c.token && lockedVal !== c.token;
+  
+  // Normalize to arrays for comparison
+  const selectionArr = Array.isArray(selectionVal) ? selectionVal : (selectionVal ? [selectionVal] : []);
+  const lockedArr = Array.isArray(lockedVal) ? lockedVal : (lockedVal ? [lockedVal] : []);
+  
+  const takenByOther = reservedTokens.has(c.token) && !selectionArr.includes(c.token) && !lockedArr.includes(c.token);
   const cellFlatIndex = computeFlatIndexForChar(otRows, ch);
 
   const occMap = buildOccMap(effectiveZtTokens, groupSize);

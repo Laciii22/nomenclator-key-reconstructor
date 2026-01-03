@@ -21,7 +21,7 @@ export function useAnalysis(params: {
   effectiveZtTokens: ZTToken[];
   columns: { ot: { ch: string } | null; zt: number[] }[][];
   keysPerOTMode: KeysPerOTMode;
-  lockedKeys: Record<string, string>;
+  lockedKeys: Record<string, string | string[]>;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
 }) {
   const { otRows, ztParseMode, fixedLength, effectiveZtTokens, columns, keysPerOTMode, lockedKeys, setSelections } = params;
@@ -34,7 +34,7 @@ export function useAnalysis(params: {
     if (ztParseMode !== 'fixedLength') return base;
 
     const gs = fixedLength || 1;
-    const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs);
+    const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs, keysPerOTMode);
 
     const currentByChar: Record<string, Set<string>> = {};
     for (const p of pairs) {
@@ -80,7 +80,7 @@ export function useAnalysis(params: {
     const out: Record<string, Candidate[]> = {};
     for (const [ch, list] of Object.entries(base)) {
       out[ch] = list.map(c => {
-        const scored = fixedModeScore({ token: c.token, otChar: ch, columns, effectiveZtTokens, groupSize: gs });
+        const scored = fixedModeScore({ token: c.token, otChar: ch, columns, effectiveZtTokens, groupSize: gs, keysPerOTMode });
         return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
       });
     }
@@ -98,7 +98,7 @@ export function useAnalysis(params: {
         const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
         const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-        const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
+        const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode, groupSize: gs }, lockedKeys);
 
         const augmented = applyScores(augmentCandidatesWithCurrentMapping(res.candidatesByChar));
 
@@ -117,7 +117,7 @@ export function useAnalysis(params: {
     const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
+    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode, groupSize: gs }, lockedKeys);
     const augmented = applyScores(augmentCandidatesWithCurrentMapping(res.candidatesByChar));
     const sorted = sortCandidates(augmented);
 
