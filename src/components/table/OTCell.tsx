@@ -192,7 +192,7 @@ const OTCell: React.FC<OTCellProps> = ({
     return (
       <button
         type="button"
-        className={`px-1 py-0.5 text-xs rounded border ${
+        className={`p-0.5 text-xs rounded border ${
           canShift 
             ? 'border-gray-300 hover:bg-gray-100 hover:border-gray-400' 
             : 'border-transparent opacity-30 cursor-not-allowed'
@@ -205,7 +205,7 @@ const OTCell: React.FC<OTCellProps> = ({
         disabled={!canShift}
         title={title}
       >
-        <img src={icon} alt={direction} className="w-2 h-2" />
+        <img src={icon} alt={direction} className="w-1.5 h-1.5" />
       </button>
     );
   };
@@ -216,7 +216,7 @@ const OTCell: React.FC<OTCellProps> = ({
     dragging: boolean, 
     highlighted: boolean
   ) => {
-    const baseClasses = 'inline-block px-1 rounded font-mono text-sm font-bold select-none';
+    const baseClasses = 'inline-block px-0.5 py-0 rounded font-mono text-xs font-bold select-none';
     
     const isLocked = locked && (typeof locked === 'string' || locked.length > 0);
     
@@ -254,7 +254,7 @@ const OTCell: React.FC<OTCellProps> = ({
   return (
     <div ref={setNodeRef} className={cellClassName}>
       {/* Render OT label with optional left/right shift buttons */}
-      <div className="text-center font-mono text-sm mb-0.5 flex items-center justify-center gap-1">
+      <div className="text-center font-mono text-xs mt-1.5 flex items-center justify-center gap-0.5">
         {renderShiftButton('left', canShiftLeft, onShiftLeft)}
         {ot ? (
           <span
@@ -268,7 +268,7 @@ const OTCell: React.FC<OTCellProps> = ({
           </span>
         ) : (
           <span 
-            className="inline-block px-1 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-sm" 
+            className="inline-block px-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-xs" 
             title="Probable deception token"
           >
             !
@@ -277,9 +277,9 @@ const OTCell: React.FC<OTCellProps> = ({
         {renderShiftButton('right', canShiftRight, onShiftRight)}
       </div>
       {/* Render assigned ZT tokens or empty state */}
-      <div className="flex flex-wrap gap-1 justify-center">
+      <div className="flex flex-wrap gap-0.5 justify-center">
         {displayedTokens.length === 0 ? (
-          <span className={isEmptyRealOtCell ? 'text-red-500 text-sm' : 'text-gray-300 text-sm'}>—</span>
+          <span className={isEmptyRealOtCell ? 'text-red-500 text-xs' : 'text-gray-300 text-xs'}>—</span>
         ) : (
           displayedTokens.map(({ token, tokenIndex }, i) => {
             const currentGroupText = displayedTokens.map(x => x.token.text).join('');
@@ -303,26 +303,26 @@ const OTCell: React.FC<OTCellProps> = ({
       </div>
       {canShowFixedLengthActions && (
         <button
-          className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
+          className="absolute top-0 right-0 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
           onClick={() => onInsertAfterGroup?.(flatIndex!)}
           title="Add raw ZT token to this group"
         >
-          <img src={plusIcon} alt="edit ZT token" className="w-2 h-2" />
+          <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
         </button>
       )}
       {/* In separator mode show a + to edit the token, or insert when empty */}
       {!isFixedLength && ot && !lockedValue && (
         <button
-          className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
+          className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
           onClick={handleEditOrInsert}
           title={displayedTokens.length === 0 ? 'Insert ZT token for this OT' : 'Edit raw ZT token for this OT'}
         >
-          <img src={plusIcon} alt="edit ZT token" className="w-2 h-2" />
+          <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
         </button>
       )}
       {ot && (
         <button
-          className="absolute bottom-1 left-1 px-1 py-0.5 text-xs rounded bg-transparent hover:bg-gray-100 leading-none"
+          className="absolute bottom-0 left-0 p-0.5 text-xs rounded-tl bg-transparent hover:bg-gray-100 leading-none"
           onClick={handleLockToggle}
           disabled={!lockedValue && isEmptyRealOtCell}
           title={lockedValue ? `Unlock ${ot.ch}` : (isEmptyRealOtCell ? 'Cannot lock an empty cell' : `Lock ${ot.ch}`)}
@@ -333,14 +333,14 @@ const OTCell: React.FC<OTCellProps> = ({
             src={padlock} 
             alt="lock" 
             aria-hidden="true" 
-            className={`w-2 h-2 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} 
+            className={`w-1.5 h-1.5 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} 
           />
         </button>
       )}
 
       {ot && ot.ch.length > 1 && typeof flatIndex === 'number' && flatIndex >= 0 && (
         <button
-          className="absolute top-1 left-2 px-1 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 leading-none"
+          className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded-bl bg-gray-100 hover:bg-gray-200 leading-none"
           onClick={(e) => {
             e.stopPropagation();
             if (lockedValue) return;
@@ -350,7 +350,7 @@ const OTCell: React.FC<OTCellProps> = ({
         >
         <img
           src = {minus}
-          className="h-2 w-2"
+          className="h-1.5 w-1.5"
         />
 
         </button>

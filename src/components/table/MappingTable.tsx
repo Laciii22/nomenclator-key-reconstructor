@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
+import { Grid } from 'react-window';
 import type { MappingTableProps } from '../types';
 import OTCell from './OTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
@@ -12,7 +13,8 @@ type MappingTableExtraProps = {
 };
 
 /**
- * Renders the OT→ZT allocation grid.
+ * Renders the OT→ZT allocation grid using react-window virtualization.
+ * Only visible cells are rendered (massive performance improvement for large grids).
  *
  * This component accepts precomputed `columns` (preferred) but can also derive them
  * internally. Supporting both keeps the table resilient while letting the parent
@@ -166,89 +168,184 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		return map;
 	}, [rows, groupSize, ztTokens]);
 
-	return (
-		<div className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
-			<div className="grid gap-x-2 gap-y-1" style={{ gridTemplateColumns: `repeat(${visualColumnsPerRow}, minmax(0, 1fr))` }}>
-				{rows.length === 0 ? (
-					<div className="text-gray-400 text-sm">(empty)</div>
-				) : (
-					rows.flatMap((cols, rIdx) =>
-						cols.map((col, cIdx) => {
-							// Get actual token text for this cell
-							const currentTokenText = (() => {
-								if (!col.zt || col.zt.length === 0) return '';
-								if (groupSize === 1) {
-									return ztTokens[col.zt[0]]?.text || '';
-								}
-								return col.zt.map(i => ztTokens[i]?.text || '').join('');
-							})();
-							
-							// Check if this specific token is in the locked homophones
-							const lockedHomophones = col.ot ? lockedKeys?.[col.ot.ch] : undefined;
-							const isThisTokenLocked = (() => {
-								if (!col.ot || !lockedHomophones || !currentTokenText) return false;
-								if (Array.isArray(lockedHomophones)) {
-									return lockedHomophones.includes(currentTokenText);
-								}
-								return lockedHomophones === currentTokenText;
-							})();
-							
-							return (
-							<OTCell
-								highlightedOTChar={props.highlightedOTChar}
-								key={`${rIdx}-${cIdx}`}
-								ot={col.ot ?? null}
-								tokens={ztTokens}
-								tokenIndices={col.zt}
-								row={rIdx}
-								col={cIdx}
-								onLockOT={onLockOT}
-								onUnlockOT={onUnlockOT}
-								lockedValue={isThisTokenLocked ? currentTokenText : undefined}
-								deception={Boolean(col.deception || col.ot == null)}
-								hasDuplicateKey={Boolean(col.ot && duplicateOTChars.has(col.ot.ch))}
-								onEditToken={onEditToken}
-								isFixedLength={groupSize > 1}
-								groupSize={groupSize}
-								flatIndex={flatIndices[rIdx][cIdx]}
-								activeDragType={activeDragType}
-								activeOtSourceRow={activeOtSourceRow}
-								activeOtSourceCol={activeOtSourceCol}
-								activeZtTokenIndex={activeZtTokenIndex}
-								// Only allow auto-expansion when it won't steal indices from other cells.
-								allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
-								onInsertAfterGroup={(fi) => {
-									if (!canInsertRaw || fi < 0) return;
-									const flatColumns: { otCh: string | null; indices: number[] }[] = [];
-									for (const row of rows) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
-									const target = flatColumns[fi];
-									if (!target || !target.otCh) return; // Skip deception cells for insert
-									const current = target && target.indices.length ? target.indices.map(i => ztTokens[i]?.text || '').join('') : '';
-									const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this OT (no spaces):';
-									const input = window.prompt(label, current);
-									// Convert flatIndex (all cells) to OT-only position for onInsertRawCharsAfterPosition
-									const otOnlyIndex = flatColumns.slice(0, fi).filter(f => f.otCh != null).length;
-									if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(otOnlyIndex, input, true);
-								}}
-								onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
-								onShiftLeft={onShiftGroupLeft}
-								onShiftRight={onShiftGroupRight}
-								canShiftLeft={(() => {
-									const fi = flatIndices[rIdx][cIdx];
-									if (!shiftMeta || fi < 0) return false;
-									return !!shiftMeta[fi]?.canShiftLeft;
-								})()}
-								canShiftRight={(() => {
-									const fi = flatIndices[rIdx][cIdx];
-									if (!shiftMeta || fi < 0) return false;
-									return !!shiftMeta[fi]?.canShiftRight;
-								})()}
-							/>
-							);
-						}),
-					)
-				)}
+	// Responsive column count based on viewport width
+	const [viewportWidth, setViewportWidth] = React.useState(() => 
+		typeof window === 'undefined' ? 1200 : window.innerWidth
+	);
+
+	React.useEffect(() => {
+		if (typeof window === 'undefined') return;
+		let timeoutId: number | null = null;
+		const onResize = () => {
+			if (timeoutId) clearTimeout(timeoutId);
+			timeoutId = setTimeout(() => {
+				setViewportWidth(window.innerWidth);
+			}, 150) as unknown as number;
+		};
+		window.addEventListener('resize', onResize, { passive: true } as any);
+		return () => {
+			if (timeoutId) clearTimeout(timeoutId);
+			window.removeEventListener('resize', onResize);
+		};
+	}, []);
+
+	// Calculate how many columns can fit without horizontal scroll
+	const MIN_CELL_WIDTH = 75; // minimum cell width in pixels
+	const CONTAINER_PADDING = 16; // total horizontal padding
+	const maxColumnsThatFit = Math.max(1, Math.floor((viewportWidth - CONTAINER_PADDING) / MIN_CELL_WIDTH));
+
+	// Use the smaller of: what fits in viewport vs actual data columns
+	const effectiveColumnCount = Math.min(maxColumnsThatFit, visualColumnsPerRow);
+
+	// Flatten grid into single array for react-window
+	const flatCells = useMemo(() => {
+		const result: Array<{
+			rIdx: number;
+			cIdx: number;
+			col: typeof rows[0][0];
+		}> = [];
+		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
+				result.push({ rIdx, cIdx, col: rows[rIdx][cIdx] });
+			}
+		}
+		return result;
+	}, [rows]);
+
+	// Grid dimensions
+	const containerRef = useRef<HTMLDivElement>(null);
+	const CELL_HEIGHT = 55; // approximate height per cell in pixels
+	
+	// Calculate cell width to fit all columns without horizontal scroll
+	const getCellWidth = () => {
+		if (!containerRef.current) return 120;
+		const containerWidth = containerRef.current.clientWidth;
+		const padding = 8; // container padding
+		const availableWidth = containerWidth - padding;
+		return Math.max(50, Math.floor(availableWidth / effectiveColumnCount));
+	};
+
+	const [cellWidth, setCellWidth] = React.useState(120);
+
+	React.useEffect(() => {
+		const updateWidth = () => {
+			setCellWidth(getCellWidth());
+		};
+		updateWidth();
+		const timer = setTimeout(updateWidth, 100); // delay for container mount
+		return () => clearTimeout(timer);
+	}, [effectiveColumnCount, viewportWidth]);
+
+	const columnCount = effectiveColumnCount;
+	const rowCount = Math.ceil(flatCells.length / columnCount);
+
+	// Cell renderer for react-window
+	const Cell = React.useCallback(({ columnIndex, rowIndex, style, ariaAttributes }: { 
+		columnIndex: number; 
+		rowIndex: number; 
+		style: React.CSSProperties;
+		ariaAttributes: { 'aria-colindex': number; role: 'gridcell' };
+	}) => {
+		const flatIdx = rowIndex * columnCount + columnIndex;
+		if (flatIdx >= flatCells.length) return <div style={style} />;
+
+		const { rIdx, cIdx, col } = flatCells[flatIdx];
+
+		// Get actual token text for this cell
+		const currentTokenText = (() => {
+			if (!col.zt || col.zt.length === 0) return '';
+			if (groupSize === 1) {
+				return ztTokens[col.zt[0]]?.text || '';
+			}
+			return col.zt.map(i => ztTokens[i]?.text || '').join('');
+		})();
+
+		// Check if this specific token is in the locked homophones
+		const lockedHomophones = col.ot ? lockedKeys?.[col.ot.ch] : undefined;
+		const isThisTokenLocked = (() => {
+			if (!col.ot || !lockedHomophones || !currentTokenText) return false;
+			if (Array.isArray(lockedHomophones)) {
+				return lockedHomophones.includes(currentTokenText);
+			}
+			return lockedHomophones === currentTokenText;
+		})();
+
+		return (
+			<div style={{ ...style, padding: '2px' }} {...ariaAttributes}>
+				<OTCell
+					highlightedOTChar={props.highlightedOTChar}
+					key={`${rIdx}-${cIdx}`}
+					ot={col.ot ?? null}
+					tokens={ztTokens}
+					tokenIndices={col.zt}
+					row={rIdx}
+					col={cIdx}
+					onLockOT={onLockOT}
+					onUnlockOT={onUnlockOT}
+					lockedValue={isThisTokenLocked ? currentTokenText : undefined}
+					deception={Boolean(col.deception || col.ot == null)}
+					hasDuplicateKey={Boolean(col.ot && duplicateOTChars.has(col.ot.ch))}
+					onEditToken={onEditToken}
+					isFixedLength={groupSize > 1}
+					groupSize={groupSize}
+					flatIndex={flatIndices[rIdx][cIdx]}
+					activeDragType={activeDragType}
+					activeOtSourceRow={activeOtSourceRow}
+					activeOtSourceCol={activeOtSourceCol}
+					activeZtTokenIndex={activeZtTokenIndex}
+					allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
+					onInsertAfterGroup={(fi) => {
+						if (!canInsertRaw || fi < 0) return;
+						const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+						for (const row of rows) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
+						const target = flatColumns[fi];
+						if (!target || !target.otCh) return;
+						const current = target && target.indices.length ? target.indices.map(i => ztTokens[i]?.text || '').join('') : '';
+						const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this OT (no spaces):';
+						const input = window.prompt(label, current);
+						const otOnlyIndex = flatColumns.slice(0, fi).filter(f => f.otCh != null).length;
+						if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(otOnlyIndex, input, true);
+					}}
+					onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
+					onShiftLeft={onShiftGroupLeft}
+					onShiftRight={onShiftGroupRight}
+					canShiftLeft={(() => {
+						const fi = flatIndices[rIdx][cIdx];
+						if (!shiftMeta || fi < 0) return false;
+						return !!shiftMeta[fi]?.canShiftLeft;
+					})()}
+					canShiftRight={(() => {
+						const fi = flatIndices[rIdx][cIdx];
+						if (!shiftMeta || fi < 0) return false;
+						return !!shiftMeta[fi]?.canShiftRight;
+					})()}
+				/>
 			</div>
+		);
+	}, [flatCells, columnCount, groupSize, ztTokens, lockedKeys, props.highlightedOTChar, onLockOT, onUnlockOT, onEditToken, duplicateOTChars, flatIndices, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, allowExpandMap, canInsertRaw, rows, onInsertRawCharsAfterPosition, canSplitGroup, onSplitGroup, onShiftGroupLeft, onShiftGroupRight, shiftMeta]);
+
+	if (rows.length === 0) {
+		return (
+			<div className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
+				<div className="text-gray-400 text-sm">(empty)</div>
+			</div>
+		);
+	}
+
+	return (
+		<div 
+			ref={containerRef}
+			className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}
+			style={{ width: '100%', height: `${Math.min(600, rowCount * CELL_HEIGHT)}px`, overflowY: 'auto', overflowX: 'hidden' }}
+		>
+			<Grid
+				columnCount={columnCount}
+				columnWidth={cellWidth}
+				rowCount={rowCount}
+				rowHeight={CELL_HEIGHT}
+				cellComponent={Cell}
+				cellProps={{}}
+			/>
 		</div>
 	);
 }
