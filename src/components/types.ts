@@ -79,6 +79,8 @@ export type MappingTableProps = {
   activeOtSourceCol?: number;
   /** Active token index when dragging a ZT token */
   activeZtTokenIndex?: number | null;
+  /** Keys per OT mode: 'single' or 'multiple' */
+  keysPerOTMode?: 'single' | 'multiple';
 };
 
 /**
@@ -138,6 +140,8 @@ export type OTCellProps = {
   activeOtSourceCol?: number;
   /** Active token index when dragging a ZT token */
   activeZtTokenIndex?: number | null;
+  /** Keys per OT mode: 'single' or 'multiple' */
+  keysPerOTMode?: 'single' | 'multiple';
 };
 
 /**

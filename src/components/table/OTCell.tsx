@@ -51,6 +51,7 @@ const OTCell: React.FC<OTCellProps> = ({
   activeOtSourceRow,
   activeOtSourceCol,
   activeZtTokenIndex,
+  keysPerOTMode = 'single',
 }) => {
   const isDraggingOT = activeDragType === 'ot';
 
@@ -151,11 +152,14 @@ const OTCell: React.FC<OTCellProps> = ({
       return;
     }
     
+    // In multi-key mode, disable locking from cells (use suggestion checkboxes instead)
+    if (keysPerOTMode === 'multiple') return;
+    
     if (isEmptyRealOtCell) return;
     
     const groupText = joinTokenTexts(displayedTokens.map(f => f.token));
     if (groupText) onLockOT(ot.ch, groupText);
-  }, [displayedTokens, isEmptyRealOtCell, lockedValue, onLockOT, onUnlockOT, ot]);
+  }, [displayedTokens, isEmptyRealOtCell, lockedValue, onLockOT, onUnlockOT, ot, keysPerOTMode]);
 
   // Handle edit or insert in separator mode
   const handleEditOrInsert = React.useCallback((e: React.MouseEvent) => {
@@ -322,10 +326,20 @@ const OTCell: React.FC<OTCellProps> = ({
       )}
       {ot && (
         <button
-          className="absolute bottom-0 left-0 p-0.5 text-xs rounded-tl bg-transparent hover:bg-gray-100 leading-none"
+          className={`absolute bottom-0 left-0 p-0.5 text-xs rounded-tl leading-none ${
+            keysPerOTMode === 'multiple' && !lockedValue 
+              ? 'bg-transparent opacity-30 cursor-not-allowed' 
+              : 'bg-transparent hover:bg-gray-100'
+          }`}
           onClick={handleLockToggle}
-          disabled={!lockedValue && isEmptyRealOtCell}
-          title={lockedValue ? `Unlock ${ot.ch}` : (isEmptyRealOtCell ? 'Cannot lock an empty cell' : `Lock ${ot.ch}`)}
+          disabled={(!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)}
+          title={
+            keysPerOTMode === 'multiple' && !lockedValue
+              ? 'Use suggestion checkboxes to select homophones ↑'
+              : lockedValue 
+                ? `Unlock ${ot.ch}` 
+                : (isEmptyRealOtCell ? 'Cannot lock an empty cell' : `Lock ${ot.ch}`)
+          }
           aria-label={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
           aria-pressed={!!lockedValue}
         >

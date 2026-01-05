@@ -395,6 +395,7 @@ const NomenklatorPage: React.FC = () => {
                 activeOtSourceRow={activeDragInfo.otSourceRow}
                 activeOtSourceCol={activeDragInfo.otSourceCol}
                 activeZtTokenIndex={activeDragInfo.ztTokenIndex}
+                keysPerOTMode={keysPerOTMode}
               />
             </div>
       </div>

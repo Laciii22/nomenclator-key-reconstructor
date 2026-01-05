@@ -153,6 +153,30 @@ function appendRemainingTokens(
 }
 
 /**
+ * Count how many times each locked token appears in the ZT stream.
+ */
+function countTokenOccurrences(
+  ztTokens: ZTToken[],
+  lockedTokens: string[],
+  groupSize: number
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  
+  for (const token of lockedTokens) {
+    counts.set(token, 0);
+  }
+  
+  for (let i = 0; i < ztTokens.length; i += groupSize) {
+    const seq = buildTokenSequence(ztTokens, i, groupSize);
+    if (seq && lockedTokens.includes(seq)) {
+      counts.set(seq, (counts.get(seq) || 0) + 1);
+    }
+  }
+  
+  return counts;
+}
+
+/**
  * Build allocation columns for multi-key (homophone) mode.
  * 
  * Works like shift-based allocation BUT respects multi-key locks:
@@ -179,8 +203,25 @@ export function buildMultiKeyColumns(
   const result: Column[][] = [];
   let tokenPtr = 0;
   
-  // Track how many locked tokens have been used per character
-  const usedLockedCount: Record<string, number> = {};
+  // Count total occurrences of each character in OT
+  const otCharCounts = new Map<string, number>();
+  for (const row of filteredRows) {
+    for (const cell of row) {
+      const ch = cell.ch;
+      otCharCounts.set(ch, (otCharCounts.get(ch) || 0) + 1);
+    }
+  }
+  
+  // For each character with locked tokens, count available tokens in ZT
+  const availableTokens = new Map<string, Map<string, number>>();
+  for (const [ch, lockedTokens] of Object.entries(allLocked)) {
+    if (lockedTokens.length > 0) {
+      availableTokens.set(ch, countTokenOccurrences(ztTokens, lockedTokens, groupSize));
+    }
+  }
+  
+  // Track how many times we've used each locked token for each character
+  const usedTokenCount = new Map<string, Map<string, number>>();
   
   for (const rowChars of filteredRows) {
     const rowCols: Column[] = [];
@@ -188,11 +229,9 @@ export function buildMultiKeyColumns(
     for (const otChar of rowChars) {
       const ch = otChar.ch;
       const lockedTokens = allLocked[ch] || [];
-      const alreadyUsed = usedLockedCount[ch] || 0;
-      const needsLockedToken = alreadyUsed < lockedTokens.length;
       
-      if (lockedTokens.length === 0 || !needsLockedToken) {
-        // No locks or all consumed - normal allocation
+      if (lockedTokens.length === 0) {
+        // No locks - normal allocation
         const { column, tokensConsumed } = allocateNormalCell(
           otChar,
           tokenPtr,
@@ -202,20 +241,49 @@ export function buildMultiKeyColumns(
         rowCols.push(column);
         tokenPtr += tokensConsumed;
       } else {
-        // Need to find locked token - scan forward
-        const { columns, tokensConsumed, found } = allocateLockedCell(
-          otChar,
-          lockedTokens,
-          tokenPtr,
-          groupSize,
-          ztTokens
-        );
+        // Has locked tokens - check if we can still find one
+        const available = availableTokens.get(ch);
+        const used = usedTokenCount.get(ch) || new Map<string, number>();
         
-        rowCols.push(...columns);
-        tokenPtr += tokensConsumed;
+        // Check if there's at least one locked token still available in ZT
+        let hasAvailableToken = false;
+        for (const token of lockedTokens) {
+          const totalInZT = available?.get(token) || 0;
+          const alreadyUsed = used.get(token) || 0;
+          if (totalInZT > alreadyUsed) {
+            hasAvailableToken = true;
+            break;
+          }
+        }
         
-        if (found) {
-          usedLockedCount[ch] = alreadyUsed + 1;
+        if (!hasAvailableToken) {
+          // All locked tokens exhausted - leave empty
+          rowCols.push({ ot: otChar, zt: [] });
+        } else {
+          // Try to find a locked token in remaining ZT
+          const { columns, tokensConsumed } = allocateLockedCell(
+            otChar,
+            lockedTokens,
+            tokenPtr,
+            groupSize,
+            ztTokens
+          );
+          
+          rowCols.push(...columns);
+          tokenPtr += tokensConsumed;
+          
+          // Track which token we used (if we found one)
+          const lastCol = columns[columns.length - 1];
+          if (lastCol.ot && lastCol.zt.length > 0) {
+            const usedSeq = buildTokenSequence(ztTokens, lastCol.zt[0], groupSize);
+            if (usedSeq && lockedTokens.includes(usedSeq)) {
+              if (!usedTokenCount.has(ch)) {
+                usedTokenCount.set(ch, new Map());
+              }
+              const charUsed = usedTokenCount.get(ch)!;
+              charUsed.set(usedSeq, (charUsed.get(usedSeq) || 0) + 1);
+            }
+          }
         }
       }
     }

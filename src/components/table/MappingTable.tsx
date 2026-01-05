@@ -21,7 +21,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex } = props;
+	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, keysPerOTMode = 'single' } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -293,6 +293,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					activeOtSourceRow={activeOtSourceRow}
 					activeOtSourceCol={activeOtSourceCol}
 					activeZtTokenIndex={activeZtTokenIndex}
+					keysPerOTMode={keysPerOTMode}
 					allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;
