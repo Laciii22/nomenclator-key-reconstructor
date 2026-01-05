@@ -12,18 +12,88 @@
 
 import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
-import type { SelectionMap } from '../../utils/analyzer';
+import type { SelectionMap, Candidate } from '../../utils/analyzer';
+import type { OTChar, ZTToken } from '../../types/domain';
+import type { Column } from '../types';
 import { normalizeToArray } from '../../utils/multiKeyHelpers';
 
+/**
+ * Check if token is already selected for a different OT character.
+ */
+function isTokenSelectedElsewhere(
+  token: string,
+  currentChar: string,
+  selections: SelectionMap
+): boolean {
+  for (const [otherCh, otherSel] of Object.entries(selections)) {
+    if (otherCh !== currentChar && Array.isArray(otherSel) && otherSel.includes(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if character has reached maximum allowed token selections.
+ * Returns true if any selected token covers all occurrences.
+ */
+function isAtMaxSelections(
+  selectedTokens: string[],
+  candidateList: Candidate[]
+): boolean {
+  for (const token of selectedTokens) {
+    const candidate = candidateList.find(x => x.token === token);
+    if (candidate?.occurrences && candidate.support === candidate.occurrences) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Extend candidate list with locked tokens not already present.
+ * Ensures locked tokens appear in the UI even if not in analysis results.
+ */
+function extendCandidateList(
+  candidateList: Candidate[],
+  lockedTokens: string[]
+): Candidate[] {
+  const extended = [...candidateList];
+  
+  for (const token of lockedTokens) {
+    if (!extended.some(c => c.token === token)) {
+      extended.unshift({
+        token,
+        length: 1,
+        support: 0,
+        occurrences: 0,
+        score: 1
+      });
+    }
+  }
+  
+  return extended;
+}
+
+/**
+ * Sort candidates by score (descending), then alphabetically.
+ */
+function sortCandidatesByScore(candidates: Candidate[]): Candidate[] {
+  return [...candidates].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.token.localeCompare(b.token);
+  });
+}
+
 interface CandidateSelectorMultiProps {
-  candidatesByChar: Record<string, any[]>;
+  candidatesByChar: Record<string, Candidate[]>;
   lockedKeys: Record<string, string | string[]>;
   selections: SelectionMap;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
-  otRows: any[];
-  effectiveZtTokens: any[];
+  otRows: OTChar[][];
+  effectiveZtTokens: ZTToken[];
   reservedTokens: Set<string>;
-  sharedColumns: any;
+  sharedColumns: Column[][];
 }
 
 /**
@@ -66,26 +136,8 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
           const selectedTokens = normalizeToArray(selections[ch]);
           const allTokens = new Set([...lockedTokens, ...selectedTokens]);
           
-          // Extend list to include locked tokens not in candidates
-          const extendedList = [...list];
-          for (const token of lockedTokens) {
-            if (!extendedList.some(c => c.token === token)) {
-              extendedList.unshift({
-                token,
-                length: 1,
-                support: 0,
-                occurrences: 0,
-                score: 1
-              });
-            }
-          }
-
-          // Sort by score descending
-          const sortedByScore = extendedList.sort((a: any, b: any) => {
-            if (b.score !== a.score) return b.score - a.score;
-            return a.token.localeCompare(b.token);
-          });
-
+          const extendedList = extendCandidateList(list, lockedTokens);
+          const sortedByScore = sortCandidatesByScore(extendedList);
           const isLocked = lockedTokens.length > 0;
 
           return (
@@ -113,36 +165,18 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
 
               {/* Candidate checkboxes */}
               <div className="space-y-1">
-                {sortedByScore.slice(0, 6).map((c: any, idx: number) => {
+                {sortedByScore.slice(0, 6).map((c, idx) => {
                   const token = c.token;
                   const isLockedToken = lockedTokens.includes(token);
                   const isSelectedToken = selectedTokens.includes(token);
                   const isChecked = isLockedToken || isSelectedToken;
 
-                  // 1. Token už vybraný v inom OT znaku?
-                  let isSelectedElsewhere = false;
-                  for (const [otherCh, otherSel] of Object.entries(selections)) {
-                    if (otherCh !== ch && Array.isArray(otherSel) && otherSel.includes(token)) {
-                      isSelectedElsewhere = true;
-                      break;
-                    }
-                  }
-
-                  // 2. OT už má maximum vybraných tokenov?
-                  // Ak už je vybraný token, ktorý pokrýva všetky výskyty v ZT, disable ostatné
-                  let coversAll = false;
-                  for (const t of selectedTokens) {
-                    const found = extendedList.find((x: any) => x.token === t);
-                    if (found && found.occurrences && found.support === found.occurrences) {
-                      coversAll = true;
-                      break;
-                    }
-                  }
+                  const isSelectedElsewhere = isTokenSelectedElsewhere(token, ch, selections);
+                  const coversAll = isAtMaxSelections(selectedTokens, extendedList);
                   const maxAllowed = c.occurrences || 1;
                   const selectedCount = selectedTokens.length;
                   const isAtMax = !isChecked && (selectedCount >= maxAllowed || coversAll);
 
-                  // Check if token is reserved by another character
                   const isReservedElsewhere = 
                     reservedTokens.has(token) && 
                     !isLockedToken && 

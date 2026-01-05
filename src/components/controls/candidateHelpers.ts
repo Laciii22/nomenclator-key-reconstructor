@@ -10,19 +10,85 @@ export type CandidateOption = {
   score: number;
 };
 
-export function computeFlatIndexForChar(otRows: OTChar[][], ch: string) {
-  let idx2 = 0;
+/**
+ * Find the flat index of the first occurrence of a character in OT rows.
+ * Excludes empty cells from indexing.
+ */
+export function computeFlatIndexForChar(otRows: OTChar[][], ch: string): number {
+  let idx = 0;
+  
   for (const row of otRows) {
     for (const cell of row) {
       if (cell.ch !== '') {
-        if (cell.ch === ch) return idx2;
-        idx2++;
+        if (cell.ch === ch) return idx;
+        idx++;
       }
     }
   }
+  
   return -1;
 }
 
+/**
+ * Count total deception tokens before a given column in the grid.
+ */
+function countDeceptionTokensBeforeColumn(
+  sharedColumns: Column[][],
+  targetColumnIndex: number
+): number {
+  const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+  
+  for (const row of sharedColumns) {
+    for (const col of row) {
+      flatColumns.push({
+        otCh: col.ot ? col.ot.ch : null,
+        indices: (col.zt || []) as number[]
+      });
+    }
+  }
+  
+  let deceptionTotal = 0;
+  for (let i = 0; i < flatColumns.length && i < targetColumnIndex; i++) {
+    if (flatColumns[i].otCh == null) {
+      deceptionTotal += (flatColumns[i].indices || []).length;
+    }
+  }
+  
+  return deceptionTotal;
+}
+
+/**
+ * Check if token position is valid based on expected OT character position.
+ * Accounts for deception tokens which can shift expected positions.
+ */
+function isTokenPositionValid(
+  tokenOccurrences: number[],
+  expectedPosition: number,
+  groupSize: number,
+  deceptionCount: number
+): boolean {
+  if (tokenOccurrences.length === 0) {
+    // Token does not exist in ZT stream - allow as manual override
+    return true;
+  }
+  
+  if (groupSize === 1) {
+    // Separator mode: check if any occurrence is within deception tolerance
+    return tokenOccurrences.some(i =>
+      Math.abs(i - expectedPosition) <= deceptionCount
+    );
+  }
+  
+  // Fixed-length mode: expected position is in groups
+  const expectedStart = expectedPosition * groupSize;
+  return tokenOccurrences.some(i =>
+    Math.abs(i - expectedStart) <= deceptionCount
+  );
+}
+
+/**
+ * Build a candidate option with validation and metadata.
+ */
 export function buildCandidateOptions(params: {
   c: { token: string; score: number; length?: number };
   idx: number;
@@ -35,43 +101,52 @@ export function buildCandidateOptions(params: {
   lockedVal: string | string[] | undefined;
   sharedColumns: Column[][];
 }): CandidateOption {
-  const { c, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns } = params;
+  const {
+    c,
+    ch,
+    otRows,
+    effectiveZtTokens,
+    groupSize,
+    reservedTokens,
+    selectionVal,
+    lockedVal,
+    sharedColumns
+  } = params;
   
   // Normalize to arrays for comparison
   const selectionArr = Array.isArray(selectionVal) ? selectionVal : (selectionVal ? [selectionVal] : []);
   const lockedArr = Array.isArray(lockedVal) ? lockedVal : (lockedVal ? [lockedVal] : []);
   
-  const takenByOther = reservedTokens.has(c.token) && !selectionArr.includes(c.token) && !lockedArr.includes(c.token);
+  const isReservedByOther = 
+    reservedTokens.has(c.token) && 
+    !selectionArr.includes(c.token) && 
+    !lockedArr.includes(c.token);
+  
   const cellFlatIndex = computeFlatIndexForChar(otRows, ch);
-
   const occMap = buildOccMap(effectiveZtTokens, groupSize);
-  const occ = occMap[c.token] || [];
+  const tokenOccurrences = occMap[c.token] || [];
+  
+  const deceptionCount = countDeceptionTokensBeforeColumn(sharedColumns, cellFlatIndex);
+  const hasInvalidPosition = !isTokenPositionValid(
+    tokenOccurrences,
+    cellFlatIndex,
+    groupSize,
+    deceptionCount
+  );
 
-  // Count deception tokens before target
-  const flatColumns: { otCh: string | null; indices: number[] }[] = [];
-  for (const row of sharedColumns) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: (col.zt || []) as number[] });
-  let deceptionTotal = 0;
-  for (let i = 0; i < flatColumns.length; i++) if (flatColumns[i].otCh == null) deceptionTotal += (flatColumns[i].indices || []).length;
-
-  let orderInvalid = false;
-  if (occ.length === 0) {
-    // Token does not exist in the logical ZT stream (e.g. manually implied group
-    // like "33" when only "11" and "23" physically occur). Allow it as a
-    // manual override and don't enforce ordering in this case.
-    orderInvalid = false;
-  } else if (groupSize === 1) {
-    const expectedStart = cellFlatIndex;
-    orderInvalid = !(cellFlatIndex >= 0 && occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal));
-  } else {
-    const expectedStart = cellFlatIndex * groupSize;
-    orderInvalid = !(cellFlatIndex >= 0 && occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal));
-  }
-
-  const disabled = takenByOther || orderInvalid;
+  const disabled = isReservedByOther || hasInvalidPosition;
   const scoreStr = ` (score: ${c.score.toFixed(2)})`;
+  
   let title: string | undefined;
-  if (takenByOther) title = 'This token is already used for another character';
-  else if (orderInvalid) title = groupSize === 1 ? 'Token must start at index 0 for the first OT character' : `Token must start at index ${cellFlatIndex * groupSize} for position ${cellFlatIndex}`;
+  if (isReservedByOther) {
+    title = 'This token is already used for another character';
+  } else if (hasInvalidPosition) {
+    if (groupSize === 1) {
+      title = 'Token must start at index 0 for the first OT character';
+    } else {
+      title = `Token must start at index ${cellFlatIndex * groupSize} for position ${cellFlatIndex}`;
+    }
+  }
 
   return {
     token: c.token,

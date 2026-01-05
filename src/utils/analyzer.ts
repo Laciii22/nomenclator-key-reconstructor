@@ -56,17 +56,27 @@ export type AnalysisResult = {
 
 type ColumnLike = { ot: { ch: string } | null; zt: number[] }[][];
 
+/**
+ * Count occurrences of each OT character across all rows.
+ * Excludes empty placeholder cells.
+ */
 function countOtCellsByChar(otRows: OTChar[][]): Record<string, number> {
-  const out: Record<string, number> = {};
+  const counts: Record<string, number> = {};
+  
   for (const row of otRows) {
     for (const cell of row) {
       if (!cell || cell.ch === '') continue;
-      out[cell.ch] = (out[cell.ch] || 0) + 1;
+      counts[cell.ch] = (counts[cell.ch] || 0) + 1;
     }
   }
-  return out;
+  
+  return counts;
 }
 
+/**
+ * Calculate similarity ratio between two frequencies.
+ * Returns a score from 0 to 1, where 1 means perfect match.
+ */
 function scoreRatio(a: number, b: number): number {
   if (a === 0 && b === 0) return 0;
   return Math.min(a, b) / Math.max(a, b);
@@ -118,33 +128,46 @@ export function fixedModeScore(params: {
   return { support, occurrences, score: scoreRatio(support, occurrences) };
 }
 
-function clone2D(arr: number[][]): number[][] { return arr.map(r => [...r]); }
+/**
+ * Create a deep copy of a 2D array of numbers.
+ */
+function clone2D(arr: number[][]): number[][] {
+  return arr.map(r => [...r]);
+}
 
-// Build a flat view of cells with row/col and counts, it makes array of objects
+/**
+ * Convert 2D row groups into a flat list of cells with their coordinates and counts.
+ */
 function flattenGroups(rowGroups: number[][]) {
   const cells: { row: number; col: number; count: number }[] = [];
+  
   for (let r = 0; r < rowGroups.length; r++) {
     const row = rowGroups[r] || [];
     for (let c = 0; c < row.length; c++) {
       cells.push({ row: r, col: c, count: row[c] || 0 });
     }
   }
+  
   return cells;
 }
 
-// Compute a mapping from each cell index to its OT char (or null)
+/**
+ * Flatten OT rows into a 1D array, excluding empty placeholder cells.
+ * This mirrors the filtering done in computeRowAlloc.
+ */
 function flattenOT(otRows: OTChar[][]) {
-  // Must mirror computeRowAlloc's filtering (exclude empty placeholders)
   const flat: (OTChar | null)[] = [];
+  
   for (const row of otRows) {
     for (const cell of row) {
-      if (cell && cell.ch !== '') flat.push(cell);
+      if (cell && cell.ch !== '') {
+        flat.push(cell);
+      }
     }
   }
+  
   return flat;
 }
-
-// Compute flat start index for each cell into the ZT stream
 
 export function analyze(
   otRows: OTChar[][],

@@ -10,6 +10,149 @@ import type { OTChar, ZTToken } from '../types/domain';
 import type { Column } from '../components/types';
 
 /**
+ * Merge locked keys and selections into a unified structure.
+ * Priority: locked keys override selections.
+ */
+function mergeLockAndSelection(
+  lockedKeys?: Record<string, string | string[]>,
+  selections?: Record<string, string | string[] | null>
+): Record<string, string[]> {
+  const merged: Record<string, string[]> = {};
+  
+  for (const [ch, val] of Object.entries(lockedKeys || {})) {
+    merged[ch] = Array.isArray(val) ? val : val ? [val] : [];
+  }
+  
+  for (const [ch, val] of Object.entries(selections || {})) {
+    if (!merged[ch] && val) {
+      merged[ch] = Array.isArray(val) ? val : [val];
+    }
+  }
+  
+  return merged;
+}
+
+/**
+ * Build a token sequence from consecutive tokens starting at index.
+ * Returns null if sequence would exceed available tokens.
+ */
+function buildTokenSequence(
+  ztTokens: ZTToken[],
+  startIdx: number,
+  length: number
+): string | null {
+  if (startIdx + length > ztTokens.length) return null;
+  
+  let sequence = '';
+  for (let i = 0; i < length; i++) {
+    sequence += ztTokens[startIdx + i].text;
+  }
+  
+  return sequence;
+}
+
+/**
+ * Create a group of token indices for the current position.
+ */
+function createTokenGroup(
+  tokenPtr: number,
+  groupSize: number,
+  maxTokens: number
+): number[] {
+  const groupIndices: number[] = [];
+  for (let g = 0; g < groupSize && tokenPtr + g < maxTokens; g++) {
+    groupIndices.push(tokenPtr + g);
+  }
+  return groupIndices;
+}
+
+/**
+ * Allocate tokens for a character without locked constraints.
+ * Used when character has no locked tokens or all have been consumed.
+ */
+function allocateNormalCell(
+  otChar: OTChar,
+  tokenPtr: number,
+  groupSize: number,
+  ztTokens: ZTToken[]
+): { column: Column; tokensConsumed: number } {
+  if (tokenPtr >= ztTokens.length) {
+    return { column: { ot: otChar, zt: [] }, tokensConsumed: 0 };
+  }
+  
+  const groupIndices = createTokenGroup(tokenPtr, groupSize, ztTokens.length);
+  return {
+    column: { ot: otChar, zt: groupIndices },
+    tokensConsumed: groupIndices.length
+  };
+}
+
+/**
+ * Scan forward to find and allocate a locked token for the character.
+ * Marks skipped tokens as deception cells.
+ */
+function allocateLockedCell(
+  otChar: OTChar,
+  lockedTokens: string[],
+  tokenPtr: number,
+  groupSize: number,
+  ztTokens: ZTToken[]
+): { columns: Column[]; tokensConsumed: number; found: boolean } {
+  const deceptionCells: Column[] = [];
+  let currentPtr = tokenPtr;
+  
+  while (currentPtr < ztTokens.length) {
+    const currentSeq = buildTokenSequence(ztTokens, currentPtr, groupSize);
+    
+    if (currentSeq && lockedTokens.includes(currentSeq)) {
+      // Found matching locked token
+      const groupIndices = createTokenGroup(currentPtr, groupSize, ztTokens.length);
+      const matchColumn = { ot: otChar, zt: groupIndices };
+      const consumed = currentPtr + groupIndices.length - tokenPtr;
+      
+      return {
+        columns: [...deceptionCells, matchColumn],
+        tokensConsumed: consumed,
+        found: true
+      };
+    }
+    
+    // Not a match - mark as deception and continue scanning
+    const groupIndices = createTokenGroup(currentPtr, groupSize, ztTokens.length);
+    deceptionCells.push({ ot: null, zt: groupIndices, deception: true });
+    currentPtr += groupIndices.length;
+  }
+  
+  // No match found - return deception cells plus empty column
+  return {
+    columns: [...deceptionCells, { ot: otChar, zt: [] }],
+    tokensConsumed: currentPtr - tokenPtr,
+    found: false
+  };
+}
+
+/**
+ * Add remaining unallocated tokens as deception cells to the last row.
+ */
+function appendRemainingTokens(
+  result: Column[][],
+  tokenPtr: number,
+  groupSize: number,
+  ztTokens: ZTToken[]
+): void {
+  if (result.length === 0 || tokenPtr >= ztTokens.length) return;
+  
+  const lastRow = result[result.length - 1];
+  let currentPtr = tokenPtr;
+  
+  while (currentPtr < ztTokens.length) {
+    const groupIndices = createTokenGroup(currentPtr, groupSize, ztTokens.length);
+    lastRow.push({ ot: null, zt: groupIndices, deception: true });
+    currentPtr += groupIndices.length;
+  }
+}
+
+/**
  * Build allocation columns for multi-key (homophone) mode.
  * 
  * Works like shift-based allocation BUT respects multi-key locks:
@@ -31,90 +174,48 @@ export function buildMultiKeyColumns(
   groupSize: number = 1,
 ): Column[][] {
   const filteredRows = otRows.map(r => r.filter(c => c.ch !== ''));
-  
-  // Merge locks and selections
-  const allLocked: Record<string, string[]> = {};
-  for (const [ch, val] of Object.entries(lockedKeys || {})) {
-    allLocked[ch] = Array.isArray(val) ? val : val ? [val] : [];
-  }
-  for (const [ch, val] of Object.entries(selections || {})) {
-    if (!allLocked[ch] && val) {
-      allLocked[ch] = Array.isArray(val) ? val : [val];
-    }
-  }
+  const allLocked = mergeLockAndSelection(lockedKeys, selections);
   
   const result: Column[][] = [];
   let tokenPtr = 0;
   
-  // Helper: build token sequence from current pointer
-  const getTokenSequence = (startIdx: number, length: number): string | null => {
-    if (startIdx + length > ztTokens.length) return null;
-    let seq = '';
-    for (let i = 0; i < length; i++) {
-      seq += ztTokens[startIdx + i].text;
-    }
-    return seq;
-  };
-  
   // Track how many locked tokens have been used per character
   const usedLockedCount: Record<string, number> = {};
   
-  for (let r = 0; r < filteredRows.length; r++) {
-    const rowChars = filteredRows[r];
+  for (const rowChars of filteredRows) {
     const rowCols: Column[] = [];
     
-    for (let c = 0; c < rowChars.length; c++) {
-      const ch = rowChars[c].ch;
+    for (const otChar of rowChars) {
+      const ch = otChar.ch;
       const lockedTokens = allLocked[ch] || [];
       const alreadyUsed = usedLockedCount[ch] || 0;
-      
-      // Check if we still need to find a locked token for this character
       const needsLockedToken = alreadyUsed < lockedTokens.length;
       
       if (lockedTokens.length === 0 || !needsLockedToken) {
-        // No locks OR all locked tokens already used - normal position-based allocation
-        if (tokenPtr < ztTokens.length) {
-          const groupIndices: number[] = [];
-          for (let g = 0; g < groupSize && tokenPtr + g < ztTokens.length; g++) {
-            groupIndices.push(tokenPtr + g);
-          }
-          rowCols.push({ ot: rowChars[c], zt: groupIndices });
-          tokenPtr += groupIndices.length;
-        } else {
-          rowCols.push({ ot: rowChars[c], zt: [] });
-        }
+        // No locks or all consumed - normal allocation
+        const { column, tokensConsumed } = allocateNormalCell(
+          otChar,
+          tokenPtr,
+          groupSize,
+          ztTokens
+        );
+        rowCols.push(column);
+        tokenPtr += tokensConsumed;
       } else {
-        // Still need to find a locked token - scan forward
-        let found = false;
+        // Need to find locked token - scan forward
+        const { columns, tokensConsumed, found } = allocateLockedCell(
+          otChar,
+          lockedTokens,
+          tokenPtr,
+          groupSize,
+          ztTokens
+        );
         
-        while (tokenPtr < ztTokens.length) {
-          const currentSeq = getTokenSequence(tokenPtr, groupSize);
-          
-          if (currentSeq && lockedTokens.includes(currentSeq)) {
-            // Found a matching locked token
-            const groupIndices: number[] = [];
-            for (let g = 0; g < groupSize && tokenPtr + g < ztTokens.length; g++) {
-              groupIndices.push(tokenPtr + g);
-            }
-            rowCols.push({ ot: rowChars[c], zt: groupIndices });
-            tokenPtr += groupIndices.length;
-            usedLockedCount[ch] = alreadyUsed + 1;
-            found = true;
-            break;
-          } else {
-            // Not a match - skip as deception
-            const groupIndices: number[] = [];
-            for (let g = 0; g < groupSize && tokenPtr + g < ztTokens.length; g++) {
-              groupIndices.push(tokenPtr + g);
-            }
-            rowCols.push({ ot: null, zt: groupIndices, deception: true });
-            tokenPtr += groupIndices.length;
-          }
-        }
+        rowCols.push(...columns);
+        tokenPtr += tokensConsumed;
         
-        if (!found) {
-          // Couldn't find locked token - empty cell
-          rowCols.push({ ot: rowChars[c], zt: [] });
+        if (found) {
+          usedLockedCount[ch] = alreadyUsed + 1;
         }
       }
     }
@@ -122,18 +223,8 @@ export function buildMultiKeyColumns(
     result.push(rowCols);
   }
   
-  // Add any remaining tokens as deception cells in the last row
-  if (result.length > 0 && tokenPtr < ztTokens.length) {
-    const lastRow = result[result.length - 1];
-    while (tokenPtr < ztTokens.length) {
-      const groupIndices: number[] = [];
-      for (let g = 0; g < groupSize && tokenPtr + g < ztTokens.length; g++) {
-        groupIndices.push(tokenPtr + g);
-      }
-      lastRow.push({ ot: null, zt: groupIndices, deception: true });
-      tokenPtr += groupIndices.length;
-    }
-  }
+  // Add remaining tokens as deception cells
+  appendRemainingTokens(result, tokenPtr, groupSize, ztTokens);
   
   return result;
 }

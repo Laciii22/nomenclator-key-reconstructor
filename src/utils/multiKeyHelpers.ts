@@ -8,14 +8,17 @@
 import type { LockedKeys, SelectionMap, KeysPerOTMode } from '../types/domain';
 
 /**
- * Checks if a value is a multi-key array
+ * Type guard: checks if a value is a multi-key array.
  */
 export function isMultiKeyValue(value: unknown): value is string[] {
   return Array.isArray(value);
 }
 
 /**
- * Normalizes a lock/selection value to an array for consistent processing
+ * Normalize a lock/selection value to an array for consistent processing.
+ * 
+ * @param value - Single token, array of tokens, or null/undefined
+ * @returns Array of tokens (empty if input is null/undefined)
  */
 export function normalizeToArray(value: string | string[] | null | undefined): string[] {
   if (value == null) return [];
@@ -24,7 +27,11 @@ export function normalizeToArray(value: string | string[] | null | undefined): s
 }
 
 /**
- * Normalizes a lock/selection value to a single string for backward compatibility
+ * Normalize a lock/selection value to a single string for single-key mode.
+ * Takes the first element if input is an array.
+ * 
+ * @param value - Single token, array of tokens, or null/undefined
+ * @returns Single token string (empty if input is null/undefined or empty array)
  */
 export function normalizeToString(value: string | string[] | null | undefined): string {
   if (value == null) return '';
@@ -33,7 +40,12 @@ export function normalizeToString(value: string | string[] | null | undefined): 
 }
 
 /**
- * Converts LockedKeys/SelectionMap to the format expected by the current mode
+ * Convert LockedKeys/SelectionMap to the format expected by the current mode.
+ * Ensures data structure compatibility when switching between modes.
+ * 
+ * @param data - Locked keys or selections to convert
+ * @param mode - Target mode ('single' or 'multiple')
+ * @returns Converted data in the appropriate format
  */
 export function convertToMode(
   data: LockedKeys | SelectionMap,
@@ -53,7 +65,13 @@ export function convertToMode(
 }
 
 /**
- * Checks if a token is already locked/selected for the given character
+ * Check if a specific token is assigned to a character.
+ * Works with both single-key and multi-key formats.
+ * 
+ * @param char - OT character to check
+ * @param token - ZT token to look for
+ * @param data - Locked keys or selections
+ * @returns true if token is assigned to the character
  */
 export function hasToken(
   char: string,
