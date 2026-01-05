@@ -31,7 +31,7 @@ const RESPONSIVE_BREAKPOINTS = [
   { maxWidth: 640, columns: 10 },
   { maxWidth: 768, columns: 12 },
   { maxWidth: 1024, columns: 16 },
-  { maxWidth: 1280, columns: 20 },
+  { maxWidth: 1280, columns: 18 },
   { maxWidth: Infinity, columns: 24 },
 ] as const;
 
@@ -156,9 +156,18 @@ export function useNomenklator() {
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onResize = () => setViewportWidth(window.innerWidth);
+    let timeoutId: number | null = null;
+    const onResize = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setViewportWidth(window.innerWidth);
+      }, 150) as unknown as number;
+    };
     window.addEventListener('resize', onResize, { passive: true } as any);
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
 
   const OT_COLUMNS_PER_ROW = useMemo(() => {
@@ -218,12 +227,13 @@ export function useNomenklator() {
   });
 
   // Debounce refreshes so rapid edits/locks don't block typing/dragging.
+  // Increased delay for better performance with large texts
   const { debounced: refreshAnalysisPreserveDebounced, cancel: cancelRefreshDebounce } = useDebouncedCallback(
     () => {
       if (!analysisDone) return;
       refreshAnalysisPreserve();
     },
-    150
+    500
   );
 
   useAutoPickScoreOneSequential({
@@ -587,7 +597,7 @@ export function useNomenklator() {
   const { shiftRight, shiftLeft } = mapping;
 
   /** User-editable inputs and their setters. */
-  const inputs = useMemo(() => ({
+  const inputsRef = useRef({
     otRaw,
     setOtRaw,
     ztRaw,
@@ -600,7 +610,14 @@ export function useNomenklator() {
     setFixedLength,
     keysPerOTMode,
     setKeysPerOTMode,
-  }), [fixedLength, keysPerOTMode, otRaw, separator, ztParseMode, ztRaw]);
+  });
+  inputsRef.current.otRaw = otRaw;
+  inputsRef.current.ztRaw = ztRaw;
+  inputsRef.current.ztParseMode = ztParseMode;
+  inputsRef.current.separator = separator;
+  inputsRef.current.fixedLength = fixedLength;
+  inputsRef.current.keysPerOTMode = keysPerOTMode;
+  const inputs = inputsRef.current;
 
   /** Mutable UI state (locks, selections, warnings, prompts). */
   const state = useMemo(() => ({

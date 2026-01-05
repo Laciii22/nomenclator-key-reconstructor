@@ -64,4 +64,4 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
   );
 };
 
-export default ZTTokenComp;
+export default React.memo(ZTTokenComp);

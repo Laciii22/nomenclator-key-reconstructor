@@ -1,10 +1,20 @@
 import * as React from 'react';
 import type { Candidate, SelectionMap } from '../utils/analyzer';
-import { analyze, fixedModeScore, separatorModeScore } from '../utils/analyzer';
+import { fixedModeScore, separatorModeScore } from '../utils/analyzer';
 import { computeRowAlloc } from '../utils/allocation';
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
 import buildLogicalTokens from '../utils/parse/logicalTokens';
 import { computePairsFromColumns } from '../utils/columns';
+import type { AnalysisWorkerRequest, AnalysisWorkerResponse } from '../workers/analysis.worker';
+
+// Lazy-load worker
+let analysisWorker: Worker | null = null;
+function getAnalysisWorker(): Worker {
+  if (!analysisWorker) {
+    analysisWorker = new Worker(new URL('../workers/analysis.worker.ts', import.meta.url), { type: 'module' });
+  }
+  return analysisWorker;
+}
 
 function sortCandidates(map: Record<string, Candidate[]>): Record<string, Candidate[]> {
   const sorted: Record<string, Candidate[]> = {};
@@ -90,25 +100,37 @@ export function useAnalysis(params: {
   const runAnalysis = React.useCallback(() => {
     setIsAnalyzing(true);
     
-    // Use setTimeout to allow UI to update with loading state
-    setTimeout(() => {
-      try {
-        const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-        const logicalTokens = buildLogicalTokens(effectiveZtTokens, gs);
-        const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
-        const baseCounts = alloc.groups.map(r => r.map(v => v));
+    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    const logicalTokens = buildLogicalTokens(effectiveZtTokens, gs);
+    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
+    const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-        const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode, groupSize: gs }, lockedKeys);
-
-        const augmented = applyScores(augmentCandidatesWithCurrentMapping(res.candidatesByChar));
-
+    const worker = getAnalysisWorker();
+    
+    const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
+      if (e.data.type === 'analyze-result') {
+        const augmented = applyScores(augmentCandidatesWithCurrentMapping(e.data.candidatesByChar));
         setCandidatesByChar(sortCandidates(augmented));
         setSelections({});
         setAnalysisDone(true);
-      } finally {
         setIsAnalyzing(false);
+        worker.removeEventListener('message', handleMessage);
       }
-    }, 0);
+    };
+    
+    worker.addEventListener('message', handleMessage);
+    
+    const request: AnalysisWorkerRequest = {
+      type: 'analyze',
+      otRows: otRows as OTChar[][],
+      ztTokens: logicalTokens,
+      rowGroups: baseCounts,
+      keysPerOTMode,
+      groupSize: gs,
+      lockedKeys,
+    };
+    
+    worker.postMessage(request);
   }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
@@ -117,19 +139,39 @@ export function useAnalysis(params: {
     const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode, groupSize: gs }, lockedKeys);
-    const augmented = applyScores(augmentCandidatesWithCurrentMapping(res.candidatesByChar));
-    const sorted = sortCandidates(augmented);
+    const worker = getAnalysisWorker();
+    
+    const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
+      if (e.data.type === 'analyze-result') {
+        const augmented = applyScores(augmentCandidatesWithCurrentMapping(e.data.candidatesByChar));
+        const sorted = sortCandidates(augmented);
 
-    setCandidatesByChar(sorted);
-    setSelections(prev => {
-      const next: SelectionMap = {};
-      for (const [ch, sel] of Object.entries(prev)) {
-        const list = sorted[ch];
-        if (list && list.some(c => c.token === sel)) next[ch] = sel;
+        setCandidatesByChar(sorted);
+        setSelections(prev => {
+          const next: SelectionMap = {};
+          for (const [ch, sel] of Object.entries(prev)) {
+            const list = sorted[ch];
+            if (list && list.some(c => c.token === sel)) next[ch] = sel;
+          }
+          return next;
+        });
+        worker.removeEventListener('message', handleMessage);
       }
-      return next;
-    });
+    };
+    
+    worker.addEventListener('message', handleMessage);
+    
+    const request: AnalysisWorkerRequest = {
+      type: 'analyze',
+      otRows: otRows as OTChar[][],
+      ztTokens: logicalTokens,
+      rowGroups: baseCounts,
+      keysPerOTMode,
+      groupSize: gs,
+      lockedKeys,
+    };
+    
+    worker.postMessage(request);
   }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
 
   return {

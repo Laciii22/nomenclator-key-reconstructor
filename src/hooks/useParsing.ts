@@ -62,7 +62,7 @@ export function useParsing(params: {
       return parseSeparatorRaw(ztRaw, separator, otCount);
     }
     return parseFixedRaw(ztRaw, fixedLength || 1, otCount);
-  }, [fixedLength, otCount, separator, ztParseMode, ztRaw]);
+  }, [ztParseMode, ztRaw, separator, fixedLength, otCount]);
 
   React.useEffect(() => {
     setKlamacStatus(parseRes.klamacStatus);

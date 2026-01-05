@@ -40,7 +40,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	// Flat index of all cells (including deception) for shift operations in fixedLength mode
 	const flatIndices = useMemo(() => {
 		let counter = 0;
-		return rows.map(row => row.map(col => {
+		return rows.map(row => row.map(() => {
 			const idx = counter;
 			counter++;
 			return idx;
@@ -49,8 +49,18 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
 	// what users see and reason about when spotting collisions.
-	const duplicateOTChars = useMemo(() => {
+	// Must be computed before allowExpandMap to avoid circular dependency
+	const duplicateOTChars = React.useMemo(() => {
 		const tokenToOTs: Record<string, Set<string>> = {};
+		
+		// Pre-compute all owned indices once
+		const allOwned = new Set<number>();
+		for (let rr = 0; rr < rows.length; rr++) {
+			for (let cc = 0; cc < rows[rr].length; cc++) {
+				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
+			}
+		}
+		
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
 				const col = rows[rIdx][cIdx];
@@ -58,28 +68,26 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				if (col.deception) continue;
 				if (!col.zt || col.zt.length === 0) continue;
 
-				// Reproduce OTCell's displayed-index logic so duplicates align with the UI.
+				// Compute displayedIndices inline
 				let displayedIndices: number[] = [];
 				if (groupSize > 1) {
 					if (col.zt.length >= groupSize) {
 						displayedIndices = col.zt.slice(0, groupSize);
-					} else {
-						// compute allowExpandFromStart (same rules as in the JSX below)
+					} else if (col.zt.length === 1) {
 						const start = col.zt[0];
-						const otherOwned = new Set<number>();
-						for (let rr = 0; rr < rows.length; rr++) {
-							for (let cc = 0; cc < rows[rr].length; cc++) {
-								if (rr === rIdx && cc === cIdx) continue;
-								for (const idx of rows[rr][cc].zt) otherOwned.add(idx);
-							}
-						}
-						let allowExpand = true;
+						let canExpand = true;
 						for (let k = 1; k < groupSize; k++) {
 							const idx = start + k;
-							if (otherOwned.has(idx)) { allowExpand = false; break; }
-							if (idx >= ztTokens.length) { allowExpand = false; break; }
+							if (allOwned.has(idx) && !col.zt.includes(idx)) {
+								canExpand = false;
+								break;
+							}
+							if (idx >= ztTokens.length) {
+								canExpand = false;
+								break;
+							}
 						}
-						if (col.zt.length === 1 && allowExpand) {
+						if (canExpand) {
 							for (let k = 0; k < groupSize; k++) {
 								const idx = start + k;
 								if (idx < ztTokens.length) displayedIndices.push(idx);
@@ -87,6 +95,8 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 						} else {
 							displayedIndices = col.zt.slice();
 						}
+					} else {
+						displayedIndices = col.zt.slice();
 					}
 				} else {
 					displayedIndices = col.zt.slice();
@@ -108,11 +118,53 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	// Use a single fixed-width grid so subsequent OT rows can visually continue
 	// filling any remaining space on the last line (layout-only).
-	const visualColumnsPerRow = useMemo(() => {
+	const visualColumnsPerRow = React.useMemo(() => {
 		let max = 1;
 		for (const r of otRows) max = Math.max(max, r.length);
 		return Math.max(1, max);
 	}, [otRows]);
+
+	// Pre-compute allowExpandFromStart for all cells to avoid O(n²) in render
+	const allowExpandMap = useMemo(() => {
+		if (groupSize <= 1) return new Map<string, boolean>();
+		
+		// Build set of all owned indices
+		const allOwned = new Set<number>();
+		for (let rr = 0; rr < rows.length; rr++) {
+			for (let cc = 0; cc < rows[rr].length; cc++) {
+				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
+			}
+		}
+		
+		const map = new Map<string, boolean>();
+		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
+				const col = rows[rIdx][cIdx];
+				const key = `${rIdx}-${cIdx}`;
+				
+				if (!col.zt || col.zt.length === 0 || col.zt.length >= groupSize) {
+					map.set(key, false);
+					continue;
+				}
+				
+				const start = col.zt[0];
+				let canExpand = true;
+				for (let k = 1; k < groupSize; k++) {
+					const idx = start + k;
+					if (allOwned.has(idx) && !col.zt.includes(idx)) {
+						canExpand = false;
+						break;
+					}
+					if (idx >= ztTokens.length) {
+						canExpand = false;
+						break;
+					}
+				}
+				map.set(key, canExpand);
+			}
+		}
+		return map;
+	}, [rows, groupSize, ztTokens]);
 
 	return (
 		<div className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
@@ -160,25 +212,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 								groupSize={groupSize}
 								flatIndex={flatIndices[rIdx][cIdx]}
 								// Only allow auto-expansion when it won't steal indices from other cells.
-								allowExpandFromStart={(() => {
-									if (!col.zt || col.zt.length === 0) return false;
-									if (col.zt.length >= groupSize) return false; // already full
-									if (groupSize <= 1) return false;
-									const start = col.zt[0];
-									const otherOwned = new Set<number>();
-									for (let rr = 0; rr < rows.length; rr++) {
-										for (let cc = 0; cc < rows[rr].length; cc++) {
-											if (rr === rIdx && cc === cIdx) continue;
-											for (const idx of rows[rr][cc].zt) otherOwned.add(idx);
-										}
-									}
-									for (let k = 1; k < groupSize; k++) {
-										const idx = start + k;
-										if (otherOwned.has(idx)) return false;
-										if (idx >= ztTokens.length) return false;
-									}
-									return true;
-								})()}
+								allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
 								onInsertAfterGroup={(fi) => {
 									if (!canInsertRaw || fi < 0) return;
 									const flatColumns: { otCh: string | null; indices: number[] }[] = [];

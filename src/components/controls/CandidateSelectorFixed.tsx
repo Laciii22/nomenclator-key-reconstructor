@@ -68,4 +68,4 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
   );
 };
 
-export default CandidateSelectorFixed;
+export default React.memo(CandidateSelectorFixed);

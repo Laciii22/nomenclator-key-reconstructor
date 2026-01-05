@@ -86,8 +86,6 @@ export function useMapping(params: {
     if (ztParseMode !== 'fixedLength' || !manualOtCounts || manualOtCounts.length === 0) {
       return baseColumns;
     }
-
-    const filteredRows = otRows.map(r => r.filter(c => c.ch !== ''));
     
     // Count total cells in baseColumns (including deception)
     const totalBaseCells = baseColumns.reduce((acc, row) => acc + row.length, 0);

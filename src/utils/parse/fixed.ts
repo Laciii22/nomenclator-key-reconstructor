@@ -18,7 +18,8 @@ import type { ZTToken } from '../../types/domain';
 export function parseFixedRaw(raw: string, groupSize: number, otCount: number) {
   const s = raw.trim();
   if (!s) return { tokens: [] as ZTToken[], klamacStatus: 'none' as const, statusMessage: null as string | null };
-  const parts = Array.from(s);
+  // Filter out spaces from the input
+  const parts = Array.from(s).filter(ch => ch !== ' ');
   const size = groupSize > 0 ? groupSize : 1;
   const groupsCount = Math.floor(parts.length / size);
   const leftover = parts.length % size;

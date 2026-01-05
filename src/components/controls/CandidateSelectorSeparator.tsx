@@ -62,4 +62,4 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
   );
 };
 
-export default CandidateSelectorSeparator;
+export default React.memo(CandidateSelectorSeparator);

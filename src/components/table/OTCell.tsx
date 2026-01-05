@@ -75,7 +75,7 @@ const OTCell: React.FC<OTCellProps> = ({
   });
 
   // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
-  const computeDisplayedTokenIndices = (): number[] => {
+  const displayedIndices = React.useMemo((): number[] => {
     if (!Array.isArray(tokenIndices) || tokenIndices.length === 0) return [];
 
     const isRealOtCell = !!ot;
@@ -101,15 +101,17 @@ const OTCell: React.FC<OTCellProps> = ({
     }
 
     return tokenIndices.slice();
-  };
-
-  const displayedIndices = computeDisplayedTokenIndices();
-  const displayedTokens = displayedIndices.length
-    ? tokensFromIndices(tokens, displayedIndices).map((token, i) => ({ 
-        token, 
-        tokenIndex: displayedIndices[i] 
-      }))
-    : [];
+  }, [tokenIndices, ot, isFixedLength, groupSize, allowExpandFromStart, tokens.length]);
+  
+  const displayedTokens = React.useMemo(() => 
+    displayedIndices.length
+      ? tokensFromIndices(tokens, displayedIndices).map((token, i) => ({ 
+          token, 
+          tokenIndex: displayedIndices[i] 
+        }))
+      : [],
+    [displayedIndices, tokens]
+  );
 
   const isEmptyRealOtCell = Boolean(ot) && !deception && displayedTokens.length === 0;
   const isDuplicateKey = Boolean(ot) && !deception && Boolean(hasDuplicateKey);
@@ -150,7 +152,7 @@ const OTCell: React.FC<OTCellProps> = ({
   );
 
   // Handle lock/unlock toggle
-  const handleLockToggle = (e: React.MouseEvent) => {
+  const handleLockToggle = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (!onLockOT || !ot) return;
     
@@ -163,10 +165,10 @@ const OTCell: React.FC<OTCellProps> = ({
     
     const groupText = joinTokenTexts(displayedTokens.map(f => f.token));
     if (groupText) onLockOT(ot.ch, groupText);
-  };
+  }, [displayedTokens, isEmptyRealOtCell, lockedValue, onLockOT, onUnlockOT, ot]);
 
   // Handle edit or insert in separator mode
-  const handleEditOrInsert = (e: React.MouseEvent) => {
+  const handleEditOrInsert = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     
     if (displayedTokens.length === 0) {
@@ -184,7 +186,7 @@ const OTCell: React.FC<OTCellProps> = ({
     if (userInput?.trim()) {
       onEditToken(displayedTokens[0].tokenIndex, userInput.trim());
     }
-  };
+  }, [displayedTokens, flatIndex, onEditToken, onInsertAfterGroup]);
 
   // Helper to render shift buttons for fixed-length mode
   const renderShiftButton = (
@@ -365,4 +367,4 @@ const OTCell: React.FC<OTCellProps> = ({
   );
 };
 
-export default OTCell;
+export default React.memo(OTCell);

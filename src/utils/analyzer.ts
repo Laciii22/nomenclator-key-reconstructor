@@ -232,16 +232,6 @@ export function analyze(
     const totalOTChars = Object.values(charPositions).reduce((sum, positions) => sum + positions.length, 0);
     const deceptionCount = ztTokens.length - totalOTChars;
     
-    console.log('buildCandidates DEBUG:', {
-      totalZTTokens: ztTokens.length,
-      totalOTChars,
-      deceptionCount,
-      keysPerOTMode,
-      groupSize,
-      ztTokenTexts: ztTokens.map(t => t.text),
-      charPositions
-    });
-    
     const candidatesByChar: Record<string, Candidate[]> = {};
     for (const ch of Object.keys(charPositions)) {
       const cellCount = charPositions[ch].length; // number of cells for this OT character

@@ -189,4 +189,4 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   );
 };
 
-export default CandidateSelectorMulti;
+export default React.memo(CandidateSelectorMulti);

@@ -93,7 +93,7 @@ export function canShiftRight(counts: number[], index: number, maxLen: number): 
  */
 export function shiftRight(countsIn: number[], index: number, maxLen: number): number[] {
   const counts = [...countsIn];
-  if (!canShiftRight(counts, index)) return countsIn;
+  if (!canShiftRight(counts, index, maxLen)) return countsIn;
 
   counts[index] -= 1;
   counts[index + 1] += 1;
@@ -120,7 +120,7 @@ export function shiftRight(countsIn: number[], index: number, maxLen: number): n
  */
 export function shiftLeft(countsIn: number[], index: number, maxLen: number): number[] {
   const counts = [...countsIn];
-  if (!canShiftLeft(counts, index)) return countsIn;
+  if (!canShiftLeft(counts, index, maxLen)) return countsIn;
 
   counts[index] -= 1;
   counts[index - 1] += 1;
