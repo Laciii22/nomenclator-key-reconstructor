@@ -118,7 +118,30 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                   const isLockedToken = lockedTokens.includes(token);
                   const isSelectedToken = selectedTokens.includes(token);
                   const isChecked = isLockedToken || isSelectedToken;
-                  
+
+                  // 1. Token už vybraný v inom OT znaku?
+                  let isSelectedElsewhere = false;
+                  for (const [otherCh, otherSel] of Object.entries(selections)) {
+                    if (otherCh !== ch && Array.isArray(otherSel) && otherSel.includes(token)) {
+                      isSelectedElsewhere = true;
+                      break;
+                    }
+                  }
+
+                  // 2. OT už má maximum vybraných tokenov?
+                  // Ak už je vybraný token, ktorý pokrýva všetky výskyty v ZT, disable ostatné
+                  let coversAll = false;
+                  for (const t of selectedTokens) {
+                    const found = extendedList.find((x: any) => x.token === t);
+                    if (found && found.occurrences && found.support === found.occurrences) {
+                      coversAll = true;
+                      break;
+                    }
+                  }
+                  const maxAllowed = c.occurrences || 1;
+                  const selectedCount = selectedTokens.length;
+                  const isAtMax = !isChecked && (selectedCount >= maxAllowed || coversAll);
+
                   // Check if token is reserved by another character
                   const isReservedElsewhere = 
                     reservedTokens.has(token) && 
@@ -146,7 +169,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                           ? 'bg-green-50 border border-green-200'
                           : isSelectedToken
                             ? 'bg-blue-50 border border-blue-200 hover:bg-blue-100'
-                            : isReservedElsewhere
+                            : isReservedElsewhere || isSelectedElsewhere || isAtMax
                               ? 'bg-gray-50 border border-gray-200 opacity-50 cursor-not-allowed'
                               : 'hover:bg-gray-50 border border-transparent'
                       }`}
@@ -156,7 +179,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                         type="checkbox"
                         className="rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
                         checked={isChecked}
-                        disabled={isLockedToken || isReservedElsewhere}
+                        disabled={isLockedToken || isReservedElsewhere || isSelectedElsewhere || isAtMax}
                         onChange={() => handleToggleToken(ch, token)}
                       />
                       <div className="flex-1 flex items-center justify-between text-sm">
