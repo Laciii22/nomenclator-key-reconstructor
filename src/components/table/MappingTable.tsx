@@ -25,7 +25,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
-		
+
 		// Fallback: normalize multi-key to single-key for buildShiftOnlyColumns
 		const normalizedLocks: Record<string, string> = {};
 		for (const [ch, val] of Object.entries(lockedKeys || {})) {
@@ -35,7 +35,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		for (const [ch, val] of Object.entries(selections || {})) {
 			normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
 		}
-		
+
 		return buildShiftOnlyColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, groupSize);
 	}, [columns, otRows, ztTokens, lockedKeys, selections, groupSize]);
 
@@ -54,7 +54,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	// Must be computed before allowExpandMap to avoid circular dependency
 	const duplicateOTChars = React.useMemo(() => {
 		const tokenToOTs: Record<string, Set<string>> = {};
-		
+
 		// Pre-compute all owned indices once
 		const allOwned = new Set<number>();
 		for (let rr = 0; rr < rows.length; rr++) {
@@ -62,7 +62,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
 			}
 		}
-		
+
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
 				const col = rows[rIdx][cIdx];
@@ -129,7 +129,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	// Pre-compute allowExpandFromStart for all cells to avoid O(n²) in render
 	const allowExpandMap = useMemo(() => {
 		if (groupSize <= 1) return new Map<string, boolean>();
-		
+
 		// Build set of all owned indices
 		const allOwned = new Set<number>();
 		for (let rr = 0; rr < rows.length; rr++) {
@@ -137,18 +137,18 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
 			}
 		}
-		
+
 		const map = new Map<string, boolean>();
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
 				const col = rows[rIdx][cIdx];
 				const key = `${rIdx}-${cIdx}`;
-				
+
 				if (!col.zt || col.zt.length === 0 || col.zt.length >= groupSize) {
 					map.set(key, false);
 					continue;
 				}
-				
+
 				const start = col.zt[0];
 				let canExpand = true;
 				for (let k = 1; k < groupSize; k++) {
@@ -169,7 +169,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	}, [rows, groupSize, ztTokens]);
 
 	// Responsive column count based on viewport width
-	const [viewportWidth, setViewportWidth] = React.useState(() => 
+	const [viewportWidth, setViewportWidth] = React.useState(() =>
 		typeof window === 'undefined' ? 1200 : window.innerWidth
 	);
 
@@ -215,7 +215,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	// Grid dimensions
 	const containerRef = useRef<HTMLDivElement>(null);
 	const CELL_HEIGHT = 55; // approximate height per cell in pixels
-	
+
 	// Calculate cell width to fit all columns without horizontal scroll
 	const getCellWidth = () => {
 		if (!containerRef.current) return 120;
@@ -240,9 +240,9 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	const rowCount = Math.ceil(flatCells.length / columnCount);
 
 	// Cell renderer for react-window
-	const Cell = React.useCallback(({ columnIndex, rowIndex, style, ariaAttributes }: { 
-		columnIndex: number; 
-		rowIndex: number; 
+	const Cell = React.useCallback(({ columnIndex, rowIndex, style, ariaAttributes }: {
+		columnIndex: number;
+		rowIndex: number;
 		style: React.CSSProperties;
 		ariaAttributes: { 'aria-colindex': number; role: 'gridcell' };
 	}) => {
@@ -333,10 +333,18 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	}
 
 	return (
-		<div 
+		<div
 			ref={containerRef}
-			className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}
-			style={{ width: '100%', height: `${Math.min(600, rowCount * CELL_HEIGHT)}px`, overflowY: 'auto', overflowX: 'hidden' }}
+			className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-1 bg-red-50' : ''}`}
+				style={{
+				width: '100%',
+				minHeight: '500px',
+				height: rowCount * CELL_HEIGHT,
+				overflowY: 'auto',
+
+			}}
+
+
 		>
 			<Grid
 				columnCount={columnCount}
