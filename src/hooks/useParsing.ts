@@ -112,18 +112,23 @@ export function useParsing(params: {
     if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
       return uniqueGroupTexts(ztTokens, fixedLength || 1, bracketedIndices);
     }
-    const seen = new Set<string>();
     const br = new Set(bracketedIndices);
-    const map = new Map<string, number[]>();
-    ztTokens.forEach((t, i) => { (map.get(t.text) || map.set(t.text, []).get(t.text))?.push(i); });
-    const out: { text: string; allBracketed: boolean }[] = [];
-    for (const t of ztTokens) {
-      if (seen.has(t.text)) continue;
-      seen.add(t.text);
-      const idxs = map.get(t.text) || [];
-      out.push({ text: t.text, allBracketed: idxs.length > 0 && idxs.every(i => br.has(i)) });
+    const meta = new Map<string, { allBracketed: boolean }>();
+    const order: string[] = [];
+
+    for (let i = 0; i < ztTokens.length; i++) {
+      const text = ztTokens[i].text;
+      const isBr = br.has(i);
+      const prev = meta.get(text);
+      if (!prev) {
+        meta.set(text, { allBracketed: isBr });
+        order.push(text);
+      } else {
+        prev.allBracketed = prev.allBracketed && isBr;
+      }
     }
-    return out;
+
+    return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
   }, [bracketedIndices, fixedLength, ztParseMode, ztTokens]);
 
   return {

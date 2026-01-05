@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { useDndContext, useDroppable, useDraggable } from '@dnd-kit/core';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
 import type { OTCellProps } from '../types';
 import ZTTokenComp from './ZTToken';
 import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
@@ -19,22 +19,6 @@ import plusIcon from '../../assets/icons/plus.png';
 import minus from '../../assets/icons/minus.png';
 import leftIcon from '../../assets/icons/left-arrow.png';
 import rightIcon from '../../assets/icons/right-arrow.png';
-
-interface OtDragData {
-  type: 'ot';
-  otChar?: string;
-  flatIndex?: number;
-  sourceRow?: number;
-  sourceCol?: number;
-}
-
-interface ZtDragData {
-  type: 'zt';
-  token?: unknown;
-  tokenIndex?: number;
-}
-
-type DragData = OtDragData | ZtDragData | Record<string, unknown>;
 
 /**
  * A single OT grid cell with its allocated ZT tokens.
@@ -62,16 +46,35 @@ const OTCell: React.FC<OTCellProps> = ({
   onShiftLeft, 
   onShiftRight, 
   canShiftLeft, 
-  canShiftRight 
+  canShiftRight,
+  activeDragType,
+  activeOtSourceRow,
+  activeOtSourceCol,
+  activeZtTokenIndex,
 }) => {
-  const { active } = useDndContext();
-  const activeDragData = (active?.data?.current ?? {}) as DragData;
-  const activeDragType = 'type' in activeDragData ? activeDragData.type : undefined;
   const isDraggingOT = activeDragType === 'ot';
+
+  // Merge is only valid when dropping onto the immediate right neighbor.
+  // Keeping *only* that one droppable enabled dramatically reduces DnD overhead
+  // for large grids (collision detection + droppable measuring).
+  const sourceRow = isDraggingOT ? activeOtSourceRow : undefined;
+  const sourceCol = isDraggingOT ? activeOtSourceCol : undefined;
+  const isAdjacentRightCell = typeof sourceRow === 'number'
+    && typeof sourceCol === 'number'
+    && sourceRow === row
+    && sourceCol + 1 === col;
+  const isPotentialOtMergeTarget = Boolean(
+    isDraggingOT
+    && ot
+    && !deception
+    && !lockedValue
+    && isAdjacentRightCell
+  );
 
   const { setNodeRef, isOver } = useDroppable({ 
     id: `cell-${row}-${col}`, 
-    data: { row, col, isKlamac: !ot, flatIndex } 
+    data: { row, col, isKlamac: !ot, flatIndex },
+    disabled: !isPotentialOtMergeTarget,
   });
 
   // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
@@ -123,20 +126,7 @@ const OTCell: React.FC<OTCellProps> = ({
   });
 
   // Visual-only drop affordance for OT merging (real enforcement in resolveMergeFromEvent + joinOTAt)
-  const sourceRow = activeDragType === 'ot' && 'sourceRow' in activeDragData ? activeDragData.sourceRow : undefined;
-  const sourceCol = activeDragType === 'ot' && 'sourceCol' in activeDragData ? activeDragData.sourceCol : undefined;
-  const isAdjacentRightCell = typeof sourceRow === 'number' 
-    && typeof sourceCol === 'number' 
-    && sourceRow === row 
-    && sourceCol + 1 === col;
-
-  const canAcceptOtMergeDrop = Boolean(
-    isDraggingOT
-    && ot
-    && !deception
-    && !lockedValue
-    && isAdjacentRightCell
-  );
+  const canAcceptOtMergeDrop = isPotentialOtMergeTarget;
 
   const isValidDropTarget = isDraggingOT && ot && !deception;
   const isInvalidOtHover = isOver && isDraggingOT && !canAcceptOtMergeDrop;
@@ -304,6 +294,8 @@ const OTCell: React.FC<OTCellProps> = ({
                 col={col}
                 onEdit={onEditToken}
                 isLocked={isTokenLocked}
+                activeDragType={activeDragType}
+                activeZtTokenIndex={activeZtTokenIndex}
               />
             );
           })

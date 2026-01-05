@@ -19,7 +19,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight } = props;
+	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -211,6 +211,10 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 								isFixedLength={groupSize > 1}
 								groupSize={groupSize}
 								flatIndex={flatIndices[rIdx][cIdx]}
+								activeDragType={activeDragType}
+								activeOtSourceRow={activeOtSourceRow}
+								activeOtSourceCol={activeOtSourceCol}
+								activeZtTokenIndex={activeZtTokenIndex}
 								// Only allow auto-expansion when it won't steal indices from other cells.
 								allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
 								onInsertAfterGroup={(fi) => {

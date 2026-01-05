@@ -18,11 +18,19 @@ import type { ZTToken } from '../../types/domain';
 export function parseFixedRaw(raw: string, groupSize: number, otCount: number) {
   const s = raw.trim();
   if (!s) return { tokens: [] as ZTToken[], klamacStatus: 'none' as const, statusMessage: null as string | null };
-  // Filter out spaces from the input
-  const parts = Array.from(s).filter(ch => ch !== ' ');
   const size = groupSize > 0 ? groupSize : 1;
-  const groupsCount = Math.floor(parts.length / size);
-  const leftover = parts.length % size;
+
+  // Filter out spaces from the input (but keep other characters as-is).
+  // Build tokens directly to avoid allocating intermediate arrays on each keystroke.
+  const tokens: ZTToken[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === ' ') continue;
+    tokens.push({ id: `zt_${tokens.length}`, text: ch });
+  }
+
+  const groupsCount = Math.floor(tokens.length / size);
+  const leftover = tokens.length % size;
   let klamacStatus: 'none' | 'needsKlamac' | 'ok' | 'invalid' = 'none';
   let statusMessage: string | null = null;
   if (groupsCount === 0 || otCount === 0) { klamacStatus = 'none'; statusMessage = null; }
@@ -30,6 +38,5 @@ export function parseFixedRaw(raw: string, groupSize: number, otCount: number) {
   else if (groupsCount > otCount) { klamacStatus = 'needsKlamac'; statusMessage = `Warning: OT (${otCount}) < ZT groups (${groupsCount}). Choose deception tokens.`; }
   else if (groupsCount < otCount) { klamacStatus = 'invalid'; statusMessage = `OT (${otCount}) > ZT groups (${groupsCount}). Text may be corrupted.`; }
   else { klamacStatus = 'ok'; statusMessage = null; }
-  const tokens = parts.map((t, i) => ({ id: `zt_${i}`, text: t }));
   return { tokens, klamacStatus, statusMessage };
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Active, DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
-import { DndContext, DragOverlay, useSensors, useSensor, MouseSensor, TouchSensor, KeyboardSensor, pointerWithin } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useSensors, useSensor, MouseSensor, TouchSensor, KeyboardSensor, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import AppLayout from '../components/layout/AppLayout';
 import MappingTable from '../components/table/MappingTable';
 import KeyTable from '../components/table/KeyTable';
@@ -142,6 +142,17 @@ const NomenklatorPage: React.FC = () => {
 
   const [activeDrag, setActiveDrag] = React.useState<Active | null>(null);
 
+  const activeDragInfo = React.useMemo(() => {
+    const data = (activeDrag?.data?.current ?? {}) as any;
+    const type = data?.type === 'zt' || data?.type === 'ot' ? (data.type as 'zt' | 'ot') : undefined;
+    return {
+      type,
+      otSourceRow: typeof data?.sourceRow === 'number' ? (data.sourceRow as number) : undefined,
+      otSourceCol: typeof data?.sourceCol === 'number' ? (data.sourceCol as number) : undefined,
+      ztTokenIndex: typeof data?.tokenIndex === 'number' ? (data.tokenIndex as number) : null,
+    };
+  }, [activeDrag]);
+
   const handleDragStart = React.useCallback((evt: DragStartEvent) => {
     setActiveDrag(evt.active);
     onDragStart();
@@ -172,6 +183,11 @@ const NomenklatorPage: React.FC = () => {
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       <DndContext
         sensors={sensors}
+        measuring={{
+          droppable: {
+            strategy: MeasuringStrategy.WhileDragging,
+          },
+        }}
         collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -375,6 +391,10 @@ const NomenklatorPage: React.FC = () => {
                 shiftMeta={shiftMeta}
                 onShiftGroupRight={shiftGroupRight}
                 onShiftGroupLeft={shiftGroupLeft}
+                activeDragType={activeDragInfo.type}
+                activeOtSourceRow={activeDragInfo.otSourceRow}
+                activeOtSourceCol={activeDragInfo.otSourceCol}
+                activeZtTokenIndex={activeDragInfo.ztTokenIndex}
               />
             </div>
       </div>

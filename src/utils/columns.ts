@@ -26,6 +26,9 @@ export function computePairsFromColumns(
   groupSize: number = 1,
   keysPerOTMode: 'single' | 'multiple' = 'single'
 ): Pair[] {
+  // Currently pairs are computed per cell regardless of mode.
+  // Keep the parameter for API stability (call sites pass it).
+  void keysPerOTMode;
   const out: Pair[] = [];
   for (const row of cols) {
     for (const col of row) {

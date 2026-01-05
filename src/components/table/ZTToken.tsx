@@ -7,24 +7,23 @@
  */
 
 import React from 'react';
-import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { ZTTokenProps } from '../types';
 import { colors } from '../../utils/colors';
-
-interface DragData {
-  type?: 'zt' | 'ot';
-  tokenIndex?: number;
-}
 
 /**
  * A draggable ZT token component with lock state and swap affordances.
  */
-const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked }) => {
-  const { active } = useDndContext();
-  const activeData = (active?.data?.current ?? {}) as DragData;
-  const activeType = activeData?.type;
-  const isDraggingZT = activeType === 'zt';
-  const activeTokenIndex = typeof activeData?.tokenIndex === 'number' ? activeData.tokenIndex : null;
+const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked, activeDragType, activeZtTokenIndex }) => {
+  const isDraggingZT = activeDragType === 'zt';
+  const activeTokenIndex = typeof activeZtTokenIndex === 'number' ? activeZtTokenIndex : null;
+
+  // Visual-only drop affordance for swapping tokens.
+  // Real enforcement still happens in the drag-end handler.
+  // Only adjacent swaps are valid, so keep droppable enabled only for those targets
+  // to avoid registering/measuring thousands of droppables during drag.
+  const isAdjacentSwapTarget = isDraggingZT && activeTokenIndex != null && Math.abs(activeTokenIndex - tokenIndex) === 1;
+  const canAcceptZtSwap = Boolean(isAdjacentSwapTarget && !isLocked);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `zt-${token.id}`,
@@ -35,12 +34,8 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `zt-drop-${tokenIndex}`,
     data: { type: 'zt', tokenIndex, row, col },
+    disabled: !canAcceptZtSwap,
   });
-
-  // Visual-only drop affordance for swapping tokens.
-  // Real enforcement still happens in the drag-end handler.
-  const isAdjacentSwapTarget = isDraggingZT && activeTokenIndex != null && Math.abs(activeTokenIndex - tokenIndex) === 1;
-  const canAcceptZtSwap = Boolean(isAdjacentSwapTarget && !isLocked);
   const isValidZtHover = isOver && canAcceptZtSwap;
   const isInvalidZtHover = isOver && isDraggingZT && !canAcceptZtSwap;
 

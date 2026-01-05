@@ -13,30 +13,42 @@ export function logicalGroups(tokens: ZTToken[], groupSize: number): { text: str
 }
 
 export function uniqueGroupTexts(tokens: ZTToken[], groupSize: number, bracketedIndices: number[]): { text: string; allBracketed: boolean }[] {
-  const groups = logicalGroups(tokens, groupSize);
-  const map = new Map<string, number[]>();
-  for (const g of groups) (map.get(g.text) || map.set(g.text, []).get(g.text))?.push(g.start);
+  const size = Math.max(1, groupSize);
   const br = new Set(bracketedIndices);
-  const out: { text: string; allBracketed: boolean }[] = [];
-  for (const [text, starts] of map.entries()) {
-    const allBr = starts.length > 0 && starts.every(s => {
-      for (let k = 0; k < Math.max(1, groupSize); k++) { if (!br.has(s + k)) return false; }
-      return true;
-    });
-    out.push({ text, allBracketed: allBr });
+  const meta = new Map<string, { allBracketed: boolean }>();
+  const order: string[] = [];
+
+  for (let start = 0; start + size - 1 < tokens.length; start += size) {
+    let text = '';
+    let groupAllBracketed = true;
+    for (let k = 0; k < size; k++) {
+      text += tokens[start + k].text;
+      if (!br.has(start + k)) groupAllBracketed = false;
+    }
+
+    const prev = meta.get(text);
+    if (!prev) {
+      meta.set(text, { allBracketed: groupAllBracketed });
+      order.push(text);
+    } else {
+      prev.allBracketed = prev.allBracketed && groupAllBracketed;
+    }
   }
-  return out;
+
+  return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
 }
 
 export function toggleBracketByGroupText(text: string, tokens: ZTToken[], groupSize: number, bracketedIndices: number[]): number[] {
   const size = Math.max(1, groupSize);
   const indicesToToggle: number[] = [];
-  const groups = logicalGroups(tokens, size);
-  for (const g of groups) {
-    if (g.text === text) {
-      for (let i = 0; i < size; i++) indicesToToggle.push(g.start + i);
-    }
+
+  for (let start = 0; start + size - 1 < tokens.length; start += size) {
+    let groupText = '';
+    for (let k = 0; k < size; k++) groupText += tokens[start + k].text;
+    if (groupText !== text) continue;
+    for (let i = 0; i < size; i++) indicesToToggle.push(start + i);
   }
+
   if (!indicesToToggle.length) return bracketedIndices;
   const set = new Set(bracketedIndices);
   const all = indicesToToggle.every(i => set.has(i));

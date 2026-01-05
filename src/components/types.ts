@@ -70,6 +70,15 @@ export type MappingTableProps = {
   onShiftGroupLeft?: (flatIndex: number) => void;
   /** Callback to shift a group right (fixed-length mode) */
   onShiftGroupRight?: (flatIndex: number) => void;
+
+  /** Active drag type from the page (used to avoid per-cell useDndContext re-renders) */
+  activeDragType?: 'zt' | 'ot';
+  /** Source row when dragging an OT cell */
+  activeOtSourceRow?: number;
+  /** Source col when dragging an OT cell */
+  activeOtSourceCol?: number;
+  /** Active token index when dragging a ZT token */
+  activeZtTokenIndex?: number | null;
 };
 
 /**
@@ -120,6 +129,15 @@ export type OTCellProps = {
   canShiftLeft?: boolean;
   /** Whether shifting right is allowed */
   canShiftRight?: boolean;
+
+  /** Active drag type from the page (avoids per-cell useDndContext re-renders) */
+  activeDragType?: 'zt' | 'ot';
+  /** Source row when dragging an OT cell */
+  activeOtSourceRow?: number;
+  /** Source col when dragging an OT cell */
+  activeOtSourceCol?: number;
+  /** Active token index when dragging a ZT token */
+  activeZtTokenIndex?: number | null;
 };
 
 /**
@@ -138,6 +156,11 @@ export type ZTTokenProps = {
   onEdit?: (tokenIndex: number, newText: string) => void;
   /** True if this token is locked to an OT character */
   isLocked?: boolean;
+
+  /** Active drag type from the page (avoids per-token useDndContext re-renders) */
+  activeDragType?: 'zt' | 'ot';
+  /** Active token index when dragging a ZT token */
+  activeZtTokenIndex?: number | null;
 };
 
 /**

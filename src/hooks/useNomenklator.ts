@@ -227,13 +227,21 @@ export function useNomenklator() {
   });
 
   // Debounce refreshes so rapid edits/locks don't block typing/dragging.
-  // Increased delay for better performance with large texts
+  // Adaptive delay: short texts stay responsive; large texts avoid UI jank.
+  const analysisRefreshDelayMs = useMemo(() => {
+    const size = Math.max(otChars.length, effectiveZtTokens.length);
+    if (size > 500) return 500;
+    if (size > 200) return 300;
+    if (size > 100) return 200;
+    return 100;
+  }, [otChars.length, effectiveZtTokens.length]);
+
   const { debounced: refreshAnalysisPreserveDebounced, cancel: cancelRefreshDebounce } = useDebouncedCallback(
     () => {
       if (!analysisDone) return;
       refreshAnalysisPreserve();
     },
-    500
+    analysisRefreshDelayMs
   );
 
   useAutoPickScoreOneSequential({
@@ -612,11 +620,17 @@ export function useNomenklator() {
     setKeysPerOTMode,
   });
   inputsRef.current.otRaw = otRaw;
+  inputsRef.current.setOtRaw = setOtRaw;
   inputsRef.current.ztRaw = ztRaw;
+  inputsRef.current.setZtRaw = setZtRaw;
   inputsRef.current.ztParseMode = ztParseMode;
+  inputsRef.current.setZtParseMode = setZtParseMode;
   inputsRef.current.separator = separator;
+  inputsRef.current.setSeparator = setSeparator;
   inputsRef.current.fixedLength = fixedLength;
+  inputsRef.current.setFixedLength = setFixedLength;
   inputsRef.current.keysPerOTMode = keysPerOTMode;
+  inputsRef.current.setKeysPerOTMode = setKeysPerOTMode;
   const inputs = inputsRef.current;
 
   /** Mutable UI state (locks, selections, warnings, prompts). */

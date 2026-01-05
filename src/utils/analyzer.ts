@@ -222,6 +222,9 @@ export function analyze(
   }
 
   function buildCandidates(ztTokens: ZTToken[], charPositions: Record<string, number[]>, keysPerOTMode: KeysPerOTMode, groupSize: number = 1) {
+    // Reserved for potential scoring tweaks in fixed-length mode.
+    // Keep parameter for API stability.
+    void groupSize;
     const uniqueTokens = Array.from(new Set(ztTokens.map(t => t.text)));
     const freq: Record<string, number> = {};
     for (const t of ztTokens) freq[t.text] = (freq[t.text] || 0) + 1;
