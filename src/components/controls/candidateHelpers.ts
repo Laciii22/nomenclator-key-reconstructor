@@ -30,11 +30,10 @@ export function computeFlatIndexForChar(otRows: OTChar[][], ch: string): number 
 }
 
 /**
- * Count total deception tokens before a given column in the grid.
+ * Count total deception tokens in the entire grid.
  */
-function countDeceptionTokensBeforeColumn(
-  sharedColumns: Column[][],
-  targetColumnIndex: number
+function countTotalDeceptionTokens(
+  sharedColumns: Column[][]
 ): number {
   const flatColumns: { otCh: string | null; indices: number[] }[] = [];
   
@@ -48,7 +47,7 @@ function countDeceptionTokensBeforeColumn(
   }
   
   let deceptionTotal = 0;
-  for (let i = 0; i < flatColumns.length && i < targetColumnIndex; i++) {
+  for (let i = 0; i < flatColumns.length; i++) {
     if (flatColumns[i].otCh == null) {
       deceptionTotal += (flatColumns[i].indices || []).length;
     }
@@ -126,7 +125,7 @@ export function buildCandidateOptions(params: {
   const occMap = buildOccMap(effectiveZtTokens, groupSize);
   const tokenOccurrences = occMap[c.token] || [];
   
-  const deceptionCount = countDeceptionTokensBeforeColumn(sharedColumns, cellFlatIndex);
+  const deceptionCount = countTotalDeceptionTokens(sharedColumns);
   const hasInvalidPosition = !isTokenPositionValid(
     tokenOccurrences,
     cellFlatIndex,
@@ -148,11 +147,13 @@ export function buildCandidateOptions(params: {
     }
   }
 
+  const isLocked = lockedArr.includes(c.token);
+  
   return {
     token: c.token,
     disabled,
     title,
-    label: `${c.token}${scoreStr}${lockedVal === c.token ? ' (locked)' : ''}`,
+    label: `${c.token}${scoreStr}${isLocked ? ' (locked)' : ''}`,
     score: c.score,
   };
 }

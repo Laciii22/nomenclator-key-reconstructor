@@ -328,19 +328,26 @@ export function useNomenklator() {
   }, [bracketedIndices.length, effectiveZtTokens.length, fixedLength, otRows, setSelectionError, ztParseMode]);
 
   // Choose suggestions where exactly one candidate has score==1 for that OT char.
-  // In multi-key mode, allow multiple high-scoring candidates per character (homophones).
   // If any OT char has more than one score==1 candidate, abort and set an error.
+  // In multi-key mode, this function does nothing (manual selection expected).
   const chooseScoreOneSuggestions = useCallback(() => {
-    const picks: Record<string, string | string[]> = {};
+    // Skip auto-selection in multi-key mode - users manually select homophones
+    if (keysPerOTMode === 'multiple') {
+      setSelectionError(null);
+      return true;
+    }
+    
+    const picks: Record<string, string> = {};
     const ambiguous: string[] = [];
     const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    
     for (const [ch, list] of Object.entries(candidatesByChar)) {
       // build candidate options to know which candidates are disabled by ordering/reserved rules
+      // In single-key mode, normalize array values to strings
       const lockedVal = lockedKeys?.[ch];
-      const normalizedLockedVal = Array.isArray(lockedVal) ? lockedVal[0] : lockedVal;
+      const normalizedLocked = Array.isArray(lockedVal) ? lockedVal[0] : lockedVal;
       const selectionVal = selections[ch];
-      const normalizedSelectionVal = Array.isArray(selectionVal) ? selectionVal[0] : (selectionVal ?? undefined);
+      const normalizedSelection = Array.isArray(selectionVal) ? selectionVal[0] : selectionVal;
+      
       const opts = list.map((c, idx) => buildCandidateOptions({ 
         c, 
         idx, 
@@ -349,33 +356,17 @@ export function useNomenklator() {
         effectiveZtTokens, 
         groupSize: gs, 
         reservedTokens, 
-        selectionVal: normalizedSelectionVal, 
-        lockedVal: normalizedLockedVal, 
+        selectionVal: normalizedSelection, 
+        lockedVal: normalizedLocked, 
         sharedColumns: columns 
       }));
-      
-      if (keysPerOTMode === 'multiple') {
-        // In multi-key mode, select top N candidates based on score (homophones)
-        const highScoreCandidates = opts
-          .map((opt, i) => ({ opt, candidate: list[i] }))
-          .filter(({ opt, candidate }) => !opt.disabled && candidate.score >= 0.5)
-          .sort((a, b) => b.candidate.score - a.candidate.score)
-          .slice(0, 3); // Top 3 candidates
-        
-        if (highScoreCandidates.length > 0) {
-          picks[ch] = highScoreCandidates.map(({ opt }) => opt.token);
-        }
-      } else {
-        // Single-key mode: exactly one score==1 candidate
-        const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
-        if (enabledScore1.length > 1) {
-          ambiguous.push(ch);
-          continue;
-        }
-        if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
+      const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
+      if (enabledScore1.length > 1) {
+        ambiguous.push(ch);
+        continue;
       }
+      if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
     }
-    
     // Apply only the unambiguous picks, preserving existing selections for others
     if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
     if (ambiguous.length) {
