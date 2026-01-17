@@ -47,7 +47,7 @@ export function buildShiftOnlyColumns(
       const ch = rowChars[c].ch;
       const want = hasForced ? forced[ch] : undefined;
       if (!want) {
-        // Unforced cell. Heurristic: try to take groupSize tokens starting at tokenPtr.
+        // Unforced cell. Heuristic: try to take groupSize tokens starting at tokenPtr.
         if (tokenPtr < ztTokens.length) {
           const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
           const seqAt = (start: number) => {
@@ -58,6 +58,13 @@ export function buildShiftOnlyColumns(
           };
           const here = seqAt(tokenPtr);
           const next = seqAt(tokenPtr + 1);
+          
+          // Check if current token is forced for a DIFFERENT character
+          // If so, this unforced cell cannot take it - leave empty
+          const isForcedForOtherChar = here != null && Object.entries(forced).some(
+            ([forcedCh, forcedToken]) => forcedToken === here && forcedCh !== ch
+          );
+          
           // Decide whether to protect next forced group by taking only one token here.
           // Additionally ensure taking one token won't leave too many remaining tokens
           // that cannot be accommodated by remaining OT cells (would create leftover tokens).
@@ -65,7 +72,11 @@ export function buildShiftOnlyColumns(
           const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
           const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
           const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
-          if (shouldProtectNext) {
+          
+          if (isForcedForOtherChar) {
+            // Current token is forced for another character - leave this cell empty
+            rowCols.push({ ot: rowChars[c], zt: [] });
+          } else if (shouldProtectNext) {
             rowCols.push({ ot: rowChars[c], zt: [tokenPtr] });
             tokenPtr += 1;
           } else {
