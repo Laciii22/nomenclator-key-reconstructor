@@ -10,6 +10,7 @@ import CandidateSelectorFixed from '../components/controls/CandidateSelectorFixe
 import CandidateSelectorSeparator from '../components/controls/CandidateSelectorSeparator';
 import CandidateSelectorMulti from '../components/controls/CandidateSelectorMulti';
 import HelpModal from '../components/common/HelpModal';
+import FileImport from '../components/controls/FileImport';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap } from '../utils/analyzer';
 
@@ -88,6 +89,7 @@ const NomenklatorPage: React.FC = () => {
     mergeAllOccurrences,
     dismissMergeAllPrompt,
     toggleHighlightForOT,
+    quickAssign,
   } = actions;
 
   const otTextareaId = 'ot-raw';
@@ -99,6 +101,14 @@ const NomenklatorPage: React.FC = () => {
 
   const onZtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setZtRaw(e.target.value);
+  }, [setZtRaw]);
+
+  const onOtFileLoad = React.useCallback((content: string) => {
+    setOtRaw(content.toUpperCase());
+  }, [setOtRaw]);
+
+  const onZtFileLoad = React.useCallback((content: string) => {
+    setZtRaw(content);
   }, [setZtRaw]);
 
   const onFixedLengthChange = React.useCallback((v: number) => {
@@ -197,18 +207,23 @@ const NomenklatorPage: React.FC = () => {
         <h1 className="text-xl font-semibold mb-4">Nomenclator</h1>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           <div className="space-y-4 lg:col-span-2">
-            <label className="block text-sm font-medium" htmlFor={otTextareaId}>OT (e.g. HELLO):</label>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium" htmlFor={otTextareaId}>OT (e.g. HELLO):</label>
+              <FileImport label="Import OT" onFileLoad={onOtFileLoad} />
+            </div>
             <textarea
               id={otTextareaId}
               rows={3}
               className="w-full font-mono border border-gray-300 rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Here write OT text (characters only)"
-
               value={otRaw}
               onChange={onOtChange}
             />
 
-            <label className="block text-sm font-medium" htmlFor={ztTextareaId}>ZT (e.g. 11 34 12 12 56):</label>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium" htmlFor={ztTextareaId}>ZT (e.g. 11 34 12 12 56):</label>
+              <FileImport label="Import ZT" onFileLoad={onZtFileLoad} />
+            </div>
             <textarea
               id={ztTextareaId}
               rows={3}
@@ -345,6 +360,7 @@ const NomenklatorPage: React.FC = () => {
               highlightedOTChar={highlightedOTChar}
               onToggleHighlightOT={toggleHighlightForOT}
               onLockAll={onLockAll}
+              onQuickAssign={quickAssign}
             />
           </div>
         </div>

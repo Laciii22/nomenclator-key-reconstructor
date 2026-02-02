@@ -20,7 +20,7 @@ type SharedColumns = Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
  * - In 'multiple' mode, it displays all homophone tokens for each character.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>> }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT }) => {
+const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>>; onQuickAssign?: (otPattern: string, ztToken: string) => string | null }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT, onQuickAssign }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
@@ -64,6 +64,35 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
   const sortedAggregated = useMemo(() => {
     return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
   }, [aggregated]);
+
+  // Quick Assign state
+  const [quickOtPattern, setQuickOtPattern] = React.useState('');
+  const [quickZtToken, setQuickZtToken] = React.useState('');
+  const [quickAssignError, setQuickAssignError] = React.useState<string | null>(null);
+
+  const handleQuickAssign = React.useCallback(() => {
+    if (!onQuickAssign) return;
+    
+    const error = onQuickAssign(quickOtPattern, quickZtToken);
+    if (error) {
+      setQuickAssignError(error);
+    } else {
+      // Success - clear fields and error
+      setQuickOtPattern('');
+      setQuickZtToken('');
+      setQuickAssignError(null);
+    }
+  }, [onQuickAssign, quickOtPattern, quickZtToken]);
+
+  const handleOtPatternChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuickOtPattern(e.target.value.toUpperCase());
+    setQuickAssignError(null); // Clear error on input change
+  }, []);
+
+  const handleZtTokenChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuickZtToken(e.target.value);
+    setQuickAssignError(null); // Clear error on input change
+  }, []);
 
   // Duplicate displayed ZT keys across different OT characters.
   // This matches what the KeyTable shows (and what users reason about).
@@ -148,6 +177,46 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
+      {/* Quick Assign Section */}
+      {onQuickAssign && (
+        <div className="px-3 py-3 bg-gray-50 border-b border-gray-200">
+          <div className="text-sm font-medium text-gray-700 mb-2">Quick Assign</div>
+          <div className="flex gap-2 items-start">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="OT pattern (e.g. PES)"
+                value={quickOtPattern}
+                onChange={handleOtPatternChange}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="ZT token (e.g. 66)"
+                value={quickZtToken}
+                onChange={handleZtTokenChange}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              onClick={handleQuickAssign}
+              disabled={!quickOtPattern || !quickZtToken}
+              className="px-3 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              title="Merge and assign OT pattern to ZT token"
+            >
+              Assign
+            </button>
+          </div>
+          {quickAssignError && (
+            <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
+              {quickAssignError}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100">
         <div className="text-sm font-medium text-gray-700">Key pairs</div>
         {onLockAll && (

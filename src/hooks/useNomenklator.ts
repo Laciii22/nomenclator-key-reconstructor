@@ -126,6 +126,69 @@ export function useNomenklator() {
     setMergeAllPrompt(null);
   }, []);
 
+  /**
+   * Quick assign: manually assign OT pattern to ZT token.
+   * 1. Validates that OT pattern exists in the text
+   * 2. Merges all occurrences of the pattern
+   * 3. Sets selection (not locked) for the pattern → token
+   * 4. Triggers automatic analysis
+   * 
+   * @returns error message if validation fails, null on success
+   */
+  const quickAssign = useCallback((otPattern: string, ztToken: string): string | null => {
+    const pattern = otPattern.trim().toUpperCase();
+    const token = ztToken.trim();
+
+    // Validation
+    if (!pattern) return 'OT pattern cannot be empty';
+    if (!token) return 'ZT token cannot be empty';
+
+    // Check if pattern exists in OT text
+    const otText = otRaw.replace(/\s/g, '');
+    if (!otText.includes(pattern)) {
+      return `Pattern "${pattern}" not found in OT text`;
+    }
+
+    // Merge all occurrences first
+    const flat = getFlatOTGroups();
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+
+    const mergeResult = mergeAllOccurrencesHelper(flat, pattern, normalizedLocks);
+    if (!mergeResult) {
+      return `Failed to merge pattern "${pattern}"`;
+    }
+
+    // Update groups
+    setCustomOtGroups(mergeResult.nextGroups);
+    setMergeAllPrompt(mergeResult.remaining > 0 ? { pattern: mergeResult.target, remaining: mergeResult.remaining } : null);
+
+    // Set selection (not locked) for the pattern
+    setSelections(prev => {
+      const next = { ...prev };
+      if (keysPerOTMode === 'multiple') {
+        // In multiple mode, add to array if not already present
+        const existing = Array.isArray(prev[pattern]) ? prev[pattern] as string[] : [];
+        if (!existing.includes(token)) {
+          next[pattern] = [...existing, token];
+        }
+      } else {
+        // In single mode, just set the token
+        next[pattern] = token;
+      }
+      return next;
+    });
+
+    // Trigger analysis after a microtask to ensure state is updated
+    queueMicrotask(() => {
+      setPendingAutoRefresh(true);
+    });
+
+    return null; // Success
+  }, [otRaw, getFlatOTGroups, lockedKeys, keysPerOTMode]);
+
   const parsing = useParsing({ otCount: otChars.length });
   const {
     ztParseMode,
@@ -676,6 +739,7 @@ export function useNomenklator() {
     mergeAllOccurrences,
     dismissMergeAllPrompt,
     toggleHighlightForOT,
+    quickAssign,
   }), [
     applySelection,
     chooseScoreOneSuggestions,
@@ -696,6 +760,7 @@ export function useNomenklator() {
     splitOTAt,
     toggleBracketGroupByText,
     toggleHighlightForOT,
+    quickAssign,
   ]);
 
   return { inputs, state, derived, actions } as const;
