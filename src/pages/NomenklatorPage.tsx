@@ -90,6 +90,7 @@ const NomenklatorPage: React.FC = () => {
     dismissMergeAllPrompt,
     toggleHighlightForOT,
     quickAssign,
+    executeQuickAssign,
   } = actions;
 
   const otTextareaId = 'ot-raw';
@@ -361,6 +362,7 @@ const NomenklatorPage: React.FC = () => {
               onToggleHighlightOT={toggleHighlightForOT}
               onLockAll={onLockAll}
               onQuickAssign={quickAssign}
+              onExecuteQuickAssign={executeQuickAssign}
             />
           </div>
         </div>

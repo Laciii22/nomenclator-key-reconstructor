@@ -126,28 +126,81 @@ export function useNomenklator() {
     setMergeAllPrompt(null);
   }, []);
 
+  const parsing = useParsing({ otCount: otChars.length });
+  const {
+    ztParseMode,
+    setZtParseMode,
+    ztRaw,
+    setZtRaw,
+    setZtRawForMode,
+    separator,
+    setSeparator,
+    fixedLength,
+    setFixedLength,
+    groupSize,
+    ztTokens,
+    effectiveZtTokens,
+    bracketedIndices,
+    setBracketedIndices,
+    toggleBracketGroupByText,
+    uniqueZTTokenTexts,
+    klamacStatus: klamacStatusFromParse,
+    statusMessage: statusMessageFromParse,
+    bracketWarning: bracketWarningFromParse,
+    setZtRawSeparator,
+    setZtRawFixed,
+  } = parsing;
+
   /**
    * Quick assign: manually assign OT pattern to ZT token.
    * 1. Validates that OT pattern exists in the text
-   * 2. Merges all occurrences of the pattern
-   * 3. Sets selection (not locked) for the pattern → token
-   * 4. Triggers automatic analysis
+   * 2. Checks frequency match (returns warning if not 1:1)
    * 
-   * @returns error message if validation fails, null on success
+   * @returns { error?: string, warning?: { otCount: number, ztCount: number } }
    */
-  const quickAssign = useCallback((otPattern: string, ztToken: string): string | null => {
+  const quickAssign = useCallback((otPattern: string, ztToken: string): { error?: string; warning?: { otCount: number; ztCount: number } } | null => {
     const pattern = otPattern.trim().toUpperCase();
     const token = ztToken.trim();
 
     // Validation
-    if (!pattern) return 'OT pattern cannot be empty';
-    if (!token) return 'ZT token cannot be empty';
+    if (!pattern) return { error: 'OT pattern cannot be empty' };
+    if (!token) return { error: 'ZT token cannot be empty' };
 
     // Check if pattern exists in OT text
     const otText = otRaw.replace(/\s/g, '');
     if (!otText.includes(pattern)) {
-      return `Pattern "${pattern}" not found in OT text`;
+      return { error: `Pattern "${pattern}" not found in OT text` };
     }
+
+    // Count occurrences in OT
+    const otCount = (() => {
+      let count = 0;
+      let pos = 0;
+      while (pos < otText.length) {
+        const idx = otText.indexOf(pattern, pos);
+        if (idx === -1) break;
+        count++;
+        pos = idx + 1; // Allow overlapping matches
+      }
+      return count;
+    })();
+
+    // Count occurrences in ZT
+    const ztCount = ztTokens.filter(t => t.text === token).length;
+
+    // Check frequency match
+    const frequencyWarning = otCount !== ztCount ? { otCount, ztCount } : undefined;
+
+    return frequencyWarning ? { warning: frequencyWarning } : null;
+  }, [otRaw, ztTokens]);
+
+  /**
+   * Execute quick assign after user confirmation.
+   * Called after frequency check passes or user confirms the warning.
+   */
+  const executeQuickAssign = useCallback((otPattern: string, ztToken: string): string | null => {
+    const pattern = otPattern.trim().toUpperCase();
+    const token = ztToken.trim();
 
     // Merge all occurrences first
     const flat = getFlatOTGroups();
@@ -187,32 +240,7 @@ export function useNomenklator() {
     });
 
     return null; // Success
-  }, [otRaw, getFlatOTGroups, lockedKeys, keysPerOTMode]);
-
-  const parsing = useParsing({ otCount: otChars.length });
-  const {
-    ztParseMode,
-    setZtParseMode,
-    ztRaw,
-    setZtRaw,
-    setZtRawForMode,
-    separator,
-    setSeparator,
-    fixedLength,
-    setFixedLength,
-    groupSize,
-    ztTokens,
-    effectiveZtTokens,
-    bracketedIndices,
-    setBracketedIndices,
-    toggleBracketGroupByText,
-    uniqueZTTokenTexts,
-    klamacStatus: klamacStatusFromParse,
-    statusMessage: statusMessageFromParse,
-    bracketWarning: bracketWarningFromParse,
-    setZtRawSeparator,
-    setZtRawFixed,
-  } = parsing;
+  }, [getFlatOTGroups, lockedKeys, keysPerOTMode, setCustomOtGroups, setMergeAllPrompt, setSelections, setPendingAutoRefresh]);
 
   // Responsive OT grid width.
   // This intentionally affects only layout (row wrapping), not mapping/analysis rules.
@@ -740,6 +768,7 @@ export function useNomenklator() {
     dismissMergeAllPrompt,
     toggleHighlightForOT,
     quickAssign,
+    executeQuickAssign,
   }), [
     applySelection,
     chooseScoreOneSuggestions,
@@ -761,6 +790,7 @@ export function useNomenklator() {
     toggleBracketGroupByText,
     toggleHighlightForOT,
     quickAssign,
+    executeQuickAssign,
   ]);
 
   return { inputs, state, derived, actions } as const;

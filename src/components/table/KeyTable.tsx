@@ -7,6 +7,7 @@ import padlock from '../../assets/icons/padlock.png';
 import highlighter from '../../assets/icons/highlighter.png';
 import { colors } from '../../utils/colors';
 import { normalizeToArray } from '../../utils/multiKeyHelpers';
+import Modal from '../common/Modal';
 
 
 
@@ -20,7 +21,11 @@ type SharedColumns = Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
  * - In 'multiple' mode, it displays all homophone tokens for each character.
  * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>>; onQuickAssign?: (otPattern: string, ztToken: string) => string | null }> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT, onQuickAssign }) => {
+const KeyTable: React.FC<KeyTableProps & { 
+  columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>>; 
+  onQuickAssign?: (otPattern: string, ztToken: string) => { error?: string; warning?: { otCount: number; ztCount: number } } | null;
+  onExecuteQuickAssign?: (otPattern: string, ztToken: string) => string | null;
+}> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
@@ -69,11 +74,44 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
   const [quickOtPattern, setQuickOtPattern] = React.useState('');
   const [quickZtToken, setQuickZtToken] = React.useState('');
   const [quickAssignError, setQuickAssignError] = React.useState<string | null>(null);
+  const [showFrequencyWarning, setShowFrequencyWarning] = React.useState<{ otCount: number; ztCount: number } | null>(null);
 
   const handleQuickAssign = React.useCallback(() => {
     if (!onQuickAssign) return;
     
-    const error = onQuickAssign(quickOtPattern, quickZtToken);
+    const result = onQuickAssign(quickOtPattern, quickZtToken);
+    if (!result) {
+      // Success with no warnings
+      if (onExecuteQuickAssign) {
+        const execError = onExecuteQuickAssign(quickOtPattern, quickZtToken);
+        if (execError) {
+          setQuickAssignError(execError);
+        } else {
+          // Clear fields on success
+          setQuickOtPattern('');
+          setQuickZtToken('');
+          setQuickAssignError(null);
+        }
+      }
+      return;
+    }
+
+    if (result.error) {
+      setQuickAssignError(result.error);
+      return;
+    }
+
+    if (result.warning) {
+      // Show frequency warning modal
+      setShowFrequencyWarning(result.warning);
+      return;
+    }
+  }, [onQuickAssign, onExecuteQuickAssign, quickOtPattern, quickZtToken]);
+
+  const handleConfirmFrequencyWarning = React.useCallback(() => {
+    if (!onExecuteQuickAssign) return;
+    
+    const error = onExecuteQuickAssign(quickOtPattern, quickZtToken);
     if (error) {
       setQuickAssignError(error);
     } else {
@@ -82,7 +120,12 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
       setQuickZtToken('');
       setQuickAssignError(null);
     }
-  }, [onQuickAssign, quickOtPattern, quickZtToken]);
+    setShowFrequencyWarning(null);
+  }, [onExecuteQuickAssign, quickOtPattern, quickZtToken]);
+
+  const handleCancelFrequencyWarning = React.useCallback(() => {
+    setShowFrequencyWarning(null);
+  }, []);
 
   const handleOtPatternChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setQuickOtPattern(e.target.value.toUpperCase());
@@ -370,6 +413,39 @@ const KeyTable: React.FC<KeyTableProps & { columns?: Array<Array<{ ot: { ch: str
           })}
         </tbody>
       </table>
+
+      {/* Frequency Warning Modal */}
+      {showFrequencyWarning && (
+        <Modal
+          isOpen={true}
+          onClose={handleCancelFrequencyWarning}
+          title="Frequency Mismatch Warning"
+        >
+          <div className="space-y-4">
+            <p className="text-gray-700">
+              The pattern <strong>{quickOtPattern}</strong> appears <strong>{showFrequencyWarning.otCount}x</strong> in OT, 
+              but token <strong>{quickZtToken}</strong> appears <strong>{showFrequencyWarning.ztCount}x</strong> in ZT.
+            </p>
+            <p className="text-gray-700">
+              This frequency mismatch may indicate an incorrect assignment. Do you want to proceed anyway?
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={handleCancelFrequencyWarning}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmFrequencyWarning}
+                className="px-4 py-2 text-white bg-purple-600 rounded hover:bg-purple-700"
+              >
+                Continue Anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
