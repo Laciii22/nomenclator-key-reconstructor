@@ -11,7 +11,7 @@ import { separatorModeScore } from '../../src/utils/analyzer';
  * - Expected mapping: H→11, E→22, L→33, O→44
  * - Note: L appears 2x, token '33' appears 2x (simple substitution, not homophone)
  * 
- * Homophone example (not tested here, requires multiple key mode):
+ * Homophone noexample (not tested here, requires multiple key mode):
  * - OT: "HELLO" where L appears 2x
  * - ZT: "11:22:33:44:55" where first L→33, second L→44
  * - Result: L → {33, 44} (multiple keys for one character)

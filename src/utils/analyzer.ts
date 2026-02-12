@@ -104,27 +104,91 @@ export function fixedModeScore(params: {
   keysPerOTMode?: KeysPerOTMode;
 }): { support: number; occurrences: number; score: number } {
   const { token, otChar, columns, effectiveZtTokens, groupSize, keysPerOTMode = 'single' } = params;
-  const pairs = computePairsFromColumns(columns, effectiveZtTokens, groupSize, keysPerOTMode);
 
-  const otCellCounts: Record<string, number> = {};
-  for (const p of pairs) otCellCounts[p.ot] = (otCellCounts[p.ot] || 0) + 1;
-
-  const tokenCounts: Record<string, number> = {};
+  // Count OT cells and build position map
+  let otCellCount = 0;
+  const otCharPositions: Record<string, number[]> = {};
   const mappedTokensByChar: Record<string, Set<string>> = {};
-  for (const p of pairs) {
-    if (!p.zt) continue;
-    tokenCounts[p.zt] = (tokenCounts[p.zt] || 0) + 1;
-    (mappedTokensByChar[p.ot] ||= new Set()).add(p.zt);
+  let flatIndex = 0;
+  
+  for (const row of columns) {
+    for (const col of row) {
+      if (col.ot && col.ot.ch !== '') {
+        otCellCount++;
+        const ch = col.ot.ch;
+        (otCharPositions[ch] ||= []).push(flatIndex);
+        
+        // Track which tokens are mapped to this OT char
+        const size = Math.max(1, groupSize);
+        if (col.zt && col.zt.length > 0) {
+          const groupText = col.zt.slice(0, size).map((i: number) => effectiveZtTokens[i]?.text || '').join('');
+          if (groupText) {
+            (mappedTokensByChar[ch] ||= new Set()).add(groupText);
+          }
+        }
+      }
+      flatIndex++;
+    }
   }
 
-  const occurrences = otCellCounts[otChar] || 0;
-  const support = tokenCounts[token] || 0;
-
-  // Mapping-derived candidate for this OT char is high-confidence.
+  // If token is already mapped to this OT char, give it perfect score
   if (mappedTokensByChar[otChar]?.has(token)) {
+    const charPositions = otCharPositions[otChar] || [];
+    const occurrences = charPositions.length;
+    // Count how many times this token appears in mapped positions
+    let support = 0;
+    for (const row of columns) {
+      for (const col of row) {
+        if (col.ot?.ch === otChar && col.zt && col.zt.length > 0) {
+          const size = Math.max(1, groupSize);
+          const groupText = col.zt.slice(0, size).map((i: number) => effectiveZtTokens[i]?.text || '').join('');
+          if (groupText === token) support++;
+        }
+      }
+    }
     return { support, occurrences, score: 1.0 };
   }
 
+  // Build logical token groups from effectiveZtTokens based on groupSize
+  const logicalGroups: { text: string; position: number }[] = [];
+  const size = Math.max(1, groupSize);
+  for (let i = 0; i + size - 1 < effectiveZtTokens.length; i += size) {
+    const text = effectiveZtTokens.slice(i, i + size).map(t => t.text).join('');
+    logicalGroups.push({ text, position: Math.floor(i / size) });
+  }
+
+  // Deception count: how many extra logical groups we have compared to OT cells
+  const deceptionCount = Math.max(0, logicalGroups.length - otCellCount);
+
+  // Find all positions where this token (as logical group) appears
+  const tokenPositions: number[] = [];
+  for (const lg of logicalGroups) {
+    if (lg.text === token) {
+      tokenPositions.push(lg.position);
+    }
+  }
+
+  // Find all positions where this OT char appears
+  const charPositions = otCharPositions[otChar] || [];
+  const occurrences = charPositions.length;
+
+  // If no deception and token is not mapped, it cannot be a valid candidate
+  if (deceptionCount === 0) {
+    return { support: 0, occurrences, score: 0 };
+  }
+
+  // With deception, check if token is within valid range (±deceptionCount) of any OT char position
+  const isInRange = tokenPositions.some(tp =>
+    charPositions.some(cp => Math.abs(tp - cp) <= deceptionCount)
+  );
+
+  // If token is not in range, it's not a valid candidate → score 0
+  if (!isInRange) {
+    return { support: 0, occurrences, score: 0 };
+  }
+
+  // Token is in range → compute frequency-based score
+  const support = tokenPositions.length;
   return { support, occurrences, score: scoreRatio(support, occurrences) };
 }
 
