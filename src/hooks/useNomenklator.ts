@@ -255,42 +255,6 @@ export function useNomenklator() {
     return null; // Success
   }, [getFlatOTGroups, lockedKeys, keysPerOTMode, setCustomOtGroups, setMergeAllPrompt, setSelections, setPendingAutoRefresh]);
 
-  /**
-   * Reset to state before Run Analysis was clicked.
-   * Restores OT, ZT, parsing settings, and clears all derived state (locks, selections, merges).
-   */
-  const resetToPreAnalysis = useCallback(() => {
-    if (!preAnalysisStateRef.current) {
-      // If no snapshot exists, just clear suggestions
-      setLockedKeys({});
-      setSelections({});
-      return;
-    }
-
-    const snapshot = preAnalysisStateRef.current;
-    
-    // Restore to pre-analysis state
-    setOtRaw(snapshot.otRaw);
-    parsing.setZtRawSeparator(snapshot.ztRawSeparator);
-    parsing.setZtRawFixed(snapshot.ztRawFixed);
-    parsing.setZtParseMode(snapshot.ztParseMode);
-    parsing.setSeparator(snapshot.separator);
-    parsing.setFixedLength(snapshot.fixedLength);
-    setKeysPerOTMode(snapshot.keysPerOTMode);
-    setCustomOtGroups(snapshot.customOtGroups);
-    parsing.setBracketedIndices(snapshot.bracketedIndices);
-
-    // Clear all analysis-derived state
-    setLockedKeys({});
-    setSelections({});
-    setMergeAllPrompt(null);
-    setHighlightedOTChar(null);
-    
-    // Clear status messages
-    setSelectionError(null);
-    setBracketWarning(null);
-  }, [parsing, setOtRaw, setKeysPerOTMode, setLockedKeys, setSelections, setCustomOtGroups, setMergeAllPrompt, setHighlightedOTChar, setSelectionError, setBracketWarning]);
-
   // Responsive OT grid width.
   // This intentionally affects only layout (row wrapping), not mapping/analysis rules.
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
@@ -366,6 +330,46 @@ export function useNomenklator() {
     // Run the actual analysis
     runAnalysisCore();
   }, [otRaw, parsing, keysPerOTMode, customOtGroups, runAnalysisCore]);
+
+  /**
+   * Reset to state before Run Analysis was clicked.
+   * Restores OT, ZT, parsing settings, and clears all derived state (locks, selections, merges).
+   */
+  const resetToPreAnalysis = useCallback(() => {
+    if (!preAnalysisStateRef.current) {
+      // If no snapshot exists, just clear suggestions
+      setLockedKeys({});
+      setSelections({});
+      mapping.setManualOtCounts(null);
+      return;
+    }
+
+    const snapshot = preAnalysisStateRef.current;
+    
+    // Restore to pre-analysis state
+    setOtRaw(snapshot.otRaw);
+    parsing.setZtRawSeparator(snapshot.ztRawSeparator);
+    parsing.setZtRawFixed(snapshot.ztRawFixed);
+    parsing.setZtParseMode(snapshot.ztParseMode);
+    parsing.setSeparator(snapshot.separator);
+    parsing.setFixedLength(snapshot.fixedLength);
+    setKeysPerOTMode(snapshot.keysPerOTMode);
+    setCustomOtGroups(snapshot.customOtGroups);
+    parsing.setBracketedIndices(snapshot.bracketedIndices);
+
+    // Clear all analysis-derived state
+    setLockedKeys({});
+    setSelections({});
+    setMergeAllPrompt(null);
+    setHighlightedOTChar(null);
+    
+    // Clear status messages
+    setSelectionError(null);
+    setBracketWarning(null);
+    
+    // Reset manual shifting state for fixed-length mode
+    mapping.setManualOtCounts(null);
+  }, [parsing, setOtRaw, setKeysPerOTMode, setLockedKeys, setSelections, setCustomOtGroups, setMergeAllPrompt, setHighlightedOTChar, setSelectionError, setBracketWarning, mapping]);
 
   // Now that analysisDone is known, let status hook compute the derived post-analysis status as well.
   useNomenklatorStatus({
