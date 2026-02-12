@@ -199,13 +199,24 @@ export function useNomenklator() {
     })();
 
     // Count occurrences in ZT
-    const ztCount = ztTokens.filter(t => t.text === token).length;
+    let ztCount = 0;
+    if (ztParseMode === 'fixedLength') {
+      // In fixed-length mode, count logical groups
+      const size = Math.max(1, fixedLength || 1);
+      for (let i = 0; i + size - 1 < effectiveZtTokens.length; i += size) {
+        const groupText = effectiveZtTokens.slice(i, i + size).map(t => t.text).join('');
+        if (groupText === token) ztCount++;
+      }
+    } else {
+      // In separator mode, count individual tokens
+      ztCount = ztTokens.filter(t => t.text === token).length;
+    }
 
     // Check frequency match
     const frequencyWarning = otCount !== ztCount ? { otCount, ztCount } : undefined;
 
     return frequencyWarning ? { warning: frequencyWarning } : null;
-  }, [otRaw, ztTokens]);
+  }, [otRaw, ztTokens, ztParseMode, fixedLength, effectiveZtTokens]);
 
   /**
    * Execute quick assign after user confirmation.
