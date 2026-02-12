@@ -49,6 +49,17 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		}));
 	}, [rows]);
 
+	// Flat OT index - counts only OT cells (excludes deception) - for split operations
+	const flatOtIndices = useMemo(() => {
+		let counter = 0;
+		return rows.map(row => row.map(col => {
+			if (!col.ot || col.deception) return -1;
+			const idx = counter;
+			counter++;
+			return idx;
+		}));
+	}, [rows]);
+
 	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
 	// what users see and reason about when spotting collisions.
 	// Must be computed before allowExpandMap to avoid circular dependency
@@ -289,6 +300,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					isFixedLength={groupSize > 1}
 					groupSize={groupSize}
 					flatIndex={flatIndices[rIdx][cIdx]}
+					flatOtIndex={flatOtIndices[rIdx][cIdx]}
 					activeDragType={activeDragType}
 					activeOtSourceRow={activeOtSourceRow}
 					activeOtSourceCol={activeOtSourceCol}
@@ -323,7 +335,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				/>
 			</div>
 		);
-	}, [flatCells, columnCount, groupSize, ztTokens, lockedKeys, props.highlightedOTChar, onLockOT, onUnlockOT, onEditToken, duplicateOTChars, flatIndices, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, allowExpandMap, canInsertRaw, rows, onInsertRawCharsAfterPosition, canSplitGroup, onSplitGroup, onShiftGroupLeft, onShiftGroupRight, shiftMeta]);
+	}, [flatCells, columnCount, groupSize, ztTokens, lockedKeys, props.highlightedOTChar, onLockOT, onUnlockOT, onEditToken, duplicateOTChars, flatIndices, flatOtIndices, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, allowExpandMap, canInsertRaw, rows, onInsertRawCharsAfterPosition, canSplitGroup, onSplitGroup, onShiftGroupLeft, onShiftGroupRight, shiftMeta]);
 
 	if (rows.length === 0) {
 		return (

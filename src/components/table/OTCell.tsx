@@ -38,6 +38,7 @@ const OTCell: React.FC<OTCellProps> = ({
   isFixedLength, 
   groupSize = 1, 
   flatIndex, 
+  flatOtIndex,
   onInsertAfterGroup, 
   onSplitGroup, 
   allowExpandFromStart, 
@@ -352,13 +353,13 @@ const OTCell: React.FC<OTCellProps> = ({
         </button>
       )}
 
-      {ot && ot.ch.length > 1 && typeof flatIndex === 'number' && flatIndex >= 0 && (
+      {ot && ot.ch.length > 1 && typeof flatOtIndex === 'number' && flatOtIndex >= 0 && (
         <button
           className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded-bl bg-gray-100 hover:bg-gray-200 leading-none"
           onClick={(e) => {
             e.stopPropagation();
             if (lockedValue) return;
-            onSplitGroup?.(flatIndex!);
+            onSplitGroup?.(flatOtIndex!);
           }}
           title={lockedValue ? 'First unlock, then split the group' : 'Split group into individual characters'}
         >

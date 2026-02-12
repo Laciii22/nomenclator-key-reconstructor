@@ -111,12 +111,14 @@ export type OTCellProps = {
   isFixedLength?: boolean;
   /** Size of fixed-length groups */
   groupSize?: number;
-  /** Flat index among non-deception OT cells (for insertion) */
+  /** Flat index among all cells (including deception) for shift operations */
   flatIndex?: number;
+  /** Flat index among OT cells only (excludes deception) for split operations */
+  flatOtIndex?: number;
   /** Callback to insert raw characters after this group */
   onInsertAfterGroup?: (flatIndex: number) => void;
   /** Callback to split a merged OT group */
-  onSplitGroup?: (flatIndex: number) => void;
+  onSplitGroup?: (flatOtIndex: number) => void;
   /** Whether to expand a single index to a full group */
   allowExpandFromStart?: boolean;
   /** Currently highlighted OT character */
