@@ -91,6 +91,7 @@ const NomenklatorPage: React.FC = () => {
     toggleHighlightForOT,
     quickAssign,
     executeQuickAssign,
+    resetToPreAnalysis,
   } = actions;
 
   const otTextareaId = 'ot-raw';
@@ -117,6 +118,7 @@ const NomenklatorPage: React.FC = () => {
   }, [setFixedLength]);
 
   const onClearAll = React.useCallback(() => {
+    // Only clear suggestions (selections and locks), not entire app state
     setSelections({});
     setLockedKeys({});
   }, [setLockedKeys, setSelections]);
@@ -268,8 +270,10 @@ const NomenklatorPage: React.FC = () => {
               onKeysPerOTModeChange={setKeysPerOTMode}
               canRunAnalysis={!(otChars.length === 0 || ztTokens.length === 0)}
               onRunAnalysis={runAnalysis}
+              onClear={resetToPreAnalysis}
               isAnalyzing={isAnalyzing}
             />
+
 
             {Object.keys(candidatesByChar).length > 0 && (
               <div className="border border-gray-200 rounded p-3 space-y-3">
@@ -280,7 +284,7 @@ const NomenklatorPage: React.FC = () => {
                       <button
                         className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                         onClick={onClearAll}
-                        title="Clear all locks and selections"
+                        title="Clear all suggestions (locks and selections only)"
                       >
                         Clear all
                       </button>

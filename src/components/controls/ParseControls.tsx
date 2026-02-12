@@ -23,6 +23,7 @@ interface ParseControlsProps {
   onKeysPerOTModeChange: (mode: KeysPerOTMode) => void;
   canRunAnalysis: boolean;
   onRunAnalysis: () => void;
+  onClear: () => void;
   isAnalyzing?: boolean;
 }
 
@@ -40,6 +41,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
   onKeysPerOTModeChange,
   canRunAnalysis,
   onRunAnalysis,
+  onClear,
   isAnalyzing = false,
 }) => {
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
@@ -57,7 +59,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           <option value="separator">Separated by character</option>
           <option value="fixedLength">Fixed length</option>
         </select>
-        
+
 
         {ztParseMode === 'separator' && (
           <>
@@ -102,7 +104,14 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           <option value="multiple">Multiple keys per character (homophones)</option>
         </select>
         <button
-          className="ml-auto inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="ml-auto inline-flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={onClear}
+        >
+          Clear
+        </button>
+
+        <button
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1.5 rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={onRunAnalysis}
           disabled={!canRunAnalysis || isAnalyzing}
           title={isAnalyzing ? "Analysis in progress..." : "Run analysis and lock suggestions"}
@@ -115,6 +124,8 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           )}
           {isAnalyzing ? 'Analyzing...' : 'Run analysis'}
         </button>
+
+
       </div>
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
