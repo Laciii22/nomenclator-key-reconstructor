@@ -25,7 +25,8 @@ const KeyTable: React.FC<KeyTableProps & {
   columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>>; 
   onQuickAssign?: (otPattern: string, ztToken: string) => { error?: string; warning?: { otCount: number; ztCount: number } } | null;
   onExecuteQuickAssign?: (otPattern: string, ztToken: string) => string | null;
-}> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign }) => {
+  bracketedIndices?: number[];
+}> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [] }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
@@ -46,7 +47,7 @@ const KeyTable: React.FC<KeyTableProps & {
       }
     }
     
-    return buildColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, gs);
+    return buildColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
   }, [columns, otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
 
   const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, getGroupSize(ztParseMode, groupSize), keysPerOTMode), [colsForMode, ztTokens, ztParseMode, groupSize, keysPerOTMode]);

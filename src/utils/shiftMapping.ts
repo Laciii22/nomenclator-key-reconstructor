@@ -40,6 +40,9 @@ export function buildShiftOnlyColumns(
   const hasForced = Object.keys(forced).length > 0;
   const result: Column[][] = [];
   let tokenPtr = 0;
+  // Total number of OT cells (flattened) to correctly compute remaining cells
+  const totalOTCells = filteredRows.reduce((acc, r) => acc + r.length, 0);
+  let processedCells = 0;
   for (let r = 0; r < filteredRows.length; r++) {
     const rowChars = filteredRows[r];
     const rowCols: Column[] = [];
@@ -68,7 +71,7 @@ export function buildShiftOnlyColumns(
           // Decide whether to protect next forced group by taking only one token here.
           // Additionally ensure taking one token won't leave too many remaining tokens
           // that cannot be accommodated by remaining OT cells (would create leftover tokens).
-          const remainingOTCells = rowChars.length - (c + 1);
+          const remainingOTCells = Math.max(0, totalOTCells - (processedCells + 1));
           const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
           const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
           const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
@@ -119,7 +122,7 @@ export function buildShiftOnlyColumns(
             };
             const here = seqAt(tokenPtr);
             const next = seqAt(tokenPtr + 1);
-            const remainingOTCells = rowChars.length - (c + 1);
+                const remainingOTCells = Math.max(0, totalOTCells - (processedCells + 1));
             const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
             const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
             const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
@@ -138,6 +141,8 @@ export function buildShiftOnlyColumns(
           // could not find sequence; mark empty deception cell
           rowCols.push({ ot: rowChars[c], zt: [], deception: true });
         }
+        // mark this OT cell as processed
+        processedCells++;
       }
     }
     if (r === filteredRows.length - 1) {

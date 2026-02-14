@@ -51,6 +51,7 @@ const NomenklatorPage: React.FC = () => {
     candidatesByChar,
     klamacStatus,
     statusMessage,
+    bracketedIndices,
     setBracketedIndices,
     bracketWarning,
     analysisDone,
@@ -367,6 +368,7 @@ const NomenklatorPage: React.FC = () => {
               onLockAll={onLockAll}
               onQuickAssign={quickAssign}
               onExecuteQuickAssign={executeQuickAssign}
+              bracketedIndices={bracketedIndices}
             />
           </div>
         </div>
@@ -410,6 +412,7 @@ const NomenklatorPage: React.FC = () => {
                 canSplitGroup={true}
                 highlightedOTChar={highlightedOTChar}
                 columns={columns}
+                bracketedIndices={bracketedIndices}
                 shiftMeta={shiftMeta}
                 onShiftGroupRight={shiftGroupRight}
                 onShiftGroupLeft={shiftGroupLeft}

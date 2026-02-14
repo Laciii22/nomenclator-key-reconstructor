@@ -10,6 +10,7 @@ type MappingTableExtraProps = {
 	onSplitGroup?: (flatIndex: number) => void;
 	canInsertRaw?: boolean;
 	canSplitGroup?: boolean;
+	bracketedIndices?: number[];
 };
 
 /**
@@ -21,7 +22,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, keysPerOTMode = 'single' } = props;
+ 	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, keysPerOTMode = 'single', bracketedIndices = [] } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -36,8 +37,8 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
 		}
 
-		return buildShiftOnlyColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, groupSize);
-	}, [columns, otRows, ztTokens, lockedKeys, selections, groupSize]);
+		return buildShiftOnlyColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, groupSize, bracketedIndices);
+	}, [columns, otRows, ztTokens, lockedKeys, selections, groupSize, bracketedIndices]);
 
 	// Flat index of all cells (including deception) for shift operations in fixedLength mode
 	const flatIndices = useMemo(() => {
@@ -367,6 +368,14 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				cellComponent={Cell}
 				cellProps={{}}
 			/>
+			{process.env.NODE_ENV === 'development' ? (
+				<div className="mt-2 p-2 bg-gray-100 text-xs">
+					<div className="font-semibold text-sm mb-1">DEBUG: mapping (dev only)</div>
+					<pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto' }}>
+						{JSON.stringify({ rows: rows.map(r => r.map(c => ({ ot: c.ot ? c.ot.ch : null, zt: c.zt, deception: !!c.deception }))), bracketedIndices }, null, 2)}
+					</pre>
+				</div>
+			) : null}
 		</div>
 	);
 }
