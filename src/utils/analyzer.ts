@@ -105,77 +105,72 @@ export function fixedModeScore(params: {
 }): { support: number; occurrences: number; score: number } {
   const { token, otChar, columns, effectiveZtTokens, groupSize, keysPerOTMode = 'single' } = params;
 
-  // Count OT cells and build position map
+  // In fixed-length mode with manual shifting, the *actual* group boundaries come
+  // from the grid allocation (columns.zt index lists). Do NOT re-chunk the raw ZT
+  // by groupSize here, otherwise suggestions ignore shifting and show stale tokens.
+  //
+  // We still keep groupSize/keysPerOTMode in the signature for API stability.
+  void groupSize;
+  void keysPerOTMode;
+
   let otCellCount = 0;
+  let cellsWithText = 0;
   const otCharPositions: Record<string, number[]> = {};
   const mappedTokensByChar: Record<string, Set<string>> = {};
+  const groupTextByPos: string[] = [];
+
   let flatIndex = 0;
-  
   for (const row of columns) {
     for (const col of row) {
+      const groupText = (col.zt && col.zt.length > 0)
+        ? col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('')
+        : '';
+      groupTextByPos[flatIndex] = groupText;
+      if (groupText) cellsWithText++;
+
       if (col.ot && col.ot.ch !== '') {
         otCellCount++;
         const ch = col.ot.ch;
         (otCharPositions[ch] ||= []).push(flatIndex);
-        
-        // Track which tokens are mapped to this OT char
-        const size = Math.max(1, groupSize);
-        if (col.zt && col.zt.length > 0) {
-          const groupText = col.zt.slice(0, size).map((i: number) => effectiveZtTokens[i]?.text || '').join('');
-          if (groupText) {
-            (mappedTokensByChar[ch] ||= new Set()).add(groupText);
-          }
-        }
+
+        // Track which tokens are currently mapped to this OT char (including partial groups)
+        if (groupText) (mappedTokensByChar[ch] ||= new Set()).add(groupText);
       }
+
       flatIndex++;
     }
   }
 
-  // If token is already mapped to this OT char, give it perfect score
+  // If token is already mapped to this OT char in the current grid, give it perfect score.
   if (mappedTokensByChar[otChar]?.has(token)) {
     const charPositions = otCharPositions[otChar] || [];
     const occurrences = charPositions.length;
-    // Count how many times this token appears in mapped positions
     let support = 0;
-    for (const row of columns) {
-      for (const col of row) {
-        if (col.ot?.ch === otChar && col.zt && col.zt.length > 0) {
-          const size = Math.max(1, groupSize);
-          const groupText = col.zt.slice(0, size).map((i: number) => effectiveZtTokens[i]?.text || '').join('');
-          if (groupText === token) support++;
-        }
-      }
+    for (const pos of charPositions) {
+      if (groupTextByPos[pos] === token) support++;
     }
     return { support, occurrences, score: 1.0 };
   }
 
-  // Build logical token groups from effectiveZtTokens based on groupSize.
-  // Include a final shorter group if tokens.length is not divisible by groupSize.
-  const logicalGroups: { text: string; position: number }[] = [];
-  const size = Math.max(1, groupSize);
-  for (let i = 0; i < effectiveZtTokens.length; i += size) {
-    const text = effectiveZtTokens.slice(i, i + size).map(t => t.text).join('');
-    logicalGroups.push({ text, position: Math.floor(i / size) });
-  }
+  // Deception count: extra non-empty groups beyond OT cells.
+  // This matches the UI notion of “deception cells” better than counting empty placeholders.
+  const deceptionCount = Math.max(0, cellsWithText - otCellCount);
 
-  // Deception count: how many extra logical groups we have compared to OT cells
-  const deceptionCount = Math.max(0, logicalGroups.length - otCellCount);
-
-  // Find all positions where this token (as logical group) appears
+  // Find all positions where this token appears in the current shifted grid.
   const tokenPositions: number[] = [];
-  for (const lg of logicalGroups) {
-    if (lg.text === token) {
-      tokenPositions.push(lg.position);
-    }
+  for (let pos = 0; pos < groupTextByPos.length; pos++) {
+    if (groupTextByPos[pos] === token) tokenPositions.push(pos);
   }
 
   // Find all positions where this OT char appears
   const charPositions = otCharPositions[otChar] || [];
   const occurrences = charPositions.length;
 
-  // If no deception and token is not mapped, it cannot be a valid candidate
+  const support = tokenPositions.length;
+
+  // If there's no deception, we can score purely by frequency.
   if (deceptionCount === 0) {
-    return { support: 0, occurrences, score: 0 };
+    return { support, occurrences, score: scoreRatio(support, occurrences) };
   }
 
   // With deception, check if token is within valid range (±deceptionCount) of any OT char position
@@ -189,7 +184,6 @@ export function fixedModeScore(params: {
   }
 
   // Token is in range → compute frequency-based score
-  const support = tokenPositions.length;
   return { support, occurrences, score: scoreRatio(support, occurrences) };
 }
 

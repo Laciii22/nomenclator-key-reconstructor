@@ -46,33 +46,74 @@ export function useAnalysis(params: {
     const gs = fixedLength || 1;
     const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs, keysPerOTMode);
 
+    // Collect all token texts currently present in the grid (including deception cells).
+    // Manual shifting can create new group boundaries (e.g. `29` + `91` -> `2` + `99` + `11`).
+    // These new tokens may not exist in the naive fixed-length chunking, but they *must*
+    // be considered as candidates.
+    const gridTokenSet = new Set<string>();
+    for (const row of columns) {
+      for (const col of row) {
+        if (!col.zt || col.zt.length === 0) continue;
+        const text = col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('');
+        if (text) gridTokenSet.add(text);
+      }
+    }
+
     const currentByChar: Record<string, Set<string>> = {};
     for (const p of pairs) {
       if (!p.zt) continue;
       (currentByChar[p.ot] ||= new Set()).add(p.zt);
     }
 
-    if (!Object.keys(currentByChar).length) return base;
+    if (!Object.keys(currentByChar).length && gridTokenSet.size === 0) return base;
 
     const result: Record<string, Candidate[]> = { ...base };
-    for (const [ch, groups] of Object.entries(currentByChar)) {
+
+    // Extend candidate lists for every OT char with:
+    // 1) tokens already mapped to that char (pairs)
+    // 2) tokens currently present anywhere in the grid (gridTokenSet)
+    // Scoring will be recomputed in applyScores().
+    for (const ch of Object.keys(result)) {
       const existing = result[ch] ?? [];
       const occurrences = existing[0]?.occurrences ?? 1;
       const extras: Candidate[] = [];
-      for (const grp of groups) {
-        if (existing.some(c => c.token === grp) || extras.some(c => c.token === grp)) continue;
-        extras.push({
-          token: grp,
-          length: 1,
-          support: 1,
-          occurrences,
-          score: 1.0,
-        });
+
+      const tokensToAdd = new Set<string>();
+      const mapped = currentByChar[ch];
+      if (mapped) for (const t of mapped) tokensToAdd.add(t);
+      for (const t of gridTokenSet) tokensToAdd.add(t);
+
+      for (const t of tokensToAdd) {
+        if (existing.some(c => c.token === t) || extras.some(c => c.token === t)) continue;
+        extras.push({ token: t, length: 1, support: 0, occurrences, score: 0 });
       }
+
       result[ch] = extras.length ? [...existing, ...extras] : existing;
     }
+
     return result;
-  }, [columns, effectiveZtTokens, fixedLength, ztParseMode]);
+  }, [columns, effectiveZtTokens, fixedLength, keysPerOTMode, ztParseMode]);
+
+  const filterCandidatesForShiftedGrid = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
+    if (ztParseMode !== 'fixedLength') return base;
+
+    // Only keep candidates that exist as a token in the *current shifted grid*
+    // OR have a non-zero score.
+    const gridTokenSet = new Set<string>();
+    for (const row of columns) {
+      for (const col of row) {
+        if (!col.zt || col.zt.length === 0) continue;
+        const text = col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('');
+        if (text) gridTokenSet.add(text);
+      }
+    }
+
+    const out: Record<string, Candidate[]> = {};
+    for (const [ch, list] of Object.entries(base)) {
+      out[ch] = list.filter(c => c.score > 0 || gridTokenSet.has(c.token));
+    }
+    return out;
+  }, [columns, effectiveZtTokens, ztParseMode]);
 
   const applyScores = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ztParseMode !== 'fixedLength') {
@@ -109,8 +150,10 @@ export function useAnalysis(params: {
     
     const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
       if (e.data.type === 'analyze-result') {
-        const augmented = applyScores(augmentCandidatesWithCurrentMapping(e.data.candidatesByChar));
-        setCandidatesByChar(sortCandidates(augmented));
+        const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
+        const scored = applyScores(augmented);
+        const filtered = filterCandidatesForShiftedGrid(scored);
+        setCandidatesByChar(sortCandidates(filtered));
         setSelections({});
         setAnalysisDone(true);
         setIsAnalyzing(false);
@@ -143,8 +186,10 @@ export function useAnalysis(params: {
     
     const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
       if (e.data.type === 'analyze-result') {
-        const augmented = applyScores(augmentCandidatesWithCurrentMapping(e.data.candidatesByChar));
-        const sorted = sortCandidates(augmented);
+        const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
+        const scored = applyScores(augmented);
+        const filtered = filterCandidatesForShiftedGrid(scored);
+        const sorted = sortCandidates(filtered);
 
         setCandidatesByChar(sorted);
         setSelections(prev => {
@@ -172,7 +217,7 @@ export function useAnalysis(params: {
     };
     
     worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
+  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
 
   return {
     candidatesByChar,
