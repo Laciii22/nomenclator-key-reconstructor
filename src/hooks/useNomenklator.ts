@@ -201,9 +201,9 @@ export function useNomenklator() {
     // Count occurrences in ZT
     let ztCount = 0;
     if (ztParseMode === 'fixedLength') {
-      // In fixed-length mode, count logical groups
+      // In fixed-length mode, count logical groups (final group may be shorter)
       const size = Math.max(1, fixedLength || 1);
-      for (let i = 0; i + size - 1 < effectiveZtTokens.length; i += size) {
+      for (let i = 0; i < effectiveZtTokens.length; i += size) {
         const groupText = effectiveZtTokens.slice(i, i + size).map(t => t.text).join('');
         if (groupText === token) ztCount++;
       }
@@ -485,11 +485,10 @@ export function useNomenklator() {
       // about obvious token-count mismatches before committing locks.
       if (ztParseMode === 'fixedLength') {
         const groupSize = fixedLength || 1;
-        const effGroups = Math.floor(effectiveZtTokens.length / groupSize);
-        const leftover = effectiveZtTokens.length % groupSize;
-        if (leftover !== 0) {
-          err = `Incomplete group: missing ${groupSize - leftover} character(s).`;
-        } else if (effGroups > totalCells) {
+        // Treat groupSize as a maximum: allow final shorter group.
+        // Number of logical groups equals ceil(total tokens / groupSize).
+        const effGroups = Math.ceil(effectiveZtTokens.length / groupSize);
+        if (effGroups > totalCells) {
           err = `Warning: too many ZT groups by ${effGroups - totalCells}.`;
         }
       } else {
@@ -765,6 +764,17 @@ export function useNomenklator() {
     if (!analysisDone) return;
     refreshAnalysisPreserveDebounced();
   }, [analysisDone, lockedKeys, bracketedIndices, ztParseMode, fixedLength, refreshAnalysisPreserveDebounced]);
+
+  // Refresh suggestions when the user makes manual selections (preview stage).
+  // This ensures choosing a suggestion for one OT (e.g., `A -> 11`) immediately
+  // updates candidate lists for other OT chars (e.g., `H`). Debounced to avoid
+  // excessive work while the user changes selections rapidly.
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    // Only refresh when there is at least one selection to consider
+    if (!selections || Object.keys(selections).length === 0) return;
+    refreshAnalysisPreserveDebounced();
+  }, [selections, analysisDone, refreshAnalysisPreserveDebounced]);
 
   const { shiftRight, shiftLeft } = mapping;
 

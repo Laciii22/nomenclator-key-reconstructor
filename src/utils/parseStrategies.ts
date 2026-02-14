@@ -26,7 +26,8 @@ export function buildOccMap(effectiveZtTokens: ZTToken[], groupSize: number) {
   if (groupSize === 1) {
     effectiveZtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
   } else {
-    for (let i = 0; i + groupSize - 1 < effectiveZtTokens.length; i += groupSize) {
+    // Include final shorter group if tokens length is not divisible by groupSize
+    for (let i = 0; i < effectiveZtTokens.length; i += groupSize) {
       const grp = effectiveZtTokens.slice(i, i + groupSize).map(x => x.text).join('');
       (occMap[grp] ||= []).push(i);
     }

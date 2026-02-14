@@ -49,11 +49,11 @@ export function buildShiftOnlyColumns(
       if (!want) {
         // Unforced cell. Heuristic: try to take groupSize tokens starting at tokenPtr.
         if (tokenPtr < ztTokens.length) {
-          const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
+          const forcedValues = Object.values(forced);
           const seqAt = (start: number) => {
-            if (start + groupSize - 1 >= ztTokens.length) return null;
+            if (start >= ztTokens.length) return null;
             let s = '';
-            for (let g = 0; g < groupSize; g++) s += ztTokens[start + g].text;
+            for (let g = 0; g < groupSize && start + g < ztTokens.length; g++) s += ztTokens[start + g].text;
             return s;
           };
           const here = seqAt(tokenPtr);
@@ -95,38 +95,43 @@ export function buildShiftOnlyColumns(
         while (tokenPtr < ztTokens.length) {
           const sliceTexts = [] as string[];
           for (let g = 0; g < groupSize && tokenPtr + g < ztTokens.length; g++) sliceTexts.push(ztTokens[tokenPtr + g].text);
-          const candidate = sliceTexts.join('');
-          if (sliceTexts.length === groupSize && candidate === need) {
+          // Try to match the forced value as any prefix of the available slice
+          let matchedPrefixLength = 0;
+          for (let pref = 1; pref <= sliceTexts.length; pref++) {
+            const prefix = sliceTexts.slice(0, pref).join('');
+            if (prefix === need) { matchedPrefixLength = pref; break; }
+          }
+          if (matchedPrefixLength > 0) {
             const groupIndices: number[] = [];
-            for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
+            for (let g = 0; g < matchedPrefixLength; g++) groupIndices.push(tokenPtr + g);
             rowCols.push({ ot: rowChars[c], zt: groupIndices });
-            tokenPtr += groupSize;
+            tokenPtr += matchedPrefixLength;
             found = true;
             break;
-              } else {
-                // deception cell(s) for current tokenPtr
-                const forcedValues = Object.values(forced).filter(v => v.length === groupSize);
-                const seqAt = (start: number) => {
-                  if (start + groupSize - 1 >= ztTokens.length) return null;
-                  let s = '';
-                  for (let g = 0; g < groupSize; g++) s += ztTokens[start + g].text;
-                  return s;
-                };
-                const here = seqAt(tokenPtr);
-                const next = seqAt(tokenPtr + 1);
-                const remainingOTCells = rowChars.length - (c + 1);
-                const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
-                const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
-                const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
-                if (!shouldProtectNext && groupSize > 1 && tokenPtr + groupSize <= ztTokens.length) {
-                const groupIndices: number[] = [];
-                for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
-                rowCols.push({ ot: null, zt: groupIndices, deception: true });
-                tokenPtr += groupSize;
-              } else {
-                rowCols.push({ ot: null, zt: [tokenPtr], deception: true });
-                tokenPtr += 1;
-              }
+          } else {
+            // deception cell(s) for current tokenPtr
+            const forcedValues = Object.values(forced);
+            const seqAt = (start: number) => {
+              if (start >= ztTokens.length) return null;
+              let s = '';
+              for (let g = 0; g < groupSize && start + g < ztTokens.length; g++) s += ztTokens[start + g].text;
+              return s;
+            };
+            const here = seqAt(tokenPtr);
+            const next = seqAt(tokenPtr + 1);
+            const remainingOTCells = rowChars.length - (c + 1);
+            const remainingTokensIfTakeOne = ztTokens.length - (tokenPtr + 1);
+            const canAccommodateAfterOne = remainingTokensIfTakeOne <= remainingOTCells * groupSize;
+            const shouldProtectNext = groupSize > 1 && here !== next && next != null && forcedValues.includes(next as string) && !forcedValues.includes(here as string) && canAccommodateAfterOne;
+            if (!shouldProtectNext && groupSize > 1 && tokenPtr + groupSize <= ztTokens.length) {
+              const groupIndices: number[] = [];
+              for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
+              rowCols.push({ ot: null, zt: groupIndices, deception: true });
+              tokenPtr += groupSize;
+            } else {
+              rowCols.push({ ot: null, zt: [tokenPtr], deception: true });
+              tokenPtr += 1;
+            }
           }
         }
         if (!found) {

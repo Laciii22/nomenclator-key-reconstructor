@@ -149,10 +149,11 @@ export function fixedModeScore(params: {
     return { support, occurrences, score: 1.0 };
   }
 
-  // Build logical token groups from effectiveZtTokens based on groupSize
+  // Build logical token groups from effectiveZtTokens based on groupSize.
+  // Include a final shorter group if tokens.length is not divisible by groupSize.
   const logicalGroups: { text: string; position: number }[] = [];
   const size = Math.max(1, groupSize);
-  for (let i = 0; i + size - 1 < effectiveZtTokens.length; i += size) {
+  for (let i = 0; i < effectiveZtTokens.length; i += size) {
     const text = effectiveZtTokens.slice(i, i + size).map(t => t.text).join('');
     logicalGroups.push({ text, position: Math.floor(i / size) });
   }
