@@ -32,7 +32,9 @@ export function buildShiftOnlyColumns(
   lockedKeys?: Record<string, string>,
   selections?: Record<string, string | null>,
   groupSize: number = 1,
+  bracketedIndices?: number[],
 ): Column[][] {
+  void bracketedIndices;
   const filteredRows = otRows.map(r => r.filter(c => c.ch !== ''));
   const forced: Record<string, string> = {};
   for (const [ch, v] of Object.entries(lockedKeys || {})) if (v) forced[ch] = v;

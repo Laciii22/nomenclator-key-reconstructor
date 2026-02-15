@@ -6,7 +6,6 @@
  */
 
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
-import { computePairsFromColumns } from './columns';
 
 /**
  * Maps each OT character to its selected ZT token (or null if unselected).

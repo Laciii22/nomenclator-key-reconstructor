@@ -155,8 +155,8 @@ export function useNomenklator() {
     effectiveZtTokens,
     bracketedIndices,
     setBracketedIndices,
-    toggleBracketGroupByText,
-    uniqueZTTokenTexts,
+    toggleBracketGroupByText: toggleBracketGroupByTextParse,
+    uniqueZTTokenTexts: uniqueZTTokenTextsParse,
     klamacStatus: klamacStatusFromParse,
     statusMessage: statusMessageFromParse,
     bracketWarning: bracketWarningFromParse,
@@ -323,6 +323,139 @@ export function useNomenklator() {
   });
 
   const { candidatesByChar, analysisDone, isAnalyzing, runAnalysis: runAnalysisCore, refreshAnalysisPreserve } = analysis;
+
+  const effToOrig = useMemo(() => {
+    return buildEffectiveToOriginalIndexMap(ztTokens.length, bracketedIndices);
+  }, [ztTokens.length, bracketedIndices]);
+
+  // In fixed-length mode, manual shifting changes *group boundaries*.
+  // The bracket editor should reflect the current grid grouping (columns), not
+  // naive chunking by `fixedLength`. We also keep fully-bracketed groups from
+  // the parse-based list so users can un-bracket without relying on "Clear".
+  const uniqueZTTokenTexts = useMemo(() => {
+    if (ztParseMode !== 'fixedLength') return uniqueZTTokenTextsParse;
+    const size = Math.max(1, fixedLength || 1);
+    if (size <= 1) return uniqueZTTokenTextsParse;
+    if (!analysisDone) return uniqueZTTokenTextsParse;
+
+    const meta = new Map<string, { allBracketed: boolean }>();
+    const order: string[] = [];
+
+    // 1) Current shifted groups (what the mapping table shows)
+    for (let r = 0; r < columns.length; r++) {
+      for (let c = 0; c < columns[r].length; c++) {
+        const col = columns[r][c];
+        if (!col.zt || col.zt.length === 0) continue;
+        let text = '';
+        for (const effIdx of col.zt) text += (effectiveZtTokens[effIdx]?.text ?? '');
+        if (!text) continue;
+        if (meta.has(text)) continue;
+        meta.set(text, { allBracketed: false });
+        order.push(text);
+      }
+    }
+
+    // 2) Fully-bracketed groups from parse-based list (so they remain toggleable)
+    for (const g of uniqueZTTokenTextsParse) {
+      if (!g.allBracketed) continue;
+      if (meta.has(g.text)) continue;
+      meta.set(g.text, { allBracketed: true });
+      order.push(g.text);
+    }
+
+    // 3) Bracketed runs (supports un-bracketing groups created via shifting)
+    if (bracketedIndices.length) {
+      const br = new Set(bracketedIndices);
+      let i = 0;
+      while (i < ztTokens.length) {
+        if (!br.has(i)) {
+          i++;
+          continue;
+        }
+        let text = '';
+        while (i < ztTokens.length && br.has(i)) {
+          text += ztTokens[i].text;
+          i++;
+        }
+        if (!text) continue;
+        if (meta.has(text)) continue;
+        meta.set(text, { allBracketed: true });
+        order.push(text);
+      }
+    }
+
+    return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
+  }, [analysisDone, bracketedIndices, columns, effectiveZtTokens, fixedLength, uniqueZTTokenTextsParse, ztParseMode, ztTokens]);
+
+  const toggleBracketGroupByText = useCallback((text: string) => {
+    if (!text) return;
+
+    if (ztParseMode !== 'fixedLength') {
+      toggleBracketGroupByTextParse(text);
+      return;
+    }
+
+    const size = Math.max(1, fixedLength || 1);
+    if (size <= 1 || !analysisDone) {
+      toggleBracketGroupByTextParse(text);
+      return;
+    }
+
+    const indicesToToggle: number[] = [];
+
+    for (let r = 0; r < columns.length; r++) {
+      for (let c = 0; c < columns[r].length; c++) {
+        const col = columns[r][c];
+        if (!col.zt || col.zt.length === 0) continue;
+        let groupText = '';
+        for (const effIdx of col.zt) groupText += (effectiveZtTokens[effIdx]?.text ?? '');
+        if (groupText !== text) continue;
+        for (const effIdx of col.zt) {
+          const orig = effToOrig[effIdx];
+          if (typeof orig === 'number' && orig >= 0) indicesToToggle.push(orig);
+        }
+      }
+    }
+
+    // If the group doesn't exist in the current shifted grid (e.g. it's already
+    // fully bracketed and thus filtered out of `effectiveZtTokens`), fall back
+    // to the parse-based toggler so it can be restored.
+    if (!indicesToToggle.length) {
+      // Try to un-bracket a contiguous bracketed run matching this text.
+      if (bracketedIndices.length) {
+        const br = new Set(bracketedIndices);
+        let i = 0;
+        while (i < ztTokens.length) {
+          if (!br.has(i)) {
+            i++;
+            continue;
+          }
+          let runText = '';
+          const runIndices: number[] = [];
+          while (i < ztTokens.length && br.has(i)) {
+            runText += ztTokens[i].text;
+            runIndices.push(i);
+            i++;
+          }
+          if (runText === text) indicesToToggle.push(...runIndices);
+        }
+      }
+
+      if (!indicesToToggle.length) {
+        toggleBracketGroupByTextParse(text);
+        return;
+      }
+    }
+
+    setBracketedIndices(prev => {
+      const set = new Set(prev);
+      const unique = Array.from(new Set(indicesToToggle)).sort((a, b) => a - b);
+      const all = unique.every(i => set.has(i));
+      if (all) unique.forEach(i => set.delete(i));
+      else unique.forEach(i => set.add(i));
+      return Array.from(set).sort((a, b) => a - b);
+    });
+  }, [analysisDone, columns, effToOrig, effectiveZtTokens, fixedLength, setBracketedIndices, toggleBracketGroupByTextParse, ztParseMode]);
 
   // Wrap runAnalysis to capture pre-analysis state snapshot
   const runAnalysis = useCallback(() => {

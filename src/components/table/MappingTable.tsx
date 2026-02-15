@@ -61,19 +61,56 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		}));
 	}, [rows]);
 
-	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
-	// what users see and reason about when spotting collisions.
-	// Must be computed before allowExpandMap to avoid circular dependency
-	const duplicateOTChars = React.useMemo(() => {
-		const tokenToOTs: Record<string, Set<string>> = {};
-
-		// Pre-compute all owned indices once
+	// Owned raw ZT indices across the whole grid (used to decide whether a short group
+	// can safely expand from its start without overlapping another cell).
+	const allOwnedIndices = React.useMemo(() => {
 		const allOwned = new Set<number>();
 		for (let rr = 0; rr < rows.length; rr++) {
 			for (let cc = 0; cc < rows[rr].length; cc++) {
 				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
 			}
 		}
+		return allOwned;
+	}, [rows]);
+
+	// Pre-compute allowExpandFromStart for all cells to avoid O(n²) in render
+	const allowExpandMap = useMemo(() => {
+		if (groupSize <= 1) return new Map<string, boolean>();
+
+		const map = new Map<string, boolean>();
+		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
+				const col = rows[rIdx][cIdx];
+				const key = `${rIdx}-${cIdx}`;
+
+				if (!col.zt || col.zt.length === 0 || col.zt.length >= groupSize) {
+					map.set(key, false);
+					continue;
+				}
+
+				const start = col.zt[0];
+				let canExpand = true;
+				for (let k = 1; k < groupSize; k++) {
+					const idx = start + k;
+					if (allOwnedIndices.has(idx) && !col.zt.includes(idx)) {
+						canExpand = false;
+						break;
+					}
+					if (idx >= ztTokens.length) {
+						canExpand = false;
+						break;
+					}
+				}
+				map.set(key, canExpand);
+			}
+		}
+		return map;
+	}, [rows, groupSize, ztTokens.length, allOwnedIndices]);
+
+	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
+	// what users see and reason about when spotting collisions.
+	const duplicateOTChars = React.useMemo(() => {
+		const tokenToOTs: Record<string, Set<string>> = {};
 
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
@@ -82,32 +119,16 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				if (col.deception) continue;
 				if (!col.zt || col.zt.length === 0) continue;
 
-				// Compute displayedIndices inline
+				// Match OTCell rendering rules: expand only when len==1 and allowExpandFromStart.
 				let displayedIndices: number[] = [];
 				if (groupSize > 1) {
 					if (col.zt.length >= groupSize) {
 						displayedIndices = col.zt.slice(0, groupSize);
-					} else if (col.zt.length === 1) {
+					} else if (col.zt.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
 						const start = col.zt[0];
-						let canExpand = true;
-						for (let k = 1; k < groupSize; k++) {
+						for (let k = 0; k < groupSize; k++) {
 							const idx = start + k;
-							if (allOwned.has(idx) && !col.zt.includes(idx)) {
-								canExpand = false;
-								break;
-							}
-							if (idx >= ztTokens.length) {
-								canExpand = false;
-								break;
-							}
-						}
-						if (canExpand) {
-							for (let k = 0; k < groupSize; k++) {
-								const idx = start + k;
-								if (idx < ztTokens.length) displayedIndices.push(idx);
-							}
-						} else {
-							displayedIndices = col.zt.slice();
+							if (idx < ztTokens.length) displayedIndices.push(idx);
 						}
 					} else {
 						displayedIndices = col.zt.slice();
@@ -128,7 +149,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			for (const ot of ots) dup.add(ot);
 		}
 		return dup;
-	}, [groupSize, rows, ztTokens]);
+	}, [groupSize, rows, ztTokens, allowExpandMap]);
 
 	// Use a single fixed-width grid so subsequent OT rows can visually continue
 	// filling any remaining space on the last line (layout-only).
@@ -137,48 +158,6 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		for (const r of otRows) max = Math.max(max, r.length);
 		return Math.max(1, max);
 	}, [otRows]);
-
-	// Pre-compute allowExpandFromStart for all cells to avoid O(n²) in render
-	const allowExpandMap = useMemo(() => {
-		if (groupSize <= 1) return new Map<string, boolean>();
-
-		// Build set of all owned indices
-		const allOwned = new Set<number>();
-		for (let rr = 0; rr < rows.length; rr++) {
-			for (let cc = 0; cc < rows[rr].length; cc++) {
-				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
-			}
-		}
-
-		const map = new Map<string, boolean>();
-		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
-				const col = rows[rIdx][cIdx];
-				const key = `${rIdx}-${cIdx}`;
-
-				if (!col.zt || col.zt.length === 0 || col.zt.length >= groupSize) {
-					map.set(key, false);
-					continue;
-				}
-
-				const start = col.zt[0];
-				let canExpand = true;
-				for (let k = 1; k < groupSize; k++) {
-					const idx = start + k;
-					if (allOwned.has(idx) && !col.zt.includes(idx)) {
-						canExpand = false;
-						break;
-					}
-					if (idx >= ztTokens.length) {
-						canExpand = false;
-						break;
-					}
-				}
-				map.set(key, canExpand);
-			}
-		}
-		return map;
-	}, [rows, groupSize, ztTokens]);
 
 	// Responsive column count based on viewport width
 	const [viewportWidth, setViewportWidth] = React.useState(() =>
@@ -263,14 +242,27 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 		const { rIdx, cIdx, col } = flatCells[flatIdx];
 
-		// Get actual token text for this cell
-		const currentTokenText = (() => {
-			if (!col.zt || col.zt.length === 0) return '';
-			if (groupSize === 1) {
-				return ztTokens[col.zt[0]]?.text || '';
+		// Get displayed token indices/text for this cell.
+		// Must match OTCell display rules, otherwise locks/shifts look like they require double-click.
+		const displayedIndices = (() => {
+			if (!col.zt || col.zt.length === 0) return [] as number[];
+			if (groupSize <= 1) return col.zt.slice();
+			if (col.zt.length >= groupSize) return col.zt.slice(0, groupSize);
+			if (col.zt.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
+				const start = col.zt[0];
+				const expanded: number[] = [];
+				for (let k = 0; k < groupSize; k++) {
+					const idx = start + k;
+					if (idx < ztTokens.length) expanded.push(idx);
+				}
+				return expanded;
 			}
-			return col.zt.map(i => ztTokens[i]?.text || '').join('');
+			return col.zt.slice();
 		})();
+
+		const currentTokenText = displayedIndices.length
+			? displayedIndices.map(i => ztTokens[i]?.text || '').join('')
+			: '';
 
 		// Check if this specific token is in the locked homophones
 		const lockedHomophones = col.ot ? lockedKeys?.[col.ot.ch] : undefined;
@@ -346,6 +338,10 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		);
 	}
 
+	// Prefer Vite's `import.meta.env.DEV`, but guard for environments where `import.meta.env`
+	// is not injected (e.g. some test runners / alternative bundlers).
+	const isDev = ((import.meta as any)?.env?.DEV ?? false) as boolean;
+
 	return (
 		<div
 			ref={containerRef}
@@ -368,7 +364,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				cellComponent={Cell}
 				cellProps={{}}
 			/>
-			{process.env.NODE_ENV === 'development' ? (
+			{isDev ? (
 				<div className="mt-2 p-2 bg-gray-100 text-xs">
 					<div className="font-semibold text-sm mb-1">DEBUG: mapping (dev only)</div>
 					<pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto' }}>

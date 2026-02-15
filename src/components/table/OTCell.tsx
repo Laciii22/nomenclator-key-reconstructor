@@ -202,6 +202,10 @@ const OTCell: React.FC<OTCellProps> = ({
             ? 'border-gray-300 hover:bg-gray-100 hover:border-gray-400' 
             : 'border-transparent opacity-30 cursor-not-allowed'
         }`}
+        onPointerDown={e => {
+          // Avoid triggering drag sensors / selection on first click.
+          e.stopPropagation();
+        }}
         onClick={e => {
           e.stopPropagation();
           if (!canShift || !onShift) return;
@@ -327,11 +331,15 @@ const OTCell: React.FC<OTCellProps> = ({
       )}
       {ot && (
         <button
-          className={`absolute bottom-0 left-0 p-0.5 text-xs rounded-tl leading-none ${
+          className={`absolute bottom-0 left-0 p-1 text-xs rounded-tl leading-none ${
             keysPerOTMode === 'multiple' && !lockedValue 
               ? 'bg-transparent opacity-30 cursor-not-allowed' 
               : 'bg-transparent hover:bg-gray-100'
           }`}
+          onPointerDown={(e) => {
+            // Prevent drag sensors / cell interactions from swallowing the click.
+            e.stopPropagation();
+          }}
           onClick={handleLockToggle}
           disabled={(!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)}
           title={
@@ -348,7 +356,7 @@ const OTCell: React.FC<OTCellProps> = ({
             src={padlock} 
             alt="lock" 
             aria-hidden="true" 
-            className={`w-1.5 h-1.5 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} 
+            className={`w-2.5 h-2.5 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} 
           />
         </button>
       )}

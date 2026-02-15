@@ -7,6 +7,21 @@ import buildLogicalTokens from '../utils/parse/logicalTokens';
 import { computePairsFromColumns } from '../utils/columns';
 import type { AnalysisWorkerRequest, AnalysisWorkerResponse } from '../workers/analysis.worker';
 
+function collectGridTokenSet(
+  columns: { ot: { ch: string } | null; zt: number[] }[][],
+  effectiveZtTokens: ZTToken[]
+): Set<string> {
+  const set = new Set<string>();
+  for (const row of columns) {
+    for (const col of row) {
+      if (!col.zt || col.zt.length === 0) continue;
+      const text = col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('');
+      if (text) set.add(text);
+    }
+  }
+  return set;
+}
+
 // Lazy-load worker
 let analysisWorker: Worker | null = null;
 function getAnalysisWorker(): Worker {
@@ -36,6 +51,11 @@ export function useAnalysis(params: {
 }) {
   const { otRows, ztParseMode, fixedLength, effectiveZtTokens, columns, keysPerOTMode, lockedKeys, setSelections } = params;
 
+  const gridTokenSet = React.useMemo(() => {
+    if (ztParseMode !== 'fixedLength') return new Set<string>();
+    return collectGridTokenSet(columns, effectiveZtTokens);
+  }, [columns, effectiveZtTokens, ztParseMode]);
+
   const [candidatesByChar, setCandidatesByChar] = React.useState<Record<string, Candidate[]>>({});
   const [analysisDone, setAnalysisDone] = React.useState(false);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
@@ -45,19 +65,6 @@ export function useAnalysis(params: {
 
     const gs = fixedLength || 1;
     const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs, keysPerOTMode);
-
-    // Collect all token texts currently present in the grid (including deception cells).
-    // Manual shifting can create new group boundaries (e.g. `29` + `91` -> `2` + `99` + `11`).
-    // These new tokens may not exist in the naive fixed-length chunking, but they *must*
-    // be considered as candidates.
-    const gridTokenSet = new Set<string>();
-    for (const row of columns) {
-      for (const col of row) {
-        if (!col.zt || col.zt.length === 0) continue;
-        const text = col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('');
-        if (text) gridTokenSet.add(text);
-      }
-    }
 
     const currentByChar: Record<string, Set<string>> = {};
     for (const p of pairs) {
@@ -92,28 +99,19 @@ export function useAnalysis(params: {
     }
 
     return result;
-  }, [columns, effectiveZtTokens, fixedLength, keysPerOTMode, ztParseMode]);
+  }, [columns, effectiveZtTokens, fixedLength, gridTokenSet, keysPerOTMode, ztParseMode]);
 
   const filterCandidatesForShiftedGrid = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ztParseMode !== 'fixedLength') return base;
 
     // Only keep candidates that exist as a token in the *current shifted grid*
     // OR have a non-zero score.
-    const gridTokenSet = new Set<string>();
-    for (const row of columns) {
-      for (const col of row) {
-        if (!col.zt || col.zt.length === 0) continue;
-        const text = col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('');
-        if (text) gridTokenSet.add(text);
-      }
-    }
-
     const out: Record<string, Candidate[]> = {};
     for (const [ch, list] of Object.entries(base)) {
       out[ch] = list.filter(c => c.score > 0 || gridTokenSet.has(c.token));
     }
     return out;
-  }, [columns, effectiveZtTokens, ztParseMode]);
+  }, [gridTokenSet, ztParseMode]);
 
   const applyScores = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ztParseMode !== 'fixedLength') {
@@ -174,7 +172,7 @@ export function useAnalysis(params: {
     };
     
     worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
+  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
     const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
