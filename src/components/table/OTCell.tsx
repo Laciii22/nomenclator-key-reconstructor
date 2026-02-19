@@ -54,6 +54,21 @@ const OTCell: React.FC<OTCellProps> = ({
   activeZtTokenIndex,
   keysPerOTMode = 'single',
 }) => {
+  // When we handle an action on pointer down, browsers may still fire a click
+  // afterwards (or may cancel it). Use this flag to avoid double-triggering.
+  const suppressNextClickRef = React.useRef(false);
+
+  const runPointerAction = React.useCallback((e: React.PointerEvent, action: () => void) => {
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = true;
+    // Reset soon even if click is canceled.
+    window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+    }, 0);
+    action();
+  }, []);
+
   const isDraggingOT = activeDragType === 'ot';
 
   // Merge is only valid when dropping onto the immediate right neighbor.
@@ -144,8 +159,7 @@ const OTCell: React.FC<OTCellProps> = ({
   );
 
   // Handle lock/unlock toggle
-  const handleLockToggle = React.useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleLock = React.useCallback(() => {
     if (!onLockOT || !ot) return;
     
     if (lockedValue) {
@@ -163,9 +177,7 @@ const OTCell: React.FC<OTCellProps> = ({
   }, [displayedTokens, isEmptyRealOtCell, lockedValue, onLockOT, onUnlockOT, ot, keysPerOTMode]);
 
   // Handle edit or insert in separator mode
-  const handleEditOrInsert = React.useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    
+  const editOrInsert = React.useCallback(() => {
     if (displayedTokens.length === 0) {
       if (typeof flatIndex === 'number' && flatIndex >= 0) {
         onInsertAfterGroup?.(flatIndex);
@@ -182,6 +194,12 @@ const OTCell: React.FC<OTCellProps> = ({
       onEditToken(displayedTokens[0].tokenIndex, userInput.trim());
     }
   }, [displayedTokens, flatIndex, onEditToken, onInsertAfterGroup]);
+
+  const splitGroup = React.useCallback(() => {
+    if (lockedValue) return;
+    if (typeof flatOtIndex !== 'number' || flatOtIndex < 0) return;
+    onSplitGroup?.(flatOtIndex);
+  }, [flatOtIndex, lockedValue, onSplitGroup]);
 
   // Helper to render shift buttons for fixed-length mode
   const renderShiftButton = (
@@ -202,12 +220,17 @@ const OTCell: React.FC<OTCellProps> = ({
             ? 'border-gray-300 hover:bg-gray-100 hover:border-gray-400' 
             : 'border-transparent opacity-30 cursor-not-allowed'
         }`}
-        onPointerDown={e => {
-          // Avoid triggering drag sensors / selection on first click.
-          e.stopPropagation();
+        onPointerDown={(e) => {
+          if (!canShift || !onShift) {
+            e.stopPropagation();
+            return;
+          }
+          runPointerAction(e, () => onShift(flatIndex!));
         }}
-        onClick={e => {
+        onClick={(e) => {
           e.stopPropagation();
+          // Keyboard activation fallback.
+          if (suppressNextClickRef.current) return;
           if (!canShift || !onShift) return;
           onShift(flatIndex!);
         }}
@@ -313,7 +336,18 @@ const OTCell: React.FC<OTCellProps> = ({
       {canShowFixedLengthActions && (
         <button
           className="absolute top-0 right-0 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
-          onClick={() => onInsertAfterGroup?.(flatIndex!)}
+          onPointerDown={(e) => {
+            if (typeof flatIndex !== 'number' || flatIndex < 0) {
+              e.stopPropagation();
+              return;
+            }
+            runPointerAction(e, () => onInsertAfterGroup?.(flatIndex));
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (suppressNextClickRef.current) return;
+            onInsertAfterGroup?.(flatIndex!);
+          }}
           title="Add raw ZT token to this group"
         >
           <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
@@ -323,7 +357,14 @@ const OTCell: React.FC<OTCellProps> = ({
       {!isFixedLength && ot && !lockedValue && (
         <button
           className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
-          onClick={handleEditOrInsert}
+          onPointerDown={(e) => {
+            runPointerAction(e, editOrInsert);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (suppressNextClickRef.current) return;
+            editOrInsert();
+          }}
           title={displayedTokens.length === 0 ? 'Insert ZT token for this OT' : 'Edit raw ZT token for this OT'}
         >
           <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
@@ -337,10 +378,19 @@ const OTCell: React.FC<OTCellProps> = ({
               : 'bg-transparent hover:bg-gray-100'
           }`}
           onPointerDown={(e) => {
-            // Prevent drag sensors / cell interactions from swallowing the click.
-            e.stopPropagation();
+            // Run on pointer down to avoid click cancellation in complex DnD/virtualized UIs.
+            if ((!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)) {
+              e.stopPropagation();
+              return;
+            }
+            runPointerAction(e, toggleLock);
           }}
-          onClick={handleLockToggle}
+          onClick={(e) => {
+            e.stopPropagation();
+            // Keyboard activation fallback.
+            if (suppressNextClickRef.current) return;
+            toggleLock();
+          }}
           disabled={(!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)}
           title={
             keysPerOTMode === 'multiple' && !lockedValue
@@ -364,10 +414,13 @@ const OTCell: React.FC<OTCellProps> = ({
       {ot && ot.ch.length > 1 && typeof flatOtIndex === 'number' && flatOtIndex >= 0 && (
         <button
           className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded-bl bg-gray-100 hover:bg-gray-200 leading-none"
+          onPointerDown={(e) => {
+            runPointerAction(e, splitGroup);
+          }}
           onClick={(e) => {
             e.stopPropagation();
-            if (lockedValue) return;
-            onSplitGroup?.(flatOtIndex!);
+            if (suppressNextClickRef.current) return;
+            splitGroup();
           }}
           title={lockedValue ? 'First unlock, then split the group' : 'Split group into individual characters'}
         >
