@@ -1,64 +1,254 @@
+/**
+ * Analysis engine for suggesting OT→ZT mappings based on frequency analysis.
+ * 
+ * The analyzer compares OT character frequencies with ZT token frequencies
+ * and proposes candidate mappings using a similarity score.
+ */
 
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
 
-// SelectionMap: mapuje OT znak na vybraný ZT token (nebo null)
-export type SelectionMap = Record<string, string | null>;
+/**
+ * Maps each OT character to its selected ZT token (or null if unselected).
+ * - In 'single' mode: string | null (one token per character)
+ * - In 'multiple' mode: string[] (multiple homophones per character)
+ */
+export type SelectionMap = Record<string, string | string[] | null>;
 
+/**
+ * Options for the analysis algorithm.
+ */
 export type AnalysisOptions = {
+  /** Whether each OT char can map to single or multiple ZT tokens */
   keysPerOTMode: KeysPerOTMode;
+  /** Size of token groups in fixed-length mode (1 for separator mode) */
+  groupSize?: number;
 };
 
+/**
+ * A candidate ZT token for a specific OT character,
+ * with confidence scoring based on frequency analysis.
+ */
 export type Candidate = {
-  token: string; // single token value
-  length: number; // always 1 (number of tokens)
-  support: number; // how many times this token appears in ZT
-  occurrences: number; // total ZT token count
-  score: number; // support/occurrences ratio
+  /** The cipher token value */
+  token: string;
+  /** Number of tokens in this sequence (always 1 for current implementation) */
+  length: number;
+  /** How many times this token appears in the cipher text */
+  support: number;
+  /** How many times the OT character appears */
+  occurrences: number;
+  /** Confidence score (0-1): similarity of frequencies */
+  score: number;
 };
 
+/**
+ * Result of frequency analysis, containing suggested mappings and candidates.
+ */
 export type AnalysisResult = {
-  proposedLocks: Record<string, string>; // otChar -> token
-  proposedRowGroups: number[][]; // adjusted counts per cell
-  candidatesByChar: Record<string, Candidate[]>; // all candidates for UI selection
+  /** Suggested OT→ZT locks (includes existing locked keys, single-key: string, multi-key: string[]) */
+  proposedLocks: Record<string, string | string[]>;
+  /** Adjusted token allocation counts per grid cell */
+  proposedRowGroups: number[][];
+  /** All candidate tokens for each OT character, sorted by score */
+  candidatesByChar: Record<string, Candidate[]>;
 };
 
-function clone2D(arr: number[][]): number[][] { return arr.map(r => [...r]); }
+type ColumnLike = { ot: { ch: string } | null; zt: number[] }[][];
 
-// Build a flat view of cells with row/col and counts, it makes array of objects
+/**
+ * Count occurrences of each OT character across all rows.
+ * Excludes empty placeholder cells.
+ */
+function countOtCellsByChar(otRows: OTChar[][]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  
+  for (const row of otRows) {
+    for (const cell of row) {
+      if (!cell || cell.ch === '') continue;
+      counts[cell.ch] = (counts[cell.ch] || 0) + 1;
+    }
+  }
+  
+  return counts;
+}
+
+/**
+ * Calculate similarity ratio between two frequencies.
+ * Returns a score from 0 to 1, where 1 means perfect match.
+ */
+function scoreRatio(a: number, b: number): number {
+  if (a === 0 && b === 0) return 0;
+  return Math.min(a, b) / Math.max(a, b);
+}
+
+export function separatorModeScore(params: {
+  token: string;
+  otChar: string;
+  otRows: OTChar[][];
+  effectiveZtTokens: ZTToken[];
+}): { support: number; occurrences: number; score: number } {
+  const { token, otChar, otRows, effectiveZtTokens } = params;
+  const otCellCounts = countOtCellsByChar(otRows);
+  const occurrences = otCellCounts[otChar] || 0;
+  const support = effectiveZtTokens.reduce((acc, t) => acc + (t.text === token ? 1 : 0), 0);
+  return { support, occurrences, score: scoreRatio(support, occurrences) };
+}
+
+export function fixedModeScore(params: {
+  token: string;
+  otChar: string;
+  columns: ColumnLike;
+  effectiveZtTokens: ZTToken[];
+  groupSize: number;
+  keysPerOTMode?: KeysPerOTMode;
+}): { support: number; occurrences: number; score: number } {
+  const { token, otChar, columns, effectiveZtTokens, groupSize, keysPerOTMode = 'single' } = params;
+
+  // In fixed-length mode with manual shifting, the *actual* group boundaries come
+  // from the grid allocation (columns.zt index lists). Do NOT re-chunk the raw ZT
+  // by groupSize here, otherwise suggestions ignore shifting and show stale tokens.
+  //
+  // We still keep groupSize/keysPerOTMode in the signature for API stability.
+  void groupSize;
+  void keysPerOTMode;
+
+  let otCellCount = 0;
+  let cellsWithText = 0;
+  const otCharPositions: Record<string, number[]> = {};
+  const mappedTokensByChar: Record<string, Set<string>> = {};
+  const groupTextByPos: string[] = [];
+
+  let flatIndex = 0;
+  for (const row of columns) {
+    for (const col of row) {
+      const groupText = (col.zt && col.zt.length > 0)
+        ? col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('')
+        : '';
+      groupTextByPos[flatIndex] = groupText;
+      if (groupText) cellsWithText++;
+
+      if (col.ot && col.ot.ch !== '') {
+        otCellCount++;
+        const ch = col.ot.ch;
+        (otCharPositions[ch] ||= []).push(flatIndex);
+
+        // Track which tokens are currently mapped to this OT char (including partial groups)
+        if (groupText) (mappedTokensByChar[ch] ||= new Set()).add(groupText);
+      }
+
+      flatIndex++;
+    }
+  }
+
+  // If token is already mapped to this OT char in the current grid, give it perfect score.
+  if (mappedTokensByChar[otChar]?.has(token)) {
+    const charPositions = otCharPositions[otChar] || [];
+    const occurrences = charPositions.length;
+    let support = 0;
+    for (const pos of charPositions) {
+      if (groupTextByPos[pos] === token) support++;
+    }
+    return { support, occurrences, score: 1.0 };
+  }
+
+  // Deception count: extra non-empty groups beyond OT cells.
+  // This matches the UI notion of “deception cells” better than counting empty placeholders.
+  const deceptionCount = Math.max(0, cellsWithText - otCellCount);
+
+  // Find all positions where this token appears in the current shifted grid.
+  const tokenPositions: number[] = [];
+  for (let pos = 0; pos < groupTextByPos.length; pos++) {
+    if (groupTextByPos[pos] === token) tokenPositions.push(pos);
+  }
+
+  // Find all positions where this OT char appears
+  const charPositions = otCharPositions[otChar] || [];
+  const occurrences = charPositions.length;
+
+  const support = tokenPositions.length;
+
+  // If there's no deception, we can score purely by frequency.
+  if (deceptionCount === 0) {
+    return { support, occurrences, score: scoreRatio(support, occurrences) };
+  }
+
+  // With deception, check if token is within valid range (±deceptionCount) of any OT char position
+  const isInRange = tokenPositions.some(tp =>
+    charPositions.some(cp => Math.abs(tp - cp) <= deceptionCount)
+  );
+
+  // If token is not in range, it's not a valid candidate → score 0
+  if (!isInRange) {
+    return { support: 0, occurrences, score: 0 };
+  }
+
+  // Token is in range → compute frequency-based score
+  return { support, occurrences, score: scoreRatio(support, occurrences) };
+}
+
+/**
+ * Create a deep copy of a 2D array of numbers.
+ */
+function clone2D(arr: number[][]): number[][] {
+  return arr.map(r => [...r]);
+}
+
+/**
+ * Convert 2D row groups into a flat list of cells with their coordinates and counts.
+ */
 function flattenGroups(rowGroups: number[][]) {
   const cells: { row: number; col: number; count: number }[] = [];
+  
   for (let r = 0; r < rowGroups.length; r++) {
     const row = rowGroups[r] || [];
     for (let c = 0; c < row.length; c++) {
       cells.push({ row: r, col: c, count: row[c] || 0 });
     }
   }
+  
   return cells;
 }
 
-// Compute a mapping from each cell index to its OT char (or null)
+/**
+ * Flatten OT rows into a 1D array, excluding empty placeholder cells.
+ * This mirrors the filtering done in computeRowAlloc.
+ */
 function flattenOT(otRows: OTChar[][]) {
-  // Must mirror computeRowAlloc's filtering (exclude empty placeholders)
   const flat: (OTChar | null)[] = [];
+  
   for (const row of otRows) {
     for (const cell of row) {
-      if (cell && cell.ch !== '') flat.push(cell);
+      if (cell && cell.ch !== '') {
+        flat.push(cell);
+      }
     }
   }
+  
   return flat;
 }
-
-// Compute flat start index for each cell into the ZT stream
 
 export function analyze(
   otRows: OTChar[][],
   ztTokens: ZTToken[],
   rowGroups: number[][],
   _options: AnalysisOptions,
-  lockedKeys?: Record<string, string>
+  lockedKeys?: Record<string, string | string[]>
 ): AnalysisResult {
   // Multi-length token sequence heuristic (per-character best sequence of up to K tokens)
   const flatOT = flattenOT(otRows);
+  
+  // Normalize locked keys to single-key format for backward compatibility
+  // In multi-key mode, we only use the first token for allocation purposes
+  const normalizedLocks: Record<string, string> = {};
+  if (lockedKeys) {
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      if (Array.isArray(val)) {
+        if (val.length > 0) normalizedLocks[ch] = val[0];
+      } else if (val) {
+        normalizedLocks[ch] = val;
+      }
+    }
+  }
 
   // Helpers extracted from original implementation
   function applyLockedLengths(workingGroups: number[][], flat: (OTChar | null)[], lockedLenIncoming: Record<string, number>) {
@@ -112,18 +302,55 @@ export function analyze(
     return charPositions;
   }
 
-  function buildCandidates(ztTokens: ZTToken[], charPositions: Record<string, number[]>) {
+  function buildCandidates(ztTokens: ZTToken[], charPositions: Record<string, number[]>, keysPerOTMode: KeysPerOTMode, groupSize: number = 1) {
+    // Reserved for potential scoring tweaks in fixed-length mode.
+    // Keep parameter for API stability.
+    void groupSize;
     const uniqueTokens = Array.from(new Set(ztTokens.map(t => t.text)));
     const freq: Record<string, number> = {};
     for (const t of ztTokens) freq[t.text] = (freq[t.text] || 0) + 1;
+    
+    // Calculate deception count: total ZT tokens minus total OT characters
+    // Note: ztTokens here are already logical tokens (after buildLogicalTokens),
+    // so the count is already in groups, not individual characters
+    const totalOTChars = Object.values(charPositions).reduce((sum, positions) => sum + positions.length, 0);
+    const deceptionCount = ztTokens.length - totalOTChars;
+    
     const candidatesByChar: Record<string, Candidate[]> = {};
     for (const ch of Object.keys(charPositions)) {
-      const cellCount = charPositions[ch].length; // počet buniek pre tento OT znak
-      candidatesByChar[ch] = uniqueTokens.map(tok => {
+      const cellCount = charPositions[ch].length; // number of cells for this OT character
+      const cellPositions = charPositions[ch]; // which positions this character appears at
+      
+      // In multi-key mode, only consider tokens at positions where this character appears
+      // With deception tokens, allow ±deceptionCount offset from character positions
+      const validTokens = keysPerOTMode === 'multiple'
+        ? uniqueTokens.filter(tok => {
+            // Find all positions where this token appears in ZT
+            const tokenPositions: number[] = [];
+            for (let i = 0; i < ztTokens.length; i++) {
+              if (ztTokens[i].text === tok) tokenPositions.push(i);
+            }
+            // Check if any token position is within ±deceptionCount range of OT character positions
+            return tokenPositions.some(tp => 
+              cellPositions.some(cp => Math.abs(tp - cp) <= deceptionCount)
+            );
+          })
+        : uniqueTokens;
+      
+      candidatesByChar[ch] = validTokens.map(tok => {
         const tokenCount = freq[tok] || 0;
         let score = 0;
         if (cellCount > 0 || tokenCount > 0) {
-          score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
+          if (keysPerOTMode === 'multiple') {
+            // In multi-key mode: score = 1.0 if token frequency exactly matches how many times
+            // we'd expect it as a homophone. E.g., if A appears 3 times and token "11" appears 1 time,
+            // it's a perfect candidate if we select 3 different homophones each appearing once.
+            // Score represents "fitness" - higher is better
+            score = Math.min(tokenCount / cellCount, 1.0);
+          } else {
+            // Single-key mode: expect 1:1 mapping
+            score = Math.min(tokenCount, cellCount) / Math.max(tokenCount, cellCount);
+          }
         }
         return {
           token: tok,
@@ -193,9 +420,9 @@ export function analyze(
 
   // If there are incoming locked keys, adjust rowGroups to honor their lengths before computing starts
   const workingGroups: number[][] = clone2D(rowGroups);
-  if (lockedKeys && Object.keys(lockedKeys).length > 0) {
+  if (normalizedLocks && Object.keys(normalizedLocks).length > 0) {
     const lockedLenIncoming: Record<string, number> = {};
-    for (const [ch] of Object.entries(lockedKeys)) lockedLenIncoming[ch] = 1;
+    for (const [ch] of Object.entries(normalizedLocks)) lockedLenIncoming[ch] = 1;
     const cells = flattenGroups(workingGroups);
     let total = 0;
     for (const cell of cells) total += cell.count;
@@ -205,10 +432,11 @@ export function analyze(
 
   // Count occurrences per char and per token
   const charPositions = computeCharPositions(flatOT);
-  const candidatesByChar = buildCandidates(ztTokens, charPositions);
+  const groupSize = _options.groupSize || 1;
+  const candidatesByChar = buildCandidates(ztTokens, charPositions, _options.keysPerOTMode, groupSize);
 
   // Build proposed rowGroups honoring incoming lockedKeys only (no auto locks)
-  const proposed = buildProposedRowGroups(rowGroups, flatOT, lockedKeys);
+  const proposed = buildProposedRowGroups(rowGroups, flatOT, normalizedLocks);
 
   return {
     proposedLocks: { ...(lockedKeys || {}) },

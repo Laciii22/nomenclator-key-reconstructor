@@ -1,62 +1,20 @@
-    import type { OTChar, ZTToken } from '../components/types';
+/**
+ * Token allocation algorithm for distributing ZT tokens across OT grid cells.
+ * 
+ * Uses a round-robin distribution strategy to allocate tokens evenly.
+ * In fixed-length mode, allocates token groups instead of individual tokens.
+ */
 
+import type { OTChar, ZTToken } from '../components/types';
 
-    /**
-     * This function is dividing ZT tokens among OT rows proportionally to the number of OT characters in each row.
-     * TODO Probably will be changed later to a more sophisticated algorithm.
-     * @param rows 2D array of OT characters.
-     * @param tokens Array of ZT tokens.
-     * @returns An object containing:
-     * - rowAlloc: Array indicating how many tokens are allocated to each row.
-     * - groups: 2D array indicating how many tokens are allocated to each OT cell. 
-     *
-    **/
-    
-    // export function computeRowAlloc(rows: OTChar[][], tokens: ZTToken[]) {
-    // const totalOT = rows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
-    // const totalZT = tokens.length;
-    // if (totalOT === 0) return { rowAlloc: rows.map(() => 0), groups: rows.map(() => [] as number[]) };
-    // const ratio = totalZT / totalOT;
-    // const info = rows.map(r => ({ otCount: r.filter(c => c.ch !== '').length, frac: 0, alloc: 0 }));
-    // let allocated = 0;
-    // for (const inf of info) {
-    //     const exact = inf.otCount * ratio;
-    //     const base = Math.floor(exact);
-    //     inf.alloc = base;
-    //     inf.frac = exact - base;
-    //     allocated += base;
-    // }
-    // allocated = Math.min(allocated, totalOT);
-    // let remaining = totalZT - allocated;
-    // if (remaining > 0) {
-    //     const order = info.map((x, i) => ({ i, frac: x.frac })).sort((a, b) => b.frac - a.frac);
-    //     let j = 0;
-    //     while (remaining > 0 && allocated < totalOT && order.length > 0) {
-    //     info[order[j].i].alloc += 1;
-    //     allocated += 1;
-    //     remaining -= 1;
-    //     j = (j + 1) % order.length;
-    //     }
-    // }
-    // const rowAlloc = info.map(x => x.alloc);
-    // const groups = rows.map((r, idx) => {
-    //     const otCells = r.filter(c => c.ch !== '');
-    //     const oc = otCells.length;
-    //     if (oc === 0) return [] as number[];
-    //     const count = rowAlloc[idx];
-    //     const base = Math.floor(count / oc);
-    //     let rem = count % oc;
-    //     const arr: number[] = [];
-    //     for (let k = 0; k < oc; k++) {
-    //     const g = base + (rem > 0 ? 1 : 0);
-    //     if (rem > 0) rem--;
-    //     arr.push(g);
-    //     }
-    //     return arr;
-    // });
-    // return { rowAlloc, groups };
-    // }
-
+/**
+ * Compute how many ZT tokens/groups should be allocated to each OT cell.
+ * 
+ * @param rows OT character rows (empty chars are filtered out)
+ * @param tokens ZT tokens to distribute
+ * @param groupSize Size of token groups (1 for separator mode, >1 for fixed-length)
+ * @returns Row-wise allocation counts and per-cell group sizes
+ */
 export function computeRowAlloc(rows: OTChar[][], tokens: ZTToken[], groupSize: number = 1) {
   const otCellsPerRow = rows.map(r => r.filter(c => c.ch !== ''));
   const flatCount = otCellsPerRow.reduce((acc, r) => acc + r.length, 0);

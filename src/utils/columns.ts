@@ -1,18 +1,41 @@
+/**
+ * Utilities for working with the OT/ZT allocation grid columns.
+ * Converts grid allocations into OT→ZT pairs for analysis and display.
+ */
+
 import type { ZTToken } from '../types/domain';
 
+/** An OT→ZT pair extracted from the grid */
 export type Pair = { ot: string; zt: string };
 
-type ColumnLike = { ot: { ch: string } | null; zt: number[] } & Record<string, any>;
+/** Column-like structure compatible with various grid representations */
+type ColumnLike = { ot: { ch: string } | null; zt: number[] };
 
+/**
+ * Extract all OT→ZT pairs from the allocation grid.
+ * 
+ * @param cols The allocation grid columns
+ * @param ztTokens All ZT tokens for lookup
+ * @param groupSize Size of token groups (1 for separator, >1 for fixed-length)
+ * @param keysPerOTMode Keys per OT mode: 'single' or 'multiple' (homophones)
+ * @returns Array of OT→ZT pairs (one per column)
+ */
 export function computePairsFromColumns(
   cols: ColumnLike[][],
   ztTokens: ZTToken[],
-  groupSize: number = 1
+  groupSize: number = 1,
+  keysPerOTMode: 'single' | 'multiple' = 'single'
 ): Pair[] {
+  // Currently pairs are computed per cell regardless of mode.
+  // Keep the parameter for API stability (call sites pass it).
+  void keysPerOTMode;
   const out: Pair[] = [];
   for (const row of cols) {
     for (const col of row) {
       if (!col.ot) continue;
+      
+      // In multi-key mode, each column represents one (OT, ZT) pair
+      // In single-key mode, join tokens according to groupSize
       const text = (groupSize === 1)
         ? (() => {
             const idx = col.zt.length ? col.zt[0] : null;
@@ -25,6 +48,16 @@ export function computePairsFromColumns(
   return out;
 }
 
+/**
+ * Aggregate pairs by OT character, collecting unique ZT tokens.
+ * 
+ * In 'single' mode: shows only the first non-empty token per OT.
+ * In 'multiple' mode: shows all unique tokens per OT.
+ * 
+ * @param pairs Array of OT→ZT pairs
+ * @param keysPerOTMode Whether to show single or multiple keys per OT
+ * @returns Aggregated view with unique token counts
+ */
 export function aggregatePairsByOT(pairs: Pair[], keysPerOTMode: 'single' | 'multiple' = 'multiple') {
   const map = new Map<string, { allSet: Set<string>; nonEmptySet: Set<string>; displayList: string[] }>();
   const order: string[] = [];

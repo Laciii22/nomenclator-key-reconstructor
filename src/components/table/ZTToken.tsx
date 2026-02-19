@@ -1,76 +1,62 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useDraggable } from '@dnd-kit/core';
+/**
+ * ZTToken: A draggable cipher token component.
+ * 
+ * Represents a single ZT (cipher text) token in the grid.
+ * Supports drag-and-drop for manual token reordering.
+ * Shows visual state for locked tokens and drag operations.
+ */
+
+import React from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { ZTTokenProps } from '../types';
-
-
+import { colors } from '../../utils/colors';
 
 /**
- * ZTTokenComp renders a draggable token representing a piece of the cipher text (ZT).
- *
- * Drag payload includes:
- * - type: 'zt'
- * - token: the token data
- * - tokenIndex: flat index in the ZT stream
- * - row/col: source cell coordinates
+ * A draggable ZT token component with lock state and swap affordances.
  */
-const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit, isLocked }) => {
+const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked, activeDragType, activeZtTokenIndex }) => {
+  const isDraggingZT = activeDragType === 'zt';
+  const activeTokenIndex = typeof activeZtTokenIndex === 'number' ? activeZtTokenIndex : null;
+
+  // Visual-only drop affordance for swapping tokens.
+  // Real enforcement still happens in the drag-end handler.
+  // Only adjacent swaps are valid, so keep droppable enabled only for those targets
+  // to avoid registering/measuring thousands of droppables during drag.
+  const isAdjacentSwapTarget = isDraggingZT && activeTokenIndex != null && Math.abs(activeTokenIndex - tokenIndex) === 1;
+  const canAcceptZtSwap = Boolean(isAdjacentSwapTarget && !isLocked);
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `zt-${token.id}`,
     data: { type: 'zt', token, tokenIndex, row, col },
+    disabled: Boolean(isLocked),
   });
 
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(token.text);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.focus();
-  }, [editing]);
-
-  useEffect(() => { setValue(token.text); }, [token.text]);
-
-  function commit() {
-    const next = value.trim();
-    if (next && next !== token.text && onEdit) onEdit(tokenIndex, next);
-    setEditing(false);
-  }
-
-  function cancel() {
-    setValue(token.text);
-    setEditing(false);
-  }
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `zt-drop-${tokenIndex}`,
+    data: { type: 'zt', tokenIndex, row, col },
+    disabled: !canAcceptZtSwap,
+  });
+  const isValidZtHover = isOver && canAcceptZtSwap;
+  const isInvalidZtHover = isOver && isDraggingZT && !canAcceptZtSwap;
 
   return (
-    <span ref={setNodeRef} style={{ touchAction: 'none' }}>
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onBlur={commit}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); commit(); }
-            else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-          }}
-          className="text-xs px-0.5 py-0 rounded border border-yellow-300 bg-white text-yellow-700 font-mono w-12"
-        />
-      ) : (
+    <span
+      ref={setDropRef}
+      style={{ display: 'inline-block' }}
+      className={`${isAdjacentSwapTarget ? 'ring-1 ring-green-200 rounded' : ''} ${isValidZtHover ? 'ring-2 ring-green-300 rounded bg-green-50' : ''} ${isInvalidZtHover ? 'ring-2 ring-red-300 rounded bg-red-50' : ''}`}
+    >
+      <span ref={setNodeRef} style={{ touchAction: 'none' }}>
         <span
           {...attributes}
           {...listeners}
-          className={`inline-block text-xs px-0.5 rounded font-mono border cursor-${isLocked ? 'default' : 'pointer'} select-none ${isLocked ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-50 text-yellow-700 border-yellow-200'} ${isDragging ? 'opacity-50' : ''}`}
-          title={isLocked ? 'Locked token – cannot edit' : 'Click to edit, drag to move'}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isLocked) return;
-            setEditing(true);
-          }}
+          className={`inline-block text-xs px-0.5 rounded font-mono border select-none ${isLocked ? `cursor-default ${colors.tokenLocked}` : `${isDragging ? 'cursor-grabbing opacity-60' : 'cursor-grab'} ${colors.tokenUnlocked}`} ${isDragging ? 'shadow-sm' : ''}`}
+          title={isLocked ? 'Locked token' : 'Drag to move'}
         >
           {token.text}
         </span>
-      )}
+      </span>
     </span>
   );
 };
 
-export default ZTTokenComp;
+export default React.memo(ZTTokenComp);

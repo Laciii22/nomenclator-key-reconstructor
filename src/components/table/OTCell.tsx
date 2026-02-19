@@ -1,138 +1,438 @@
+/**
+ * OTCell: A single grid cell representing an OT character and its allocated ZT tokens.
+ * 
+ * Features:
+ * - Displays ZT tokens allocated to this OT character
+ * - Drag-and-drop support for merging adjacent OT cells
+ * - Lock/unlock controls for fixing OT→ZT mappings
+ * - Fixed-length mode: shift controls and group expansion
+ * - Visual feedback for errors (empty, duplicate, highlighted)
+ */
+
 import React from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import type { OTCellProps } from '../types';
 import ZTTokenComp from './ZTToken';
 import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
 import padlock from '../../assets/icons/padlock.png';
-
+import plusIcon from '../../assets/icons/plus.png';
+import minus from '../../assets/icons/minus.png';
+import leftIcon from '../../assets/icons/left-arrow.png';
+import rightIcon from '../../assets/icons/right-arrow.png';
 
 /**
- * OTCell renders a single OT grid cell with its assigned ZT tokens.
- *
- * Props:
- * - ot: The OT character metadata (or null for empty placeholders).
- * - tokens: List of ZT tokens currently allocated to this cell.
- * - row/col: Coordinates of the cell in the grid; used to compute DnD target id.
- * - startIndex: Flat index into the ZT token stream for the first token in this cell.
+ * A single OT grid cell with its allocated ZT tokens.
+ * Supports drag-and-drop, locking, and visual error states.
  */
-const OTCell: React.FC<OTCellProps> = ({ ot, tokens, tokenIndices, row, col, onLockOT, onUnlockOT, lockedValue, onEditToken, deception, isFixedLength, groupSize = 1, flatIndex, onInsertAfterGroup, onSplitGroup, allowExpandFromStart }) => {
-  const { setNodeRef, isOver } = useDroppable({ id: `cell-${row}-${col}`, data: { row, col, isKlamac: !ot, flatIndex } });
+const OTCell: React.FC<OTCellProps> = ({ 
+  ot, 
+  tokens, 
+  tokenIndices, 
+  row, 
+  col, 
+  onLockOT, 
+  onUnlockOT, 
+  lockedValue, 
+  onEditToken, 
+  deception, 
+  isFixedLength, 
+  groupSize = 1, 
+  flatIndex, 
+  flatOtIndex,
+  onInsertAfterGroup, 
+  onSplitGroup, 
+  allowExpandFromStart, 
+  highlightedOTChar, 
+  hasDuplicateKey, 
+  onShiftLeft, 
+  onShiftRight, 
+  canShiftLeft, 
+  canShiftRight,
+  activeDragType,
+  activeOtSourceRow,
+  activeOtSourceCol,
+  activeZtTokenIndex,
+  keysPerOTMode = 'single',
+}) => {
+  // When we handle an action on pointer down, browsers may still fire a click
+  // afterwards (or may cancel it). Use this flag to avoid double-triggering.
+  const suppressNextClickRef = React.useRef(false);
 
-  // Map token indices to token objects and filter undefined
+  const runPointerAction = React.useCallback((e: React.PointerEvent, action: () => void) => {
+    e.preventDefault();
+    e.stopPropagation();
+    suppressNextClickRef.current = true;
+    // Reset soon even if click is canceled.
+    window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+    }, 0);
+    action();
+  }, []);
+
+  const isDraggingOT = activeDragType === 'ot';
+
+  // Merge is only valid when dropping onto the immediate right neighbor.
+  // Keeping *only* that one droppable enabled dramatically reduces DnD overhead
+  // for large grids (collision detection + droppable measuring).
+  const sourceRow = isDraggingOT ? activeOtSourceRow : undefined;
+  const sourceCol = isDraggingOT ? activeOtSourceCol : undefined;
+  const isAdjacentRightCell = typeof sourceRow === 'number'
+    && typeof sourceCol === 'number'
+    && sourceRow === row
+    && sourceCol + 1 === col;
+  const isPotentialOtMergeTarget = Boolean(
+    isDraggingOT
+    && ot
+    && !deception
+    && !lockedValue
+    && isAdjacentRightCell
+  );
+
+  const { setNodeRef, isOver } = useDroppable({ 
+    id: `cell-${row}-${col}`, 
+    data: { row, col, isKlamac: !ot, flatIndex },
+    disabled: !isPotentialOtMergeTarget,
+  });
+
   // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
-  let displayedIndices: number[] = [];
-  if (Array.isArray(tokenIndices) && tokenIndices.length > 0) {
-    // Only expand to `groupSize` when this is a real OT cell (not a deception placeholder)
+  const displayedIndices = React.useMemo((): number[] => {
+    if (!Array.isArray(tokenIndices) || tokenIndices.length === 0) return [];
+
     const isRealOtCell = !!ot;
-    if (isRealOtCell && isFixedLength && groupSize > 1) {
-      // If the column already contains a full group, respect those indices.
-      // Otherwise, only expand from the single start index when allowed
-      // (MappingTable computes `allowExpandFromStart` to avoid overlap).
-      if (tokenIndices.length >= groupSize) {
-        displayedIndices = tokenIndices.slice(0, groupSize);
-      } else if (tokenIndices.length === 1 && allowExpandFromStart) {
-        const start = tokenIndices[0];
-        for (let k = 0; k < groupSize; k++) {
-          const idx = start + k;
-          if (idx < tokens.length) displayedIndices.push(idx);
-        }
-      } else {
-        // fallback: show actual assigned indices only
-        displayedIndices = tokenIndices.slice();
-      }
-    } else {
-      // For deception cells or non-fixed mode, show only the actual indices assigned
-      displayedIndices = tokenIndices.slice();
+    const shouldExpandGroup = isRealOtCell && isFixedLength && groupSize > 1;
+
+    if (!shouldExpandGroup) {
+      return tokenIndices.slice();
     }
-  }
 
-  const filtered = displayedIndices.length
-    ? tokensFromIndices(tokens, displayedIndices).map((t, i) => ({ t, idx: displayedIndices[i] }))
-    : [];
+    // Expand to full group size if allowed
+    if (tokenIndices.length >= groupSize) {
+      return tokenIndices.slice(0, groupSize);
+    }
 
-  const { attributes, listeners, setNodeRef: setDragRef } = useDraggable({
+    if (tokenIndices.length === 1 && allowExpandFromStart) {
+      const startIndex = tokenIndices[0];
+      const expandedIndices: number[] = [];
+      for (let offset = 0; offset < groupSize; offset++) {
+        const idx = startIndex + offset;
+        if (idx < tokens.length) expandedIndices.push(idx);
+      }
+      return expandedIndices;
+    }
+
+    return tokenIndices.slice();
+  }, [tokenIndices, ot, isFixedLength, groupSize, allowExpandFromStart, tokens.length]);
+  
+  const displayedTokens = React.useMemo(() => 
+    displayedIndices.length
+      ? tokensFromIndices(tokens, displayedIndices).map((token, i) => ({ 
+          token, 
+          tokenIndex: displayedIndices[i] 
+        }))
+      : [],
+    [displayedIndices, tokens]
+  );
+
+  const isEmptyRealOtCell = Boolean(ot) && !deception && displayedTokens.length === 0;
+  const isDuplicateKey = Boolean(ot) && !deception && Boolean(hasDuplicateKey);
+
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: ot ? `ot-${row}-${col}` : `ot-empty-${row}-${col}`,
-    data: { type: 'ot', flatIndex, sourceRow: row, sourceCol: col },
+    data: { type: 'ot', otChar: ot?.ch, flatIndex, sourceRow: row, sourceCol: col },
     disabled: !ot || Boolean(lockedValue),
   });
 
+  // Visual-only drop affordance for OT merging (real enforcement in resolveMergeFromEvent + joinOTAt)
+  const canAcceptOtMergeDrop = isPotentialOtMergeTarget;
+
+  const isValidDropTarget = isDraggingOT && ot && !deception;
+  const isInvalidOtHover = isOver && isDraggingOT && !canAcceptOtMergeDrop;
+  const isValidOtHover = isOver && isDraggingOT && canAcceptOtMergeDrop;
+
+  const hasError = deception || isEmptyRealOtCell || isDuplicateKey;
+  const isHighlighted = Boolean(ot && highlightedOTChar === ot.ch);
+  const canShowFixedLengthActions = Boolean(
+    isFixedLength 
+    && !lockedValue 
+    && typeof flatIndex === 'number' 
+    && flatIndex >= 0
+  );
+
+  // Handle lock/unlock toggle
+  const toggleLock = React.useCallback(() => {
+    if (!onLockOT || !ot) return;
+    
+    if (lockedValue) {
+      onUnlockOT?.(ot.ch);
+      return;
+    }
+    
+    // In multi-key mode, disable locking from cells (use suggestion checkboxes instead)
+    if (keysPerOTMode === 'multiple') return;
+    
+    if (isEmptyRealOtCell) return;
+    
+    const groupText = joinTokenTexts(displayedTokens.map(f => f.token));
+    if (groupText) onLockOT(ot.ch, groupText);
+  }, [displayedTokens, isEmptyRealOtCell, lockedValue, onLockOT, onUnlockOT, ot, keysPerOTMode]);
+
+  // Handle edit or insert in separator mode
+  const editOrInsert = React.useCallback(() => {
+    if (displayedTokens.length === 0) {
+      if (typeof flatIndex === 'number' && flatIndex >= 0) {
+        onInsertAfterGroup?.(flatIndex);
+      }
+      return;
+    }
+    
+    if (!onEditToken) return;
+    
+    const currentGroupText = displayedTokens.map(f => f.token.text).join('');
+    const userInput = window.prompt('Edit token for this OT (no spaces):', currentGroupText);
+    
+    if (userInput?.trim()) {
+      onEditToken(displayedTokens[0].tokenIndex, userInput.trim());
+    }
+  }, [displayedTokens, flatIndex, onEditToken, onInsertAfterGroup]);
+
+  const splitGroup = React.useCallback(() => {
+    if (lockedValue) return;
+    if (typeof flatOtIndex !== 'number' || flatOtIndex < 0) return;
+    onSplitGroup?.(flatOtIndex);
+  }, [flatOtIndex, lockedValue, onSplitGroup]);
+
+  // Helper to render shift buttons for fixed-length mode
+  const renderShiftButton = (
+    direction: 'left' | 'right', 
+    canShift: boolean | undefined, 
+    onShift: ((flatIdx: number) => void) | undefined
+  ) => {
+    if (!canShowFixedLengthActions) return null;
+
+    const icon = direction === 'left' ? leftIcon : rightIcon;
+    const title = canShift ? `Shift one character to the ${direction}` : undefined;
+
+    return (
+      <button
+        type="button"
+        className={`p-0.5 text-xs rounded border ${
+          canShift 
+            ? 'border-gray-300 hover:bg-gray-100 hover:border-gray-400' 
+            : 'border-transparent opacity-30 cursor-not-allowed'
+        }`}
+        onPointerDown={(e) => {
+          if (!canShift || !onShift) {
+            e.stopPropagation();
+            return;
+          }
+          runPointerAction(e, () => onShift(flatIndex!));
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          // Keyboard activation fallback.
+          if (suppressNextClickRef.current) return;
+          if (!canShift || !onShift) return;
+          onShift(flatIndex!);
+        }}
+        disabled={!canShift}
+        title={title}
+      >
+        <img src={icon} alt={direction} className="w-1.5 h-1.5" />
+      </button>
+    );
+  };
+
+  // Helper to get OT label className
+  const getOtLabelClassName = (
+    locked: string | string[] | null | undefined, 
+    dragging: boolean, 
+    highlighted: boolean
+  ) => {
+    const baseClasses = 'inline-block px-0.5 py-0 rounded font-mono text-xs font-bold select-none';
+    
+    const isLocked = locked && (typeof locked === 'string' || locked.length > 0);
+    
+    let stateClasses: string;
+    if (isLocked) {
+      stateClasses = 'cursor-default bg-green-200 text-neutral-950 border-green-300';
+    } else if (dragging) {
+      stateClasses = 'cursor-grabbing opacity-60 bg-yellow-100 text-yellow-800 border-yellow-300';
+    } else {
+      stateClasses = 'cursor-grab bg-yellow-100 text-yellow-800 border-yellow-300';
+    }
+
+    const highlightClasses = highlighted ? 'ring-2 ring-purple-400' : '';
+
+    return `${baseClasses} ${stateClasses} ${highlightClasses}`;
+  };
+
+  const cellBaseClasses = 'relative border rounded p-0.5 shadow-sm transition-colors';
+  const cellColorClasses = hasError 
+    ? 'bg-red-50 border-red-300' 
+    : 'bg-white border-gray-200';
+  const cellDropHintClasses = isValidDropTarget && canAcceptOtMergeDrop 
+    ? 'ring-1 ring-green-200' 
+    : '';
+  const cellHoverClasses = isValidOtHover 
+    ? 'bg-green-50 border-green-300 ring-2 ring-green-300' 
+    : isInvalidOtHover 
+      ? 'bg-red-50 border-red-300 ring-2 ring-red-300' 
+      : '';
+  const cellDragClasses = isDragging ? 'opacity-70' : '';
+  const cellHighlightClasses = isHighlighted ? 'ring-2 ring-purple-400 bg-purple-50' : '';
+
+  const cellClassName = `${cellBaseClasses} ${cellColorClasses} ${cellDropHintClasses} ${cellHoverClasses} ${cellDragClasses} ${cellHighlightClasses}`;
+
   return (
-    <div
-      ref={setNodeRef}
-      className={`relative border rounded p-1 shadow-sm transition-colors ${deception ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'} ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
-    >
-      <div className="text-center font-mono text-base mb-1">
+    <div ref={setNodeRef} className={cellClassName}>
+      {/* Render OT label with optional left/right shift buttons */}
+      <div className="text-center font-mono text-xs mt-1.5 flex items-center justify-center gap-0.5">
+        {renderShiftButton('left', canShiftLeft, onShiftLeft)}
         {ot ? (
           <span
             ref={setDragRef}
             {...attributes}
             {...(!lockedValue ? listeners : {})}
-            className={`inline-block px-1 rounded font-mono text-md font-bold cursor-pointer select-none ${lockedValue ? 'bg-green-200 text-neutral-950 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'}`}
-            title={lockedValue ? `OT: ${ot.ch} — locked (${lockedValue})` : `OT: ${ot.ch}`}
+            className={getOtLabelClassName(lockedValue, isDragging, isHighlighted)}
+            title={lockedValue ? `OT: ${ot.ch} — locked (${Array.isArray(lockedValue) ? lockedValue.join(', ') : lockedValue})` : `OT: ${ot.ch}`}
           >
             {ot.ch}
           </span>
         ) : (
-          <span className="inline-block px-1 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-md" title="Pravdepodobný klamač">!</span>
+          <span 
+            className="inline-block px-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-xs" 
+            title="Probable deception token"
+          >
+            !
+          </span>
         )}
+        {renderShiftButton('right', canShiftRight, onShiftRight)}
       </div>
-      <div className="flex flex-wrap gap-2 justify-center">
-        {filtered.length === 0 ? (
-          <span className="text-gray-300">—</span>
+      {/* Render assigned ZT tokens or empty state */}
+      <div className="flex flex-wrap gap-0.5 justify-center">
+        {displayedTokens.length === 0 ? (
+          <span className={isEmptyRealOtCell ? 'text-red-500 text-xs' : 'text-gray-300 text-xs'}>—</span>
         ) : (
-          filtered.map(({ t, idx }, i) => (
-            <ZTTokenComp
-              key={`${t.id}-${i}`}
-              token={t}
-              tokenIndex={idx}
-              row={row}
-              col={col}
-              onEdit={onEditToken}
-              // A multi-char lock locks all constituent single-char tokens
-              isLocked={Boolean(lockedValue && lockedValue === filtered.map(x => x.t.text).join(''))}
-            />
-          ))
+          displayedTokens.map(({ token, tokenIndex }, i) => {
+            const currentGroupText = displayedTokens.map(x => x.token.text).join('');
+            const isTokenLocked = Boolean(lockedValue && lockedValue === currentGroupText);
+
+            return (
+              <ZTTokenComp
+                key={`${token.id}-${i}`}
+                token={token}
+                tokenIndex={tokenIndex}
+                row={row}
+                col={col}
+                onEdit={onEditToken}
+                isLocked={isTokenLocked}
+                activeDragType={activeDragType}
+                activeZtTokenIndex={activeZtTokenIndex}
+              />
+            );
+          })
         )}
       </div>
-      {isFixedLength && ot && !lockedValue && typeof flatIndex === 'number' && flatIndex >= 0 && (
+      {canShowFixedLengthActions && (
         <button
-          className="absolute top-1 right-1 px-1 py-0.5 text-xs rounded bg-purple-100 hover:bg-purple-200 leading-none"
-          onClick={() => onInsertAfterGroup && onInsertAfterGroup(flatIndex!)}
+          className="absolute top-0 right-0 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
+          onPointerDown={(e) => {
+            if (typeof flatIndex !== 'number' || flatIndex < 0) {
+              e.stopPropagation();
+              return;
+            }
+            runPointerAction(e, () => onInsertAfterGroup?.(flatIndex));
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (suppressNextClickRef.current) return;
+            onInsertAfterGroup?.(flatIndex!);
+          }}
           title="Add raw ZT token to this group"
-        >+</button>
+        >
+          <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
+        </button>
+      )}
+      {/* In separator mode show a + to edit the token, or insert when empty */}
+      {!isFixedLength && ot && !lockedValue && (
+        <button
+          className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
+          onPointerDown={(e) => {
+            runPointerAction(e, editOrInsert);
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (suppressNextClickRef.current) return;
+            editOrInsert();
+          }}
+          title={displayedTokens.length === 0 ? 'Insert ZT token for this OT' : 'Edit raw ZT token for this OT'}
+        >
+          <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
+        </button>
       )}
       {ot && (
         <button
-          className="absolute bottom-1 left-1 px-1 py-0.5 text-xs rounded bg-transparent hover:bg-gray-100 leading-none"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!onLockOT) return;
-            if (lockedValue) {
-              if (onUnlockOT) onUnlockOT(ot.ch);
+          className={`absolute bottom-0 left-0 p-1 text-xs rounded-tl leading-none ${
+            keysPerOTMode === 'multiple' && !lockedValue 
+              ? 'bg-transparent opacity-30 cursor-not-allowed' 
+              : 'bg-transparent hover:bg-gray-100'
+          }`}
+          onPointerDown={(e) => {
+            // Run on pointer down to avoid click cancellation in complex DnD/virtualized UIs.
+            if ((!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)) {
+              e.stopPropagation();
               return;
             }
-            const groupStr = joinTokenTexts(filtered.map(f => f.t));
-            if (groupStr) onLockOT(ot.ch, groupStr);
+            runPointerAction(e, toggleLock);
           }}
-          title={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            // Keyboard activation fallback.
+            if (suppressNextClickRef.current) return;
+            toggleLock();
+          }}
+          disabled={(!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)}
+          title={
+            keysPerOTMode === 'multiple' && !lockedValue
+              ? 'Use suggestion checkboxes to select homophones ↑'
+              : lockedValue 
+                ? `Unlock ${ot.ch}` 
+                : (isEmptyRealOtCell ? 'Cannot lock an empty cell' : `Lock ${ot.ch}`)
+          }
+          aria-label={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
+          aria-pressed={!!lockedValue}
         >
-          <img src={padlock} alt="lock" className={`w-4 h-4 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} />
+          <img 
+            src={padlock} 
+            alt="lock" 
+            aria-hidden="true" 
+            className={`w-2.5 h-2.5 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} 
+          />
         </button>
       )}
 
-      {ot && ot.ch.length > 1 && typeof flatIndex === 'number' && flatIndex >= 0 && (
+      {ot && ot.ch.length > 1 && typeof flatOtIndex === 'number' && flatOtIndex >= 0 && (
         <button
-          className="absolute top-1 left-2 px-1 py-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 leading-none"
+          className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded-bl bg-gray-100 hover:bg-gray-200 leading-none"
+          onPointerDown={(e) => {
+            runPointerAction(e, splitGroup);
+          }}
           onClick={(e) => {
             e.stopPropagation();
-            if (lockedValue) return; // avoid splitting when locked
-            if (onSplitGroup) onSplitGroup(flatIndex!);
+            if (suppressNextClickRef.current) return;
+            splitGroup();
           }}
           title={lockedValue ? 'First unlock, then split the group' : 'Split group into individual characters'}
-        >-</button>
+        >
+        <img
+          src = {minus}
+          className="h-1.5 w-1.5"
+        />
+
+        </button>
       )}
     </div>
   );
 };
 
-export default OTCell;
+export default React.memo(OTCell);

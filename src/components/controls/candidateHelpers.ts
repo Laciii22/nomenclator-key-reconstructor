@@ -1,6 +1,6 @@
 import { buildOccMap } from '../../utils/parseStrategies';
-import type { ZTToken } from '../../types/domain';
-type SharedColumns = { ot?: { ch: string } | null; zt?: number[] }[][];
+import type { ZTToken, OTChar } from '../../types/domain';
+import type { Column } from '../types';
 
 export type CandidateOption = {
   token: string;
@@ -10,64 +10,150 @@ export type CandidateOption = {
   score: number;
 };
 
-export function computeFlatIndexForChar(otRows: any[], ch: string) {
-  let idx2 = 0;
+/**
+ * Find the flat index of the first occurrence of a character in OT rows.
+ * Excludes empty cells from indexing.
+ */
+export function computeFlatIndexForChar(otRows: OTChar[][], ch: string): number {
+  let idx = 0;
+  
   for (const row of otRows) {
     for (const cell of row) {
       if (cell.ch !== '') {
-        if (cell.ch === ch) return idx2;
-        idx2++;
+        if (cell.ch === ch) return idx;
+        idx++;
       }
     }
   }
+  
   return -1;
 }
 
+/**
+ * Count total deception tokens in the entire grid.
+ */
+function countTotalDeceptionTokens(
+  sharedColumns: Column[][]
+): number {
+  const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+  
+  for (const row of sharedColumns) {
+    for (const col of row) {
+      flatColumns.push({
+        otCh: col.ot ? col.ot.ch : null,
+        indices: (col.zt || []) as number[]
+      });
+    }
+  }
+  
+  let deceptionTotal = 0;
+  for (let i = 0; i < flatColumns.length; i++) {
+    if (flatColumns[i].otCh == null) {
+      deceptionTotal += (flatColumns[i].indices || []).length;
+    }
+  }
+  
+  return deceptionTotal;
+}
+
+/**
+ * Check if token position is valid based on expected OT character position.
+ * Accounts for deception tokens which can shift expected positions.
+ */
+function isTokenPositionValid(
+  tokenOccurrences: number[],
+  expectedPosition: number,
+  groupSize: number,
+  deceptionCount: number
+): boolean {
+  if (tokenOccurrences.length === 0) {
+    // Token does not exist in ZT stream - allow as manual override
+    return true;
+  }
+  
+  if (groupSize === 1) {
+    // Separator mode: check if any occurrence is within deception tolerance
+    return tokenOccurrences.some(i =>
+      Math.abs(i - expectedPosition) <= deceptionCount
+    );
+  }
+  
+  // Fixed-length mode: expected position is in groups
+  const expectedStart = expectedPosition * groupSize;
+  return tokenOccurrences.some(i =>
+    Math.abs(i - expectedStart) <= deceptionCount
+  );
+}
+
+/**
+ * Build a candidate option with validation and metadata.
+ */
 export function buildCandidateOptions(params: {
   c: { token: string; score: number; length?: number };
   idx: number;
   ch: string;
-  otRows: any[];
+  otRows: OTChar[][];
   effectiveZtTokens: ZTToken[];
   groupSize: number;
   reservedTokens: Set<string>;
-  selectionVal: string | null | undefined;
-  lockedVal: string | undefined;
-  sharedColumns: SharedColumns;
+  selectionVal: string | string[] | null | undefined;
+  lockedVal: string | string[] | undefined;
+  sharedColumns: Column[][];
 }): CandidateOption {
-  const { c, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal, lockedVal, sharedColumns } = params;
-  const takenByOther = reservedTokens.has(c.token) && selectionVal !== c.token && lockedVal !== c.token;
+  const {
+    c,
+    ch,
+    otRows,
+    effectiveZtTokens,
+    groupSize,
+    reservedTokens,
+    selectionVal,
+    lockedVal,
+    sharedColumns
+  } = params;
+  
+  // Normalize to arrays for comparison
+  const selectionArr = Array.isArray(selectionVal) ? selectionVal : (selectionVal ? [selectionVal] : []);
+  const lockedArr = Array.isArray(lockedVal) ? lockedVal : (lockedVal ? [lockedVal] : []);
+  
+  const isReservedByOther = 
+    reservedTokens.has(c.token) && 
+    !selectionArr.includes(c.token) && 
+    !lockedArr.includes(c.token);
+  
   const cellFlatIndex = computeFlatIndexForChar(otRows, ch);
-
   const occMap = buildOccMap(effectiveZtTokens, groupSize);
-  const occ = occMap[c.token] || [];
+  const tokenOccurrences = occMap[c.token] || [];
+  
+  const deceptionCount = countTotalDeceptionTokens(sharedColumns);
+  const hasInvalidPosition = !isTokenPositionValid(
+    tokenOccurrences,
+    cellFlatIndex,
+    groupSize,
+    deceptionCount
+  );
 
-  // Count deception tokens before target
-  const flatColumns: { otCh: string | null; indices: number[] }[] = [];
-  for (const row of sharedColumns) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: (col.zt || []) as number[] });
-  let deceptionTotal = 0;
-  for (let i = 0; i < flatColumns.length; i++) if (flatColumns[i].otCh == null) deceptionTotal += (flatColumns[i].indices || []).length;
-
-  let orderInvalid = false;
-  if (groupSize === 1) {
-    const expectedStart = cellFlatIndex;
-    orderInvalid = !(cellFlatIndex >= 0 && occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal));
-  } else {
-    const expectedStart = cellFlatIndex * groupSize;
-    orderInvalid = !(cellFlatIndex >= 0 && occ.some(i => Math.abs(i - expectedStart) <= deceptionTotal));
+  const disabled = isReservedByOther || hasInvalidPosition;
+  const scoreStr = ` (score: ${c.score.toFixed(2)})`;
+  
+  let title: string | undefined;
+  if (isReservedByOther) {
+    title = 'This token is already used for another character';
+  } else if (hasInvalidPosition) {
+    if (groupSize === 1) {
+      title = 'Token must start at index 0 for the first OT character';
+    } else {
+      title = `Token must start at index ${cellFlatIndex * groupSize} for position ${cellFlatIndex}`;
+    }
   }
 
-  const disabled = takenByOther || orderInvalid;
-  const scoreStr = ` (score: ${c.score.toFixed(2)})`;
-  let title: string | undefined;
-  if (takenByOther) title = 'This token is already used for another character';
-  else if (orderInvalid) title = groupSize === 1 ? 'Token must start at index 0 for the first OT character' : `Token must start at index ${cellFlatIndex * groupSize} for position ${cellFlatIndex}`;
-
+  const isLocked = lockedArr.includes(c.token);
+  
   return {
     token: c.token,
     disabled,
     title,
-    label: `${c.token}${scoreStr}${lockedVal === c.token ? ' (locked)' : ''}`,
+    label: `${c.token}${scoreStr}${isLocked ? ' (locked)' : ''}`,
     score: c.score,
   };
 }

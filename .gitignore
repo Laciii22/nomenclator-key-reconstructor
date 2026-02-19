@@ -23,6 +23,14 @@ dist-ssr
 *.sln
 *.sw?
 
+<<<<<<< HEAD
 # md files
 context
 explanation.md
+=======
+# Documentation
+explanation.md
+
+# Dont push
+context
+>>>>>>> fixed-length

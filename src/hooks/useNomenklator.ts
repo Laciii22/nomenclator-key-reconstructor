@@ -1,30 +1,75 @@
-import React, { useMemo, useRef, useState } from 'react';
-import type { KeysPerOTMode, OTChar, ZTToken } from '../components/types';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeysPerOTMode, OTChar } from '../components/types';
 import { useLocalSettings } from './useLocalSettings';
-import { analyze, type Candidate, type SelectionMap } from '../utils/analyzer';
-import { computeRowAlloc } from '../utils/allocation';
-import { getExpectedZTIndicesForOT } from '../utils/grouping';
-import { buildShiftOnlyColumns } from '../utils/shiftMapping';
-import { uniqueGroupTexts, toggleBracketByGroupText } from '../utils/parse/fixedLength';
+import type { SelectionMap } from '../utils/analyzer';
+import { resolveMergeFromEvent } from '../utils/dnd';
+import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import type { DragEndEvent } from '@dnd-kit/core';
+import { normalizeToArray, getReservedTokens } from '../utils/multiKeyHelpers';
+import { useParsing } from './useParsing';
+import { useMapping } from './useMapping';
+import { useAnalysis } from './useAnalysis';
+import { useNomenklatorPersistence } from './useNomenklatorPersistence';
+import { useNomenklatorStatus } from './useNomenklatorStatus';
+import { useAutoPickScoreOneSequential } from './useAutoPickScoreOneSequential';
+import { useDebouncedCallback } from './useDebouncedCallback';
+import { buildEffectiveToOriginalIndexMap } from './nomenclator/ztIndexMaps';
+import { tokenIndexIsLockedInColumns } from './nomenclator/dndRules';
+import {
+  countMergeableOccurrences as countMergeableOccurrencesHelper,
+  mergeAllOccurrences as mergeAllOccurrencesHelper,
+  splitOtGroupAt,
+  tryJoinAdjacentOtGroups,
+} from './nomenclator/otGrouping';
+import { computeInsertRawCharsAfterPosition } from './nomenclator/insertRawAfterPosition';
 
+/**
+ * Responsive breakpoints for OT grid layout.
+ * Based on Tailwind breakpoints: sm=640, md=768, lg=1024, xl=1280, 2xl=1536
+ */
+const RESPONSIVE_BREAKPOINTS = [
+  { maxWidth: 640, columns: 10 },
+  { maxWidth: 768, columns: 12 },
+  { maxWidth: 1024, columns: 16 },
+  { maxWidth: 1280, columns: 18 },
+  { maxWidth: Infinity, columns: 24 },
+] as const;
+
+/**
+ * Central state/logic hook for the Nomenclator UI.
+ *
+ * This hook intentionally aggregates multiple domain-specific concerns (parsing, mapping,
+ * analysis, persistence) so the page component can stay mostly declarative.
+ *
+ * The return value is grouped into `{ inputs, state, derived, actions }` and memoized.
+ * That grouping is primarily a render-performance and ergonomics choice: it makes it
+ * easier for the page to destructure only what it uses, and helps keep prop references
+ * stable when passing handlers into large table components.
+ */
 export function useNomenklator() {
   const [settings, setSettings] = useLocalSettings({ keysPerOTMode: 'single' });
   const hydrated = useRef(false);
 
   // Inputs & modes
   const [otRaw, setOtRaw] = useState('');
-  const [ztRaw, setZtRaw] = useState('');
-  const [ztParseMode, setZtParseMode] = useState<'separator' | 'fixedLength'>('separator');
-  const [separator, setSeparator] = useState<string>(':');
-  const [fixedLength, setFixedLength] = useState<number>(1);
   const [keysPerOTMode, setKeysPerOTMode] = useState<KeysPerOTMode>('single');
 
+  // Store state snapshot from before Run Analysis was clicked
+  const preAnalysisStateRef = useRef<{
+    otRaw: string;
+    ztRawSeparator: string;
+    ztRawFixed: string;
+    ztParseMode: 'separator' | 'fixedLength';
+    separator: string;
+    fixedLength: number;
+    keysPerOTMode: KeysPerOTMode;
+    customOtGroups: OTChar[] | null;
+    bracketedIndices: number[];
+  } | null>(null);
+
   // Locks & selections
-  const [lockedKeys, setLockedKeys] = useState<Record<string, string>>({});
+  const [lockedKeys, setLockedKeys] = useState<Record<string, string | string[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
-  const [candidatesByChar, setCandidatesByChar] = useState<Record<string, Candidate[]>>({});
-  const [analysisDone, setAnalysisDone] = useState(false);
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
   const isDraggingRef = useRef(false);
 
@@ -32,275 +77,632 @@ export function useNomenklator() {
   const [klamacStatus, setKlamacStatus] = useState<'none' | 'needsKlamac' | 'ok' | 'invalid'>('none');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  // parsing hook owns bracket state, but we keep warning/error state in return
   const [bracketWarning, setBracketWarning] = useState<string | null>(null);
 
-  // Brackets
-  const [bracketedIndices, setBracketedIndices] = useState<number[]>([]);
+  // Highlighting: single OT character to visually emphasize across the grid
+  const [highlightedOTChar, setHighlightedOTChar] = useState<string | null>(null);
+
+  const toggleHighlightForOT = useCallback((ch: string) => {
+    setHighlightedOTChar(prev => prev === ch ? null : ch);
+  }, []);
 
   // Derived sets
   const reservedTokens = useMemo(() => {
-    const set = new Set<string>();
-    for (const v of Object.values(lockedKeys)) if (v) set.add(v);
-    for (const v of Object.values(selections)) if (v) set.add(v);
-    return set;
-  }, [lockedKeys, selections]);
+    if (keysPerOTMode === 'multiple') {
+      // In multi-key mode, tokens can be used by multiple OT characters (homophones)
+      // So we don't mark them as reserved
+      return new Set<string>();
+    }
+    // Single-key mode: use helper to gather all reserved tokens
+    return getReservedTokens(lockedKeys, selections);
+  }, [lockedKeys, selections, keysPerOTMode]);
 
   // Optional custom grouping of OT characters (supports merging adjacent OT cells)
   const [customOtGroups, setCustomOtGroups] = useState<OTChar[] | null>(null);
+  const [mergeAllPrompt, setMergeAllPrompt] = useState<{ pattern: string; remaining: number } | null>(null);
   const otChars = useMemo(() => {
     if (customOtGroups && customOtGroups.length) return customOtGroups;
     const chars = Array.from(otRaw).filter(ch => !/\s/.test(ch));
     return chars.map((ch, i) => ({ id: `ot_${i}`, ch }));
   }, [otRaw, customOtGroups]);
 
-  // Raw ZT tokens are always single characters in fixedLength mode (for easier editing)
-  // In separator mode they are split by separator.
-  const ztTokens = useMemo<ZTToken[]>(() => {
-    const s = ztRaw.trim();
-    let parts: string[] = [];
-    if (!s) {
-      setKlamacStatus('none');
-      setStatusMessage(null);
-      return [];
+  const getFlatOTGroups = useCallback((): OTChar[] => {
+    return (customOtGroups && customOtGroups.length)
+      ? customOtGroups
+      : otChars.filter(c => c.ch !== '');
+  }, [customOtGroups, otChars]);
+
+  const countMergeableOccurrences = useCallback((groups: OTChar[], pattern: string) => {
+    // Normalize to single-key format for this helper
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
     }
-    if (ztParseMode === 'separator') {
-      parts = s.split(separator).filter(Boolean);
-      // Status directly compares token count to OT chars
-      if (parts.length === 0 || otChars.length === 0) { setKlamacStatus('none'); setStatusMessage(null); }
-      else if (parts.length > otChars.length) { setKlamacStatus('needsKlamac'); setStatusMessage(`Pozor: OT (${otChars.length}) < ZT tokenov (${parts.length}). Vyber klamáč.`); }
-      else if (parts.length < otChars.length) { setKlamacStatus('invalid'); setStatusMessage(`OT (${otChars.length}) > ZT tokenov (${parts.length}). Text môže byť poškodený.`); }
-      else { setKlamacStatus('ok'); setStatusMessage(null); }
+    return countMergeableOccurrencesHelper(groups, pattern, normalizedLocks);
+  }, [lockedKeys]);
+
+  const mergeAllOccurrences = useCallback((pattern: string) => {
+    const flat = getFlatOTGroups();
+    // Normalize to single-key format for this helper
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+    const res = mergeAllOccurrencesHelper(flat, pattern, normalizedLocks);
+    if (!res) return;
+    setCustomOtGroups(res.nextGroups);
+    setMergeAllPrompt(res.remaining > 0 ? { pattern: res.target, remaining: res.remaining } : null);
+  }, [getFlatOTGroups, lockedKeys]);
+
+  const dismissMergeAllPrompt = useCallback(() => {
+    setMergeAllPrompt(null);
+  }, []);
+
+  const parsing = useParsing({ otCount: otChars.length });
+  const {
+    ztParseMode,
+    setZtParseMode,
+    ztRaw,
+    setZtRaw,
+    setZtRawForMode,
+    separator,
+    setSeparator,
+    fixedLength,
+    setFixedLength,
+    groupSize,
+    ztTokens,
+    effectiveZtTokens,
+    bracketedIndices,
+    setBracketedIndices,
+    toggleBracketGroupByText: toggleBracketGroupByTextParse,
+    uniqueZTTokenTexts: uniqueZTTokenTextsParse,
+    klamacStatus: klamacStatusFromParse,
+    statusMessage: statusMessageFromParse,
+    bracketWarning: bracketWarningFromParse,
+    setZtRawSeparator,
+    setZtRawFixed,
+  } = parsing;
+
+  /**
+   * Quick assign: manually assign OT pattern to ZT token.
+   * 1. Validates that OT pattern exists in the text
+   * 2. Checks frequency match (returns warning if not 1:1)
+   * 
+   * @returns { error?: string, warning?: { otCount: number, ztCount: number } }
+   */
+  const quickAssign = useCallback((otPattern: string, ztToken: string): { error?: string; warning?: { otCount: number; ztCount: number } } | null => {
+    const pattern = otPattern.trim().toUpperCase();
+    const token = ztToken.trim();
+
+    // Validation
+    if (!pattern) return { error: 'OT pattern cannot be empty' };
+    if (!token) return { error: 'ZT token cannot be empty' };
+
+    // Check if pattern exists in OT text
+    const otText = otRaw.replace(/\s/g, '');
+    if (!otText.includes(pattern)) {
+      return { error: `Pattern "${pattern}" not found in OT text` };
+    }
+
+    // Count occurrences in OT
+    const otCount = (() => {
+      let count = 0;
+      let pos = 0;
+      while (pos < otText.length) {
+        const idx = otText.indexOf(pattern, pos);
+        if (idx === -1) break;
+        count++;
+        pos = idx + 1; // Allow overlapping matches
+      }
+      return count;
+    })();
+
+    // Count occurrences in ZT
+    let ztCount = 0;
+    if (ztParseMode === 'fixedLength') {
+      // In fixed-length mode, count logical groups (final group may be shorter)
+      const size = Math.max(1, fixedLength || 1);
+      for (let i = 0; i < effectiveZtTokens.length; i += size) {
+        const groupText = effectiveZtTokens.slice(i, i + size).map(t => t.text).join('');
+        if (groupText === token) ztCount++;
+      }
     } else {
-      // fixedLength: break into single characters, but logical grouping uses fixedLength later
-      parts = Array.from(s);
-      const groupSize = fixedLength > 0 ? fixedLength : 1;
-      const groupsCount = Math.floor(parts.length / groupSize);
-      const leftover = parts.length % groupSize;
-      if (groupsCount === 0 || otChars.length === 0) { setKlamacStatus('none'); setStatusMessage(null); }
-      else if (leftover !== 0) {
-        setKlamacStatus('invalid');
-        setStatusMessage(`Nedokončená skupina: chýba ${groupSize - leftover} znak(y) pre poslednú skupinu.`);
-      } else if (groupsCount > otChars.length) {
-        setKlamacStatus('needsKlamac');
-        setStatusMessage(`Pozor: OT (${otChars.length}) < skupín ZT (${groupsCount}). Vyber klamáč.`);
-      } else if (groupsCount < otChars.length) {
-        setKlamacStatus('invalid');
-        setStatusMessage(`OT (${otChars.length}) > skupín ZT (${groupsCount}). Text môže byť poškodený.`);
-      } else { setKlamacStatus('ok'); setStatusMessage(null); }
+      // In separator mode, count individual tokens
+      ztCount = ztTokens.filter(t => t.text === token).length;
     }
-    return parts.map((t, i) => ({ id: `zt_${i}`, text: t }));
-  }, [ztRaw, ztParseMode, separator, fixedLength, otChars.length]);
 
-  const effectiveZtTokens = useMemo(() => {
-    if (!bracketedIndices.length) return ztTokens;
-    const br = new Set(bracketedIndices);
-    return ztTokens.filter((_, i) => !br.has(i));
-  }, [ztTokens, bracketedIndices]);
+    // Check frequency match
+    const frequencyWarning = otCount !== ztCount ? { otCount, ztCount } : undefined;
 
-  const COLS = 12;
-  const otRows = useMemo(() => {
-    const rows: { id: string; ch: string }[][] = [];
-    for (let i = 0; i < otChars.length; i += COLS) rows.push(otChars.slice(i, i + COLS));
-    return rows.length ? rows : [[]];
-  }, [otChars]);
+    return frequencyWarning ? { warning: frequencyWarning } : null;
+  }, [otRaw, ztTokens, ztParseMode, fixedLength, effectiveZtTokens]);
 
-  // Shift-only columns mapping with deception cells
-  const columns = useMemo(() => {
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    return buildShiftOnlyColumns(otRows, effectiveZtTokens, lockedKeys, selections, groupSize);
-  }, [otRows, effectiveZtTokens, lockedKeys, selections, ztParseMode, fixedLength]);
+  /**
+   * Execute quick assign after user confirmation.
+   * Called after frequency check passes or user confirms the warning.
+   */
+  const executeQuickAssign = useCallback((otPattern: string, ztToken: string): string | null => {
+    const pattern = otPattern.trim().toUpperCase();
+    const token = ztToken.trim();
 
-  // Auto-select candidates with score==1 matching sequential expected indices
-  React.useEffect(() => {
-    if (!Object.keys(candidatesByChar).length) return;
-    const expected = getExpectedZTIndicesForOT(otRows, ztTokens, bracketedIndices);
+    // Merge all occurrences first
+    const flat = getFlatOTGroups();
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+
+    const mergeResult = mergeAllOccurrencesHelper(flat, pattern, normalizedLocks);
+    if (!mergeResult) {
+      return `Failed to merge pattern "${pattern}"`;
+    }
+
+    // Update groups
+    setCustomOtGroups(mergeResult.nextGroups);
+    setMergeAllPrompt(mergeResult.remaining > 0 ? { pattern: mergeResult.target, remaining: mergeResult.remaining } : null);
+
+    // Set selection (not locked) for the pattern
     setSelections(prev => {
       const next = { ...prev };
-      for (const [ch, list] of Object.entries(candidatesByChar)) {
-        if (next[ch]) continue;
-        const score1 = list.filter(c => c.score === 1);
-        if (score1.length !== 1) continue;
-        const token = score1[0].token;
-        const indices = ztTokens.map((t, i) => t.text === token ? i : -1).filter(i => i >= 0);
-        const exp = expected[ch] || [];
-        if (indices.length === exp.length && indices.every((v, i) => v === exp[i])) next[ch] = token;
+      if (keysPerOTMode === 'multiple') {
+        // In multiple mode, add to array if not already present
+        const existing = Array.isArray(prev[pattern]) ? prev[pattern] as string[] : [];
+        if (!existing.includes(token)) {
+          next[pattern] = [...existing, token];
+        }
+      } else {
+        // In single mode, just set the token
+        next[pattern] = token;
       }
       return next;
     });
-  }, [candidatesByChar, otRows, ztTokens, bracketedIndices]);
 
-  // Hydration (avoid stale stale locks + brackets)
-  React.useEffect(() => {
-    if (hydrated.current) return;
-    setOtRaw(settings.otRaw ?? '');
-    setZtRaw(settings.ztRaw ?? '');
-    setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
-    setLockedKeys({});
-    setBracketedIndices([]);
-    setCustomOtGroups(null);
-    hydrated.current = true;
-  }, [settings]);
-
-  // Minimal persistence
-  React.useEffect(() => { setSettings(p => (p.otRaw === otRaw ? p : { ...p, otRaw })); }, [otRaw]);
-  React.useEffect(() => { setSettings(p => (p.ztRaw === ztRaw ? p : { ...p, ztRaw })); }, [ztRaw]);
-  React.useEffect(() => { setSettings(p => (p.keysPerOTMode === keysPerOTMode ? p : { ...p, keysPerOTMode })); }, [keysPerOTMode]);
-
-  // Bracket validity post parse-change
-  React.useEffect(() => {
-    setBracketWarning(null);
-    setBracketedIndices(prev => {
-      if (!prev.length) return prev;
-      const max = ztTokens.length;
-      const filtered = prev.filter(i => i >= 0 && i < max);
-      if (filtered.length !== prev.length) setBracketWarning('Niektoré klamače po zmene parsovania neexistujú – odstránené.');
-      return filtered;
+    // Trigger analysis after a microtask to ensure state is updated
+    queueMicrotask(() => {
+      setPendingAutoRefresh(true);
     });
-  }, [ztTokens.length]);
 
-  // Status update after analysis w.r.t. brackets
-  React.useEffect(() => {
-    const OT = otChars.length;
-    if (OT === 0 || ztTokens.length === 0) { setKlamacStatus('none'); setStatusMessage(null); return; }
-    if (!analysisDone) return;
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const effChars = effectiveZtTokens.length;
-    const effGroups = Math.floor(effChars / groupSize);
-    const leftover = effChars % groupSize;
-    if (leftover !== 0) {
-      setKlamacStatus('invalid');
-      setStatusMessage(`Klamač zle vybraný: nedelené skupiny (chýba ${groupSize - leftover}).`);
-      return;
-    }
-    if (effGroups < OT) { setKlamacStatus('invalid'); setStatusMessage(`Vybraný zlý klamáč: OT (${OT}) > ZT (${effGroups}).`); }
-    else if (effGroups > OT) { setKlamacStatus('needsKlamac'); setStatusMessage(`Prebytočné skupiny: ${effGroups - OT}. Vyber ďalší klamáč.`); }
-    else { setKlamacStatus('ok'); setStatusMessage(null); }
-  }, [analysisDone, bracketedIndices, effectiveZtTokens.length, otChars.length, ztTokens.length, ztParseMode, fixedLength]);
+    return null; // Success
+  }, [getFlatOTGroups, lockedKeys, keysPerOTMode, setCustomOtGroups, setMergeAllPrompt, setSelections, setPendingAutoRefresh]);
 
-  function runAnalysis() {
-    // Build logical tokens (group substrings) for analysis when in fixedLength mode
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    let logicalTokens: ZTToken[];
-    if (groupSize === 1) {
-      logicalTokens = ztTokens;
-    } else {
-      logicalTokens = [];
-      for (let i = 0; i + groupSize - 1 < ztTokens.length; i += groupSize) {
-        const slice = ztTokens.slice(i, i + groupSize).map(t => t.text).join('');
-        logicalTokens.push({ id: `lzt_${i}`, text: slice });
+  // Responsive OT grid width.
+  // This intentionally affects only layout (row wrapping), not mapping/analysis rules.
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let timeoutId: number | null = null;
+    const onResize = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setViewportWidth(window.innerWidth);
+      }, 150) as unknown as number;
+    };
+    window.addEventListener('resize', onResize, { passive: true } as any);
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
+  const OT_COLUMNS_PER_ROW = useMemo(() => {
+    for (const breakpoint of RESPONSIVE_BREAKPOINTS) {
+      if (viewportWidth < breakpoint.maxWidth) {
+        return breakpoint.columns;
       }
     }
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens); // proportional allocation based on logical groups
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
-    const sorted: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(res.candidatesByChar)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
-    setCandidatesByChar(sorted);
-    setSelections({});
-    setAnalysisDone(true);
-  }
+    return RESPONSIVE_BREAKPOINTS[RESPONSIVE_BREAKPOINTS.length - 1].columns;
+  }, [viewportWidth]);
+  const otRows = useMemo(() => {
+    const rows: { id: string; ch: string }[][] = [];
+    for (let i = 0; i < otChars.length; i += OT_COLUMNS_PER_ROW) rows.push(otChars.slice(i, i + OT_COLUMNS_PER_ROW));
+    return rows.length ? rows : [[]];
+  }, [otChars, OT_COLUMNS_PER_ROW]);
 
-  // Preserve existing selections where the token still appears in refreshed candidates
-  function refreshAnalysisPreserve() {
-    const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    let logicalTokens: ZTToken[];
-    if (groupSize === 1) {
-      logicalTokens = ztTokens;
-    } else {
-      logicalTokens = [];
-      for (let i = 0; i + groupSize - 1 < ztTokens.length; i += groupSize) {
-        const slice = ztTokens.slice(i, i + groupSize).map(t => t.text).join('');
-        logicalTokens.push({ id: `lzt_${i}`, text: slice });
+  const mapping = useMapping({
+    otRows,
+    effectiveZtTokens,
+    lockedKeys,
+    selections,
+    ztParseMode,
+    groupSize,
+    keysPerOTMode,
+  });
+
+  const { columns, manualOtCounts, shiftMeta } = mapping;
+
+  const analysis = useAnalysis({
+    otRows,
+    ztParseMode,
+    fixedLength,
+    effectiveZtTokens,
+    columns,
+    keysPerOTMode,
+    lockedKeys,
+    setSelections,
+  });
+
+  const { candidatesByChar, analysisDone, isAnalyzing, runAnalysis: runAnalysisCore, refreshAnalysisPreserve } = analysis;
+
+  const effToOrig = useMemo(() => {
+    return buildEffectiveToOriginalIndexMap(ztTokens.length, bracketedIndices);
+  }, [ztTokens.length, bracketedIndices]);
+
+  // In fixed-length mode, manual shifting changes *group boundaries*.
+  // The bracket editor should reflect the current grid grouping (columns), not
+  // naive chunking by `fixedLength`. We also keep fully-bracketed groups from
+  // the parse-based list so users can un-bracket without relying on "Clear".
+  const uniqueZTTokenTexts = useMemo(() => {
+    if (ztParseMode !== 'fixedLength') return uniqueZTTokenTextsParse;
+    const size = Math.max(1, fixedLength || 1);
+    if (size <= 1) return uniqueZTTokenTextsParse;
+    if (!analysisDone) return uniqueZTTokenTextsParse;
+
+    const meta = new Map<string, { allBracketed: boolean }>();
+    const order: string[] = [];
+
+    // 1) Current shifted groups (what the mapping table shows)
+    for (let r = 0; r < columns.length; r++) {
+      for (let c = 0; c < columns[r].length; c++) {
+        const col = columns[r][c];
+        if (!col.zt || col.zt.length === 0) continue;
+        let text = '';
+        for (const effIdx of col.zt) text += (effectiveZtTokens[effIdx]?.text ?? '');
+        if (!text) continue;
+        if (meta.has(text)) continue;
+        meta.set(text, { allBracketed: false });
+        order.push(text);
       }
     }
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
-    const res = analyze(otRows as OTChar[][], logicalTokens, baseCounts, { keysPerOTMode }, lockedKeys);
-    const sorted: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(res.candidatesByChar)) sorted[ch] = [...list].sort((a, b) => b.score !== a.score ? b.score - a.score : a.token.localeCompare(b.token));
-    setCandidatesByChar(sorted);
-    setSelections(prev => {
-      const next: SelectionMap = {};
-      for (const [ch, sel] of Object.entries(prev)) {
-        const list = sorted[ch];
-        if (list && list.some(c => c.token === sel)) next[ch] = sel;
+
+    // 2) Fully-bracketed groups from parse-based list (so they remain toggleable)
+    for (const g of uniqueZTTokenTextsParse) {
+      if (!g.allBracketed) continue;
+      if (meta.has(g.text)) continue;
+      meta.set(g.text, { allBracketed: true });
+      order.push(g.text);
+    }
+
+    // 3) Bracketed runs (supports un-bracketing groups created via shifting)
+    if (bracketedIndices.length) {
+      const br = new Set(bracketedIndices);
+      let i = 0;
+      while (i < ztTokens.length) {
+        if (!br.has(i)) {
+          i++;
+          continue;
+        }
+        let text = '';
+        while (i < ztTokens.length && br.has(i)) {
+          text += ztTokens[i].text;
+          i++;
+        }
+        if (!text) continue;
+        if (meta.has(text)) continue;
+        meta.set(text, { allBracketed: true });
+        order.push(text);
       }
-      return next;
-    });
-  }
+    }
 
-  function onLockOT(ot: string, val: string) { setLockedKeys(prev => ({ ...prev, [ot]: val })); }
-  function onUnlockOT(ot: string) { setLockedKeys(prev => { const c = { ...prev }; delete c[ot]; return c; }); }
-  // drag behavior intentionally disabled in simplified mode
+    return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
+  }, [analysisDone, bracketedIndices, columns, effectiveZtTokens, fixedLength, uniqueZTTokenTextsParse, ztParseMode, ztTokens]);
 
-  function toggleBracketGroupByText(text: string) {
+  const toggleBracketGroupByText = useCallback((text: string) => {
     if (!text) return;
-    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
-      setBracketedIndices(prev => toggleBracketByGroupText(text, ztTokens, fixedLength || 1, prev));
+
+    if (ztParseMode !== 'fixedLength') {
+      toggleBracketGroupByTextParse(text);
       return;
     }
-    const same = ztTokens.map((t, i) => t.text === text ? i : -1).filter(i => i >= 0);
+
+    const size = Math.max(1, fixedLength || 1);
+    if (size <= 1 || !analysisDone) {
+      toggleBracketGroupByTextParse(text);
+      return;
+    }
+
+    const indicesToToggle: number[] = [];
+
+    for (let r = 0; r < columns.length; r++) {
+      for (let c = 0; c < columns[r].length; c++) {
+        const col = columns[r][c];
+        if (!col.zt || col.zt.length === 0) continue;
+        let groupText = '';
+        for (const effIdx of col.zt) groupText += (effectiveZtTokens[effIdx]?.text ?? '');
+        if (groupText !== text) continue;
+        for (const effIdx of col.zt) {
+          const orig = effToOrig[effIdx];
+          if (typeof orig === 'number' && orig >= 0) indicesToToggle.push(orig);
+        }
+      }
+    }
+
+    // If the group doesn't exist in the current shifted grid (e.g. it's already
+    // fully bracketed and thus filtered out of `effectiveZtTokens`), fall back
+    // to the parse-based toggler so it can be restored.
+    if (!indicesToToggle.length) {
+      // Try to un-bracket a contiguous bracketed run matching this text.
+      if (bracketedIndices.length) {
+        const br = new Set(bracketedIndices);
+        let i = 0;
+        while (i < ztTokens.length) {
+          if (!br.has(i)) {
+            i++;
+            continue;
+          }
+          let runText = '';
+          const runIndices: number[] = [];
+          while (i < ztTokens.length && br.has(i)) {
+            runText += ztTokens[i].text;
+            runIndices.push(i);
+            i++;
+          }
+          if (runText === text) indicesToToggle.push(...runIndices);
+        }
+      }
+
+      if (!indicesToToggle.length) {
+        toggleBracketGroupByTextParse(text);
+        return;
+      }
+    }
+
     setBracketedIndices(prev => {
       const set = new Set(prev);
-      const all = same.every(i => set.has(i));
-      if (all) same.forEach(i => set.delete(i)); else same.forEach(i => set.add(i));
+      const unique = Array.from(new Set(indicesToToggle)).sort((a, b) => a - b);
+      const all = unique.every(i => set.has(i));
+      if (all) unique.forEach(i => set.delete(i));
+      else unique.forEach(i => set.add(i));
       return Array.from(set).sort((a, b) => a - b);
     });
-  }
+  }, [analysisDone, columns, effToOrig, effectiveZtTokens, fixedLength, setBracketedIndices, toggleBracketGroupByTextParse, ztParseMode]);
 
-  const uniqueZTTokenTexts = useMemo(() => {
-    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
-      return uniqueGroupTexts(ztTokens, fixedLength || 1, bracketedIndices);
-    }
-    const seen = new Set<string>();
-    const br = new Set(bracketedIndices);
-    const map = new Map<string, number[]>();
-    ztTokens.forEach((t, i) => { (map.get(t.text) || map.set(t.text, []).get(t.text))?.push(i); });
-    const out: { text: string; allBracketed: boolean }[] = [];
-    for (const t of ztTokens) {
-      if (seen.has(t.text)) continue; seen.add(t.text);
-      const idxs = map.get(t.text) || [];
-      out.push({ text: t.text, allBracketed: idxs.length > 0 && idxs.every(i => br.has(i)) });
-    }
-    return out;
-  }, [ztTokens, bracketedIndices, ztParseMode, fixedLength]);
+  // Wrap runAnalysis to capture pre-analysis state snapshot
+  const runAnalysis = useCallback(() => {
+    // Capture current state before running analysis
+    preAnalysisStateRef.current = {
+      otRaw,
+      ztRawSeparator: parsing.ztRawSeparator,
+      ztRawFixed: parsing.ztRawFixed,
+      ztParseMode: parsing.ztParseMode,
+      separator: parsing.separator,
+      fixedLength: parsing.fixedLength,
+      keysPerOTMode,
+      customOtGroups,
+      bracketedIndices: parsing.bracketedIndices,
+    };
+    // Run the actual analysis
+    runAnalysisCore();
+  }, [otRaw, parsing, keysPerOTMode, customOtGroups, runAnalysisCore]);
 
-  function previewSelection() {
+  /**
+   * Reset to state before Run Analysis was clicked.
+   * Restores OT, ZT, parsing settings, and clears all derived state (locks, selections, merges).
+   */
+  const resetToPreAnalysis = useCallback(() => {
+    if (!preAnalysisStateRef.current) {
+      // If no snapshot exists, just clear suggestions
+      setLockedKeys({});
+      setSelections({});
+      mapping.setManualOtCounts(null);
+      return;
+    }
+
+    const snapshot = preAnalysisStateRef.current;
+    
+    // Restore to pre-analysis state
+    setOtRaw(snapshot.otRaw);
+    parsing.setZtRawSeparator(snapshot.ztRawSeparator);
+    parsing.setZtRawFixed(snapshot.ztRawFixed);
+    parsing.setZtParseMode(snapshot.ztParseMode);
+    parsing.setSeparator(snapshot.separator);
+    parsing.setFixedLength(snapshot.fixedLength);
+    setKeysPerOTMode(snapshot.keysPerOTMode);
+    setCustomOtGroups(snapshot.customOtGroups);
+    parsing.setBracketedIndices(snapshot.bracketedIndices);
+
+    // Clear all analysis-derived state
+    setLockedKeys({});
+    setSelections({});
+    setMergeAllPrompt(null);
+    setHighlightedOTChar(null);
+    
+    // Clear status messages
+    setSelectionError(null);
+    setBracketWarning(null);
+    
+    // Reset manual shifting state for fixed-length mode
+    mapping.setManualOtCounts(null);
+  }, [parsing, setOtRaw, setKeysPerOTMode, setLockedKeys, setSelections, setCustomOtGroups, setMergeAllPrompt, setHighlightedOTChar, setSelectionError, setBracketWarning, mapping]);
+
+  // Now that analysisDone is known, let status hook compute the derived post-analysis status as well.
+  useNomenklatorStatus({
+    klamacStatusFromParse,
+    statusMessageFromParse,
+    bracketWarningFromParse,
+    setKlamacStatus,
+    setStatusMessage,
+    setBracketWarning,
+    analysisDone,
+    otChars,
+    ztTokens,
+    effectiveZtTokens,
+    ztParseMode,
+    fixedLength,
+    bracketedIndices,
+  });
+
+  // Debounce refreshes so rapid edits/locks don't block typing/dragging.
+  // Adaptive delay: short texts stay responsive; large texts avoid UI jank.
+  const analysisRefreshDelayMs = useMemo(() => {
+    const size = Math.max(otChars.length, effectiveZtTokens.length);
+    if (size > 500) return 500;
+    if (size > 200) return 300;
+    if (size > 100) return 200;
+    return 100;
+  }, [otChars.length, effectiveZtTokens.length]);
+
+  const { debounced: refreshAnalysisPreserveDebounced, cancel: cancelRefreshDebounce } = useDebouncedCallback(
+    () => {
+      if (!analysisDone) return;
+      refreshAnalysisPreserve();
+    },
+    analysisRefreshDelayMs
+  );
+
+  useAutoPickScoreOneSequential({
+    candidatesByChar,
+    otRows,
+    ztTokens,
+    bracketedIndices,
+    setSelections,
+  });
+
+  useNomenklatorPersistence({
+    settings,
+    setSettings,
+    hydratedRef: hydrated,
+    otRaw,
+    setOtRaw,
+    ztRaw,
+    setZtRawSeparator,
+    setZtRawFixed,
+    keysPerOTMode,
+    setKeysPerOTMode,
+    setLockedKeys,
+    setBracketedIndices,
+    setCustomOtGroups,
+  });
+
+  const onLockOT = useCallback((ot: string, val: string) => {
+    setLockedKeys(prev => {
+      if (keysPerOTMode === 'multiple') {
+        // In multi-key mode, add to array
+        const current = Array.isArray(prev[ot]) ? prev[ot] : [];
+        if (current.includes(val)) return prev; // already locked
+        return { ...prev, [ot]: [...current, val] };
+      }
+      // Single-key mode: replace
+      return { ...prev, [ot]: val };
+    });
+  }, [keysPerOTMode]);
+
+  const onUnlockOT = useCallback((ot: string, specificToken?: string) => {
+    setLockedKeys(prev => {
+      if (keysPerOTMode === 'multiple' && specificToken) {
+        // In multi-key mode, remove specific token
+        const current = Array.isArray(prev[ot]) ? prev[ot] : [];
+        const filtered = current.filter(t => t !== specificToken);
+        if (filtered.length === 0) {
+          const c = { ...prev };
+          delete c[ot];
+          return c;
+        }
+        return { ...prev, [ot]: filtered };
+      }
+      // Single-key mode or clear all: remove entire key
+      const c = { ...prev };
+      delete c[ot];
+      return c;
+    });
+  }, [keysPerOTMode]);
+  // drag behavior intentionally disabled in simplified mode
+
+  // uniqueZTTokenTexts comes from parsing hook
+
+  const previewSelection = useCallback(() => {
     const totalCells = otRows.reduce((a, r) => a + r.filter(c => c.ch !== '').length, 0);
     let err: string | null = null;
     if (!bracketedIndices.length) {
+      // When no deception/brackets are used, we can give the user quick feedback
+      // about obvious token-count mismatches before committing locks.
       if (ztParseMode === 'fixedLength') {
         const groupSize = fixedLength || 1;
-        const effGroups = Math.floor(effectiveZtTokens.length / groupSize);
-        const leftover = effectiveZtTokens.length % groupSize;
-        if (leftover !== 0) {
-          err = `Nedokončená skupina: chýba ${groupSize - leftover} znak(y).`;
-        } else if (effGroups > totalCells) {
-          err = `Pozor klamáč: skupín ZT o ${effGroups - totalCells} viac.`;
+        // Treat groupSize as a maximum: allow final shorter group.
+        // Number of logical groups equals ceil(total tokens / groupSize).
+        const effGroups = Math.ceil(effectiveZtTokens.length / groupSize);
+        if (effGroups > totalCells) {
+          err = `Warning: too many ZT groups by ${effGroups - totalCells}.`;
         }
       } else {
-        if (effectiveZtTokens.length > totalCells) err = `Pozor klamáč: ZT tokenov o ${effectiveZtTokens.length - totalCells} viac.`;
+        if (effectiveZtTokens.length > totalCells) err = `Warning: ZT tokens exceed OT by ${effectiveZtTokens.length - totalCells}.`;
       }
     }
     setSelectionError(err);
-  }
+    return err;
+  }, [bracketedIndices.length, effectiveZtTokens.length, fixedLength, otRows, setSelectionError, ztParseMode]);
 
-  function editZtToken(effIndex: number, newText: string) {
+  // Choose suggestions where exactly one candidate has score==1 for that OT char.
+  // If any OT char has more than one score==1 candidate, abort and set an error.
+  // In multi-key mode, this function does nothing (manual selection expected).
+  const chooseScoreOneSuggestions = useCallback(() => {
+    // Skip auto-selection in multi-key mode - users manually select homophones
+    if (keysPerOTMode === 'multiple') {
+      setSelectionError(null);
+      return true;
+    }
+    
+    const picks: Record<string, string> = {};
+    const ambiguous: string[] = [];
+    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    for (const [ch, list] of Object.entries(candidatesByChar)) {
+      // build candidate options to know which candidates are disabled by ordering/reserved rules
+      // In single-key mode, normalize array values to strings
+      const lockedVal = lockedKeys?.[ch];
+      const normalizedLocked = Array.isArray(lockedVal) ? lockedVal[0] : lockedVal;
+      const selectionVal = selections[ch];
+      const normalizedSelection = Array.isArray(selectionVal) ? selectionVal[0] : selectionVal;
+      
+      const opts = list.map((c, idx) => buildCandidateOptions({ 
+        c, 
+        idx, 
+        ch, 
+        otRows, 
+        effectiveZtTokens, 
+        groupSize: gs, 
+        reservedTokens, 
+        selectionVal: normalizedSelection, 
+        lockedVal: normalizedLocked, 
+        sharedColumns: columns 
+      }));
+      const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
+      if (enabledScore1.length > 1) {
+        ambiguous.push(ch);
+        continue;
+      }
+      if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
+    }
+    // Apply only the unambiguous picks, preserving existing selections for others
+    if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
+    if (ambiguous.length) {
+      setSelectionError(`Ambiguous suggestions for ${ambiguous.join(', ')} (multiple score==1)`);
+      return false;
+    }
+    setSelectionError(null);
+    return true;
+  }, [candidatesByChar, columns, effectiveZtTokens, fixedLength, keysPerOTMode, lockedKeys, otRows, reservedTokens, selections, setSelectionError, setSelections, ztParseMode]);
+
+  const editZtToken = useCallback((effIndex: number, newText: string) => {
     // Map effective index (skipping bracketed tokens) back to original index
-    const br = new Set(bracketedIndices);
-    const effToOrig: number[] = [];
-    for (let i = 0; i < ztTokens.length; i++) if (!br.has(i)) effToOrig.push(i);
+    const effToOrig = buildEffectiveToOriginalIndexMap(ztTokens.length, bracketedIndices);
     const orig = effToOrig[effIndex] ?? effIndex;
     if (orig < 0 || orig >= ztTokens.length) return;
     const oldTokenText = ztTokens[orig].text;
-    // Disallow editing if this token text is currently locked for any OT char
-    const lockedValues = new Set(Object.values(lockedKeys));
+    // Disallow editing of a token value that is currently locked: otherwise the
+    // UI would silently invalidate the lock the user explicitly set.
+    const lockedValues = new Set<string>();
+    for (const val of Object.values(lockedKeys)) {
+      const tokens = normalizeToArray(val);
+      tokens.forEach(t => lockedValues.add(t));
+    }
     if (lockedValues.has(oldTokenText)) return; // locked -> ignore edit
     const trimmed = newText.trim();
     if (!trimmed) return; // avoid empty tokens
     // If in fixedLength mode and length changed, switch to separator mode to preserve user intent
     let nextParseMode = ztParseMode;
     if (ztParseMode === 'fixedLength' && trimmed.length !== oldTokenText.length) {
+      // Fixed-length mode implies strict character grouping; changing token length
+      // is best represented as separator-mode tokens.
       nextParseMode = 'separator';
       setZtParseMode('separator');
     }
@@ -310,179 +712,313 @@ export function useNomenklator() {
     // Revalidate locks: any lock whose value no longer exists is dropped
     const existingSet = new Set(tokensArr);
     setLockedKeys(prev => {
-      const next: Record<string,string> = {};
-      for (const [k,v] of Object.entries(prev)) if (existingSet.has(v)) next[k] = v; // keep only surviving lock values
+      const next: Record<string, string | string[]> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        // Handle both single and multi-key formats
+        if (Array.isArray(v)) {
+          const surviving = v.filter(token => existingSet.has(token));
+          if (surviving.length > 0) next[k] = surviving;
+        } else if (existingSet.has(v)) {
+          next[k] = v;
+        }
+      }
       return next;
     });
     // Rebuild raw string
     const newRaw = nextParseMode === 'separator' ? tokensArr.join(separator) : tokensArr.join('');
-    setZtRaw(newRaw);
+    // write raw into the appropriate mode-specific storage to avoid cross-mode propagation
+    setZtRawForMode(nextParseMode, newRaw);
     if (analysisDone) setPendingAutoRefresh(true);
-  }
+  }, [analysisDone, bracketedIndices, lockedKeys, separator, setLockedKeys, setPendingAutoRefresh, setZtParseMode, setZtRawForMode, ztParseMode, ztTokens]);
 
-  function applySelection() {
-    previewSelection();
-    if (selectionError) return;
-    const newLocks: Record<string, string> = {};
-    for (const [ch, seq] of Object.entries(selections)) if (seq && !lockedKeys[ch]) newLocks[ch] = seq as string;
-    if (Object.keys(newLocks).length) setLockedKeys(prev => ({ ...prev, ...newLocks }));
-  }
+  const applySelection = useCallback(() => {
+    const err = previewSelection();
+    if (err) return;
+    const newLocks: Record<string, string | string[]> = {};
+    for (const [ch, seq] of Object.entries(selections)) {
+      if (!seq) continue;
+      if (keysPerOTMode === 'multiple') {
+        // In multi-key mode, merge with existing locks
+        const existing = normalizeToArray(lockedKeys[ch]);
+        const selected = normalizeToArray(seq);
+        const merged = [...new Set([...existing, ...selected])];
+        if (merged.length > 0) newLocks[ch] = merged;
+      } else {
+        // Single-key mode: only lock if not already locked
+        if (!lockedKeys[ch]) newLocks[ch] = seq as string;
+      }
+    }
+    if (Object.keys(newLocks).length) {
+      setLockedKeys(prev => ({ ...prev, ...newLocks }));
+      // Clear selections after applying
+      setSelections({});
+    }
+  }, [keysPerOTMode, lockedKeys, previewSelection, selections, setSelections]);
 
   // Merge adjacent OT groups: fromIndex merged into toIndex (concatenate text), only if toIndex is adjacent (fromIndex+1)
-  function joinOTAt(fromIndex: number, toIndex: number) {
-    const flat: OTChar[] = (customOtGroups && customOtGroups.length)
-      ? customOtGroups
-      : otChars.filter(c => c.ch !== '');
-    if (fromIndex < 0 || toIndex < 0 || fromIndex >= flat.length || toIndex >= flat.length) return;
-    // Only allow merging when dropping onto the immediate next OT
-    if (toIndex !== fromIndex + 1) return;
-    const a = flat[fromIndex];
-    const b = flat[toIndex];
-    const merged: OTChar = { id: `${a.id}_merge_${b.id}`, ch: `${a.ch}${b.ch}` };
-    const next = [...flat];
-    next.splice(fromIndex, 2, merged);
-    setCustomOtGroups(next);
-  }
+  const joinOTAt = useCallback((fromIndex: number, toIndex: number) => {
+    const flat: OTChar[] = getFlatOTGroups();
+    // Normalize to single-key format for this helper
+    const normalizedLocks: Record<string, string> = {};
+    for (const [ch, val] of Object.entries(lockedKeys)) {
+      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+    }
+    const res = tryJoinAdjacentOtGroups(flat, fromIndex, toIndex, normalizedLocks);
+    if (!res) return;
+    setCustomOtGroups(res.nextGroups);
+
+    const remaining = countMergeableOccurrences(res.nextGroups, res.mergedText);
+    setMergeAllPrompt(remaining > 0 ? { pattern: res.mergedText, remaining } : null);
+  }, [countMergeableOccurrences, getFlatOTGroups, lockedKeys]);
 
   // Split a multi-char OT group at index back into single-character groups
-  function splitOTAt(index: number) {
+  const splitOTAt = useCallback((index: number) => {
     const flat: OTChar[] = (customOtGroups && customOtGroups.length)
       ? customOtGroups
       : otChars.filter(c => c.ch !== '');
-    if (index < 0 || index >= flat.length) return;
-    const cur = flat[index];
-    if (!cur || !cur.ch || cur.ch.length <= 1) return;
-    const singles: OTChar[] = Array.from(cur.ch).map((ch, i) => ({ id: `${cur.id}_s${i}`, ch }));
-    const next = [...flat];
-    next.splice(index, 1, ...singles);
+    const next = splitOtGroupAt(flat, index);
+    if (!next) return;
     setCustomOtGroups(next);
-  }
+  }, [customOtGroups, otChars]);
 
-  function onDragStart() {
+  const onDragStart = useCallback(() => {
     isDraggingRef.current = true;
+    // Dragging performs multiple state updates quickly; pausing debounced refreshes
+    // prevents "rubber-banding" suggestions mid-drag.
+    cancelRefreshDebounce();
+  }, [cancelRefreshDebounce]);
+
+  const onDragCancel = useCallback(() => {
+    isDraggingRef.current = false;
+    cancelRefreshDebounce();
+  }, [cancelRefreshDebounce]);
+
+  interface DragData {
+    type?: 'zt' | 'ot';
+    tokenIndex?: number;
+    sourceRow?: number;
+    sourceCol?: number;
+    row?: number;
+    col?: number;
   }
 
-  function onDragEnd(evt: DragEndEvent) {
+  const onDragEnd = useCallback((evt: DragEndEvent) => {
     const wasDragging = isDraggingRef.current;
     isDraggingRef.current = false;
     if (!wasDragging) return; // prevent accidental merges from clicks
     const active = evt.active;
     const over = evt.over;
     if (!active || !over) return;
-    const src = active.data?.current as any;
-    const dst = over.data?.current as any;
-    // Debug: log DnD resolution for troubleshooting
-    try {
-      console.log('[DnD] active.id=', active.id, 'over.id=', over.id, 'src.data=', src, 'dst.data=', dst);
-    } catch {}
-    // Reject drops onto klamáč cells
-    if (dst && dst.isKlamac) return;
-    // Resolve source/target grid positions
-    let srcRow: number | undefined = src?.sourceRow;
-    let srcCol: number | undefined = src?.sourceCol;
-    let dstRow: number | undefined = dst?.row;
-    let dstCol: number | undefined = dst?.col;
-    // Fallback: parse droppable id if data missing
-    if ((dstRow == null || dstCol == null) && typeof over.id === 'string') {
-      const m = /^cell-(\d+)-(\d+)$/.exec(over.id as string);
-      if (m) {
-        dstRow = Number(m[1]);
-        dstCol = Number(m[2]);
-      }
-    }
-    if (srcRow == null || srcCol == null || dstRow == null || dstCol == null) return;
-    // Enforce grid-adjacency: only allow merge if target is exactly the next column in the same row
-    if (!(dstRow === srcRow && dstCol === srcCol + 1)) return;
-    // Both source and target must be non-empty OT cells
-    const srcCell = columns[srcRow]?.[srcCol];
-    const dstCell = columns[dstRow]?.[dstCol];
-    if (!srcCell || !dstCell) return;
-    if (!srcCell.ot || !dstCell.ot) return;
-    // Compute current flat indices by scanning otRows, counting only non-empty cells
-    let fromFlat = -1;
-    let targetFlat = -1;
-    let counter = 0;
-    for (let rr = 0; rr < columns.length; rr++) {
-      const rowArr = columns[rr];
-      for (let cc = 0; cc < rowArr.length; cc++) {
-        const cell = rowArr[cc];
-        if (cell.ot) {
-          if (rr === srcRow && cc === srcCol) fromFlat = counter;
-          if (rr === dstRow && cc === dstCol) targetFlat = counter;
-          counter++;
+    const src = active.data?.current as DragData | undefined;
+    const dst = over.data?.current as DragData | undefined;
+
+    // If both source and target are ZT tokens, allow swapping only when adjacent
+    if (src?.type === 'zt' && dst?.type === 'zt') {
+      const srcIndex = src.tokenIndex as number | undefined;
+      const dstIndex = dst.tokenIndex as number | undefined;
+      if (typeof srcIndex === 'number' && typeof dstIndex === 'number') {
+        if (Math.abs(srcIndex - dstIndex) === 1) {
+          // Prevent swaps when either token sits inside a locked OT cell.
+          // Locks are a user assertion; swapping tokens under a lock would be surprising.
+          // Normalize to single-key format for this helper
+          const normalizedLocks: Record<string, string> = {};
+          for (const [ch, val] of Object.entries(lockedKeys)) {
+            normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+          }
+          if (tokenIndexIsLockedInColumns(columns, normalizedLocks, srcIndex)) return;
+          if (tokenIndexIsLockedInColumns(columns, normalizedLocks, dstIndex)) return;
+
+          const tokensArr = ztTokens.map(t => t.text);
+          // swap
+          const tmp = tokensArr[srcIndex];
+          tokensArr[srcIndex] = tokensArr[dstIndex];
+          tokensArr[dstIndex] = tmp;
+          if (ztParseMode === 'separator') setZtRawForMode('separator', tokensArr.join(separator));
+          else setZtRawForMode('fixedLength', tokensArr.join(''));
+          if (analysisDone) setPendingAutoRefresh(true);
         }
       }
+      return;
     }
-    if (fromFlat < 0 || targetFlat < 0) return;
-    // Perform merge strictly to immediate right in the grid
-    joinOTAt(fromFlat, targetFlat);
-  }
+
+    // Otherwise, treat as OT-cell merge operation
+    const resolved = resolveMergeFromEvent(evt, columns);
+    if (!resolved) return;
+    joinOTAt(resolved.fromFlat, resolved.targetFlat);
+  }, [analysisDone, columns, joinOTAt, lockedKeys, separator, setPendingAutoRefresh, setZtRawForMode, ztParseMode, ztTokens]);
 
   // Re-run analysis when OT grouping changes and we already have results
   React.useEffect(() => {
-    if (analysisDone) refreshAnalysisPreserve();
-  }, [customOtGroups, otRows, analysisDone]);
+    if (analysisDone) refreshAnalysisPreserveDebounced();
+  }, [customOtGroups, otRows, analysisDone, refreshAnalysisPreserveDebounced]);
 
   // Insert raw characters after the group belonging to flat OT position (only fixedLength mode)
-  function insertRawCharsAfterPosition(positionIndex: number, text: string) {
-    if (ztParseMode !== 'fixedLength') return;
-    const chars = Array.from(text).filter(ch => ch.trim() !== '');
-    if (!chars.length) return;
-    // Build flat mapping of OT positions to last raw token index used
-    const flatColumns: { otCh: string | null; indices: number[] }[] = [];
-    for (const row of columns) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
-    const target = flatColumns.filter(f => f.otCh != null)[positionIndex];
-    // Determine insertion point = 1 + max index of target group (or end if none)
-    const afterIndex = target && target.indices.length ? Math.max(...target.indices) + 1 : effectiveZtTokens.length;
-    const rawArr = effectiveZtTokens.map(t => t.text);
-    // Insert at afterIndex (bounded to array length)
-    const safeIndex = Math.min(afterIndex, rawArr.length);
-    rawArr.splice(safeIndex, 0, ...chars);
-    // Update ztRaw (fixedLength mode raw is just concatenation)
-    setZtRaw(rawArr.join(''));
+  const insertRawCharsAfterPosition = useCallback((positionIndex: number, text: string, replace = false) => {
+    const res = computeInsertRawCharsAfterPosition({
+      positionIndex,
+      text,
+      replace,
+      ztParseMode,
+      separator,
+      ztTokens,
+      bracketedIndices,
+      columns,
+    });
+    if (!res) return;
+
+    setBracketedIndices(res.nextBracketedIndices);
+    setZtRawForMode(res.nextParseMode, res.nextRaw);
     if (analysisDone) setPendingAutoRefresh(true);
-  }
+  }, [analysisDone, bracketedIndices, columns, separator, setBracketedIndices, setPendingAutoRefresh, setZtRawForMode, ztParseMode, ztTokens]);
 
   // Auto refresh analysis after raw edits/insertions when analysis already computed
   React.useEffect(() => {
     if (pendingAutoRefresh && analysisDone) {
-      refreshAnalysisPreserve();
+      refreshAnalysisPreserveDebounced();
       setPendingAutoRefresh(false);
     }
-  }, [pendingAutoRefresh, analysisDone, ztTokens, fixedLength, ztParseMode]);
+  }, [pendingAutoRefresh, analysisDone, ztTokens, fixedLength, ztParseMode, refreshAnalysisPreserveDebounced]);
 
-  return {
-    // inputs
-    otRaw, setOtRaw,
-    ztRaw, setZtRaw,
-    ztParseMode, setZtParseMode,
-    separator, setSeparator,
-    fixedLength, setFixedLength,
-    keysPerOTMode, setKeysPerOTMode,
-    // state
-    lockedKeys, setLockedKeys,
-    selections, setSelections,
+  // When manual shift counts change in fixed-length mode and analysis has been
+  // run at least once, automatically refresh suggestions so the dropdowns
+  // When manual shifts occur, refresh analysis to update candidate scores based on new column positions.
+  // This ensures suggestions reflect the current grid layout (e.g., after shifting O from pos 4 to 5,
+  // candidates for O should match tokens at the new position).
+  // Watch manualOtCounts instead of columns to avoid triggering on selection changes.
+  React.useEffect(() => {
+    if (ztParseMode !== 'fixedLength') return;
+    if (!analysisDone) return;
+    if (!manualOtCounts) return;
+    refreshAnalysisPreserveDebounced();
+  }, [manualOtCounts, analysisDone, ztParseMode, refreshAnalysisPreserveDebounced]);
+
+  // Keep candidates in sync with lock/bracket changes once analysis exists.
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    refreshAnalysisPreserveDebounced();
+  }, [analysisDone, lockedKeys, bracketedIndices, ztParseMode, fixedLength, refreshAnalysisPreserveDebounced]);
+
+  // Refresh suggestions when the user makes manual selections (preview stage).
+  // This ensures choosing a suggestion for one OT (e.g., `A -> 11`) immediately
+  // updates candidate lists for other OT chars (e.g., `H`). Debounced to avoid
+  // excessive work while the user changes selections rapidly.
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    // Only refresh when there is at least one selection to consider
+    if (!selections || Object.keys(selections).length === 0) return;
+    refreshAnalysisPreserveDebounced();
+  }, [selections, analysisDone, refreshAnalysisPreserveDebounced]);
+
+  const { shiftRight, shiftLeft } = mapping;
+
+  /** User-editable inputs and their setters. */
+  const inputsRef = useRef({
+    otRaw,
+    setOtRaw,
+    ztRaw,
+    setZtRaw,
+    ztParseMode,
+    setZtParseMode,
+    separator,
+    setSeparator,
+    fixedLength,
+    setFixedLength,
+    keysPerOTMode,
+    setKeysPerOTMode,
+  });
+  inputsRef.current.otRaw = otRaw;
+  inputsRef.current.setOtRaw = setOtRaw;
+  inputsRef.current.ztRaw = ztRaw;
+  inputsRef.current.setZtRaw = setZtRaw;
+  inputsRef.current.ztParseMode = ztParseMode;
+  inputsRef.current.setZtParseMode = setZtParseMode;
+  inputsRef.current.separator = separator;
+  inputsRef.current.setSeparator = setSeparator;
+  inputsRef.current.fixedLength = fixedLength;
+  inputsRef.current.setFixedLength = setFixedLength;
+  inputsRef.current.keysPerOTMode = keysPerOTMode;
+  inputsRef.current.setKeysPerOTMode = setKeysPerOTMode;
+  const inputs = inputsRef.current;
+
+  /** Mutable UI state (locks, selections, warnings, prompts). */
+  const state = useMemo(() => ({
+    lockedKeys,
+    setLockedKeys,
+    selections,
+    setSelections,
     candidatesByChar,
-    klamacStatus, statusMessage,
-    bracketedIndices, setBracketedIndices,
+    klamacStatus,
+    statusMessage,
+    bracketedIndices,
+    setBracketedIndices,
     bracketWarning,
     analysisDone,
+    isAnalyzing,
     selectionError,
-    // derived
-    otChars, ztTokens, effectiveZtTokens,
-    otRows, columns,
-    uniqueZTTokenTexts, reservedTokens,
-    // actions
+    mergeAllPrompt,
+    highlightedOTChar,
+  }), [analysisDone, isAnalyzing, bracketWarning, bracketedIndices, candidatesByChar, highlightedOTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage]);
+
+  /** Derived data structures used to render tables/selectors. */
+  const derived = useMemo(() => ({
+    otChars,
+    ztTokens,
+    effectiveZtTokens,
+    otRows,
+    columns,
+    uniqueZTTokenTexts,
+    reservedTokens,
+    shiftMeta,
+  }), [columns, effectiveZtTokens, otChars, otRows, reservedTokens, shiftMeta, uniqueZTTokenTexts, ztTokens]);
+
+  /** Actions/handlers that mutate state; safe to pass to child components. */
+  const actions = useMemo(() => ({
     runAnalysis,
-    onLockOT, onUnlockOT,
+    onLockOT,
+    onUnlockOT,
     onDragStart,
     onDragEnd,
+    onDragCancel,
     toggleBracketGroupByText,
     previewSelection,
+    chooseScoreOneSuggestions,
     applySelection,
     editZtToken,
     insertRawCharsAfterPosition,
+    shiftGroupRight: shiftRight,
+    shiftGroupLeft: shiftLeft,
     joinOTAt,
     splitOTAt,
-  } as const;
+    mergeAllOccurrences,
+    dismissMergeAllPrompt,
+    toggleHighlightForOT,
+    quickAssign,
+    executeQuickAssign,
+    resetToPreAnalysis,
+  }), [
+    applySelection,
+    chooseScoreOneSuggestions,
+    dismissMergeAllPrompt,
+    editZtToken,
+    insertRawCharsAfterPosition,
+    joinOTAt,
+    mergeAllOccurrences,
+    onDragEnd,
+    onDragStart,
+    onDragCancel,
+    onLockOT,
+    onUnlockOT,
+    previewSelection,
+    runAnalysis,
+    shiftLeft,
+    shiftRight,
+    splitOTAt,
+    toggleBracketGroupByText,
+    toggleHighlightForOT,
+    quickAssign,
+    executeQuickAssign,
+    resetToPreAnalysis,
+  ]);
+
+  return { inputs, state, derived, actions } as const;
 }
