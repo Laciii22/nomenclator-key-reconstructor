@@ -140,26 +140,31 @@ export function fixedModeScore(params: {
     }
   }
 
-  // If token is already mapped to this OT char in the current grid, give it perfect score.
+  // If token is already mapped to this OT char in the current grid,
+  // compute a frequency-based ratio instead of forcing a perfect score.
+  // This makes fixed-length scoring consistent with separator mode
+  // (scoreRatio(support, occurrences)).
+  // Find all positions where this token appears in the current shifted grid.
+  const tokenPositions: number[] = [];
+  for (let pos = 0; pos < groupTextByPos.length; pos++) {
+    if (groupTextByPos[pos] === token) tokenPositions.push(pos);
+  }
+
   if (mappedTokensByChar[otChar]?.has(token)) {
     const charPositions = otCharPositions[otChar] || [];
     const occurrences = charPositions.length;
-    let support = 0;
-    for (const pos of charPositions) {
-      if (groupTextByPos[pos] === token) support++;
-    }
-    return { support, occurrences, score: 1.0 };
+    // Use global token support (all positions where token appears) so that
+    // score reflects overall token frequency (consistent with separator mode),
+    // even when token is also present at the OT character's cell.
+    const support = tokenPositions.length;
+    return { support, occurrences, score: scoreRatio(support, occurrences) };
   }
 
   // Deception count: extra non-empty groups beyond OT cells.
   // This matches the UI notion of “deception cells” better than counting empty placeholders.
   const deceptionCount = Math.max(0, cellsWithText - otCellCount);
 
-  // Find all positions where this token appears in the current shifted grid.
-  const tokenPositions: number[] = [];
-  for (let pos = 0; pos < groupTextByPos.length; pos++) {
-    if (groupTextByPos[pos] === token) tokenPositions.push(pos);
-  }
+  // (tokenPositions already computed above)
 
   // Find all positions where this OT char appears
   const charPositions = otCharPositions[otChar] || [];

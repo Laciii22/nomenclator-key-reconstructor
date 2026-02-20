@@ -24,14 +24,17 @@ export function extendCandidateListWithLocked(
     return candidateList;
   }
   
-  // Add locked token at the beginning with default score
+  // Add locked token at the beginning. If we already have stats for this token
+  // in the candidate list, reuse them; otherwise insert a neutral placeholder
+  // (score 0) so the UI doesn't falsely show perfect confidence.
+  const existing = candidateList.find(c => c.token === lockedToken);
   return [
     {
       token: lockedToken,
       length: 1,
-      support: 0,
-      occurrences: 0,
-      score: 1
+      support: existing ? existing.support : 0,
+      occurrences: existing ? existing.occurrences : 0,
+      score: existing ? existing.score : 0,
     },
     ...candidateList
   ];

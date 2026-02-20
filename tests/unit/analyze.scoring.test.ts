@@ -148,7 +148,7 @@ describe('fixedModeScore', () => {
     ]];
 
     const s11 = fixedModeScore({ token: '11', otChar: 'A', columns, effectiveZtTokens, groupSize: 2 });
-    expect(s11.score).toBe(1);
+    expect(s11.score).toBe(0.5);
     expect(s11.support).toBe(1);
     expect(s11.occurrences).toBe(2);
 

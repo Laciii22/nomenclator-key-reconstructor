@@ -665,12 +665,13 @@ export function useNomenklator() {
         lockedVal: normalizedLocked, 
         sharedColumns: columns 
       }));
-      const enabledScore1 = opts.filter((opt, i) => !opt.disabled && list[i].score === 1);
-      if (enabledScore1.length > 1) {
+      // Determine "perfect" candidates by concrete evidence (support === occurrences)
+      const enabledPerfect = opts.filter((opt, i) => !opt.disabled && (list[i].occurrences || 0) > 0 && list[i].support === list[i].occurrences);
+      if (enabledPerfect.length > 1) {
         ambiguous.push(ch);
         continue;
       }
-      if (enabledScore1.length === 1) picks[ch] = enabledScore1[0].token;
+      if (enabledPerfect.length === 1) picks[ch] = enabledPerfect[0].token;
     }
     // Apply only the unambiguous picks, preserving existing selections for others
     if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));

@@ -20,9 +20,10 @@ export function useAutoPickScoreOneSequential(params: {
       const next = { ...prev };
       for (const [ch, list] of Object.entries(candidatesByChar)) {
         if (next[ch]) continue;
-        const score1 = list.filter(c => c.score === 1);
-        if (score1.length !== 1) continue;
-        const token = score1[0].token;
+        // Consider a candidate "perfect" only if its support equals occurrences
+        const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
+        if (perfect.length !== 1) continue;
+        const token = perfect[0].token;
         const indices = ztTokens.map((t, i) => (t.text === token ? i : -1)).filter(i => i >= 0);
         const exp = expected[ch] || [];
         if (indices.length === exp.length && indices.every((v, i) => v === exp[i])) next[ch] = token;

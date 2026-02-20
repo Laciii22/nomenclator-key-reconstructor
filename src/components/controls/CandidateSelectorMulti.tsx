@@ -62,12 +62,13 @@ function extendCandidateList(
   
   for (const token of lockedTokens) {
     if (!extended.some(c => c.token === token)) {
+      const existing = candidateList.find(c => c.token === token);
       extended.unshift({
         token,
         length: 1,
-        support: 0,
-        occurrences: 0,
-        score: 1
+        support: existing ? existing.support : 0,
+        occurrences: existing ? existing.occurrences : 0,
+        score: existing ? existing.score : 0
       });
     }
   }
