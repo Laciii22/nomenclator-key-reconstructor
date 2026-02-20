@@ -8,7 +8,7 @@ describe('manualShift', () => {
     it('moves one token to the right neighbor', () => {
       const counts = [2, 1];
 
-      expect(canShiftRight(counts, 0)).toBe(true);
+      expect(canShiftRight(counts, 0, MAX_LEN)).toBe(true);
       expect(shiftRight(counts, 0, MAX_LEN)).toEqual([1, 2]);
     });
 
@@ -23,7 +23,7 @@ describe('manualShift', () => {
     it('cannot shift when source cell has only 1 token', () => {
       const counts = [1, 2];
 
-      expect(canShiftLeft(counts, 0)).toBe(false);
+      expect(canShiftLeft(counts, 0, MAX_LEN)).toBe(false);
       expect(shiftLeft(counts, 0, MAX_LEN)).toBe(counts);
     });
   });
@@ -32,7 +32,7 @@ describe('manualShift', () => {
     it('cannot shift away the last token (would empty cell)', () => {
       const counts = [1, 2];
 
-      expect(canShiftRight(counts, 0)).toBe(false);
+      expect(canShiftRight(counts, 0, MAX_LEN)).toBe(false);
       expect(shiftRight(counts, 0, MAX_LEN)).toBe(counts);
     });
   });

@@ -28,10 +28,10 @@ describe('parseSeparatorRaw', () => {
   // -----------------------------------------------------------------
   describe('status "ok" — token count === otCount', () => {
     it('parses tokens correctly and reports ok', () => {
-      const res = parseSeparatorRaw('a:b:c', ':', 3);
+      const res = parseSeparatorRaw('1:2:3', ':', 3);
 
       expect(res.tokens).toHaveLength(3);
-      expect(res.tokens.map(t => t.text)).toEqual(['a', 'b', 'c']);
+      expect(res.tokens.map(t => t.text)).toEqual(['1', '2', '3']);
       expect(res.klamacStatus).toBe('ok');
       expect(res.statusMessage).toBeNull();
     });
@@ -61,7 +61,7 @@ describe('parseSeparatorRaw', () => {
     });
 
     it('even one extra token triggers needsKlamac', () => {
-      const res = parseSeparatorRaw('a:b:c:d', ':', 3);
+      const res = parseSeparatorRaw('1:2:3:4', ':', 3);
       expect(res.klamacStatus).toBe('needsKlamac');
     });
   });
@@ -71,7 +71,7 @@ describe('parseSeparatorRaw', () => {
   // -----------------------------------------------------------------
   describe('status "invalid" — token count < otCount', () => {
     it('sets invalid when fewer tokens than OT chars', () => {
-      const res = parseSeparatorRaw('a:b', ':', 5);
+      const res = parseSeparatorRaw('1:2', ':', 5);
 
       expect(res.klamacStatus).toBe('invalid');
       expect(res.statusMessage).toContain('5');
@@ -84,12 +84,12 @@ describe('parseSeparatorRaw', () => {
   // -----------------------------------------------------------------
   describe('edge cases', () => {
     it('otCount = 0 yields status "none"', () => {
-      const res = parseSeparatorRaw('a:b:c', ':', 0);
+      const res = parseSeparatorRaw('1:2:3', ':', 0);
       expect(res.klamacStatus).toBe('none');
     });
 
     it('different separator works correctly', () => {
-      const res = parseSeparatorRaw('a;b;c', ';', 3);
+      const res = parseSeparatorRaw('1;2;3', ';', 3);
       expect(res.tokens).toHaveLength(3);
       expect(res.klamacStatus).toBe('ok');
     });
@@ -103,16 +103,16 @@ describe('parseSeparatorRaw', () => {
     });
 
     it('each token gets a unique id', () => {
-      const res = parseSeparatorRaw('a:a:a', ':', 3);
+      const res = parseSeparatorRaw('1:1:1', ':', 3);
       const ids = res.tokens.map(t => t.id);
       expect(new Set(ids).size).toBe(ids.length);
     });
 
     it('separator absent from text yields 1 token', () => {
-      const res = parseSeparatorRaw('abcdef', ':', 3);
+      const res = parseSeparatorRaw('123456', ':', 3);
 
       expect(res.tokens).toHaveLength(1);
-      expect(res.tokens[0].text).toBe('abcdef');
+      expect(res.tokens[0].text).toBe('123456');
       expect(res.klamacStatus).toBe('invalid');
     });
   });
