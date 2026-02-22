@@ -99,6 +99,8 @@ export function buildCandidateOptions(params: {
   selectionVal: string | string[] | null | undefined;
   lockedVal: string | string[] | undefined;
   sharedColumns: Column[][];
+  /** Precomputed occurrence map — avoids recomputing per candidate. */
+  _occMap?: Record<string, number[]>;
 }): CandidateOption {
   const {
     c,
@@ -122,7 +124,7 @@ export function buildCandidateOptions(params: {
     !lockedArr.includes(c.token);
   
   const cellFlatIndex = computeFlatIndexForChar(otRows, ch);
-  const occMap = buildOccMap(effectiveZtTokens, groupSize);
+  const occMap = params._occMap ?? buildOccMap(effectiveZtTokens, groupSize);
   const tokenOccurrences = occMap[c.token] || [];
   
   const deceptionCount = countTotalDeceptionTokens(sharedColumns);

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { Candidate, SelectionMap } from '../utils/analyzer';
-import { fixedModeScore, separatorModeScore } from '../utils/analyzer';
+import { fixedModeScore, separatorModeScore, buildFixedModeGridContext } from '../utils/analyzer';
+import { countOtFrequency, countTokenFrequency } from '../utils/frequency';
 import { computeRowAlloc } from '../utils/allocation';
 import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
 import buildLogicalTokens from '../utils/parse/logicalTokens';
@@ -115,26 +116,33 @@ export function useAnalysis(params: {
 
   const applyScores = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ztParseMode !== 'fixedLength') {
+      // Precompute frequency maps once for the entire batch
+      const otFreq = countOtFrequency(otRows);
+      const tokenFreq = countTokenFrequency(effectiveZtTokens);
+      const precomputed = { otFreq, tokenFreq } as const;
+
       const out: Record<string, Candidate[]> = {};
       for (const [ch, list] of Object.entries(base)) {
         out[ch] = list.map(c => {
-          const scored = separatorModeScore({ token: c.token, otChar: ch, otRows, effectiveZtTokens });
+          const scored = separatorModeScore({ token: c.token, otChar: ch, otRows, effectiveZtTokens, _precomputed: precomputed });
           return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
         });
       }
       return out;
     }
 
+    // Precompute grid context once for the entire batch
+    const gridCtx = buildFixedModeGridContext(columns, effectiveZtTokens);
     const gs = fixedLength || 1;
     const out: Record<string, Candidate[]> = {};
     for (const [ch, list] of Object.entries(base)) {
       out[ch] = list.map(c => {
-        const scored = fixedModeScore({ token: c.token, otChar: ch, columns, effectiveZtTokens, groupSize: gs, keysPerOTMode });
+        const scored = fixedModeScore({ token: c.token, otChar: ch, columns, effectiveZtTokens, groupSize: gs, keysPerOTMode, _gridCtx: gridCtx });
         return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
       });
     }
     return out;
-  }, [columns, effectiveZtTokens, fixedLength, otRows, ztParseMode]);
+  }, [columns, effectiveZtTokens, fixedLength, otRows, ztParseMode, keysPerOTMode]);
 
   const runAnalysis = React.useCallback(() => {
     setIsAnalyzing(true);

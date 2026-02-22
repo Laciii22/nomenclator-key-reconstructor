@@ -139,13 +139,44 @@ export function useMapping(params: {
 
   const canShiftLeftAt = React.useCallback((index: number) => {
     const maxLen = groupSize || 1;
+    // Disallow shifting into/out of a locked OT cell: check neighbor lock status
+    try {
+      // Build flat view of baseColumns (same order as countsForUi)
+      const flatCols: (import('../components/types').Column | null)[] = [];
+      for (const row of baseColumns) for (const col of row) flatCols.push(col || null);
+      // If left neighbor corresponds to a locked OT, disallow
+      if (index - 1 >= 0) {
+        const left = flatCols[index - 1];
+        if (left && left.ot && typeof left.ot === 'object') {
+          const otCh = left.ot.ch;
+          if (otCh && Object.prototype.hasOwnProperty.call(lockedKeys, otCh)) return false;
+        }
+      }
+    } catch (e) {
+      // fall back to default behavior on error
+    }
     return canShiftLeft(countsForUi, index, maxLen);
-  }, [countsForUi, groupSize]);
+  }, [countsForUi, groupSize, baseColumns, lockedKeys]);
 
   const canShiftRightAt = React.useCallback((index: number) => {
     const maxLen = groupSize || 1;
+    // Disallow shifting into/out of a locked OT cell: check neighbor lock status
+    try {
+      const flatCols: (import('../components/types').Column | null)[] = [];
+      for (const row of baseColumns) for (const col of row) flatCols.push(col || null);
+      // If right neighbor corresponds to a locked OT, disallow
+      if (index + 1 < flatCols.length) {
+        const right = flatCols[index + 1];
+        if (right && right.ot && typeof right.ot === 'object') {
+          const otCh = right.ot.ch;
+          if (otCh && Object.prototype.hasOwnProperty.call(lockedKeys, otCh)) return false;
+        }
+      }
+    } catch (e) {
+      // fall back to default behavior on error
+    }
     return canShiftRight(countsForUi, index, maxLen);
-  }, [countsForUi, groupSize]);
+  }, [countsForUi, groupSize, baseColumns, lockedKeys]);
 
   const shiftLeftAt = React.useCallback((index: number) => {
     if (ztParseMode !== 'fixedLength') return;

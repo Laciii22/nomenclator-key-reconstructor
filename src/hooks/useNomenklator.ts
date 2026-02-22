@@ -4,6 +4,7 @@ import { useLocalSettings } from './useLocalSettings';
 import type { SelectionMap } from '../utils/analyzer';
 import { resolveMergeFromEvent } from '../utils/dnd';
 import { buildCandidateOptions } from '../components/controls/candidateHelpers';
+import { buildOccMap } from '../utils/parseStrategies';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { normalizeToArray, getReservedTokens } from '../utils/multiKeyHelpers';
 import { useParsing } from './useParsing';
@@ -645,6 +646,7 @@ export function useNomenklator() {
     const picks: Record<string, string> = {};
     const ambiguous: string[] = [];
     const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    const precomputedOccMap = buildOccMap(effectiveZtTokens, gs);
     for (const [ch, list] of Object.entries(candidatesByChar)) {
       // build candidate options to know which candidates are disabled by ordering/reserved rules
       // In single-key mode, normalize array values to strings
@@ -663,7 +665,8 @@ export function useNomenklator() {
         reservedTokens, 
         selectionVal: normalizedSelection, 
         lockedVal: normalizedLocked, 
-        sharedColumns: columns 
+        sharedColumns: columns,
+        _occMap: precomputedOccMap,
       }));
       // Determine "perfect" candidates by concrete evidence (support === occurrences)
       const enabledPerfect = opts.filter((opt, i) => !opt.disabled && (list[i].occurrences || 0) > 0 && list[i].support === list[i].occurrences);

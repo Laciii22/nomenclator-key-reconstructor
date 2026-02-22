@@ -5,6 +5,7 @@
 
 import type { OTChar, ZTToken } from '../types/domain';
 import { analyze } from '../utils/analyzer';
+import type { Candidate } from '../utils/analyzer';
 
 export interface AnalysisWorkerRequest {
   type: 'analyze';
@@ -18,7 +19,7 @@ export interface AnalysisWorkerRequest {
 
 export interface AnalysisWorkerResponse {
   type: 'analyze-result';
-  candidatesByChar: any;
+  candidatesByChar: Record<string, Candidate[]>;
 }
 
 self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
