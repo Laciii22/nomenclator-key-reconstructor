@@ -49,8 +49,8 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
         <span
           {...attributes}
           {...listeners}
-          className={`inline-block text-xs px-0.5 rounded font-mono border select-none ${isLocked ? `cursor-default ${colors.tokenLocked}` : `${isDragging ? 'cursor-grabbing opacity-60' : 'cursor-grab'} ${colors.tokenUnlocked}`} ${isDragging ? 'shadow-sm' : ''}`}
-          title={isLocked ? 'Locked token' : 'Drag to move'}
+          className={`inline-block text-xs px-1 py-0.5 rounded font-mono border select-none ${isLocked ? `cursor-default ${colors.tokenLocked}` : `${isDragging ? 'cursor-grabbing opacity-60' : 'cursor-grab'} ${colors.tokenUnlocked}`} ${isDragging ? 'shadow-sm' : ''}`}
+          title={isLocked ? 'Locked token' : 'Drag to swap with adjacent token'}
         >
           {token.text}
         </span>

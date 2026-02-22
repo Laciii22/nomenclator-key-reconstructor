@@ -22,7 +22,17 @@ type Props = {
 };
 
 const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, otRows, effectiveZtTokens, reservedTokens, sharedColumns }) => {
+  const totalChars = Object.keys(candidatesByChar).length;
+  const assignedChars = Object.entries(candidatesByChar).filter(([ch]) => lockedKeys[ch] || selections[ch]).length;
+
   return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs text-gray-500">Assigned:</span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+          assignedChars === totalChars ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+        }`}>{assignedChars} / {totalChars}</span>
+      </div>
     <div className="grid grid-cols-3 gap-3">
       {Object.entries(candidatesByChar).sort((a,b)=> a[0].localeCompare(b[0])).map(([ch, list]) => {
         const lockedVal = lockedKeys[ch];
@@ -60,6 +70,7 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
           </div>
         );
       })}
+    </div>
     </div>
   );
 };

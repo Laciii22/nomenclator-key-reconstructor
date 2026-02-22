@@ -90,7 +90,7 @@ const FileImport: React.FC<FileImportProps> = ({
         type="button"
         onClick={handleButtonClick}
         disabled={isLoading}
-        className="inline-flex items-center gap-2 text-sm px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-gray-300 rounded-md hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-gray-600"
         title={`Import ${label} from .txt file`}
       >
         {isLoading ? (
