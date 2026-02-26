@@ -53,6 +53,8 @@ const OTCell: React.FC<OTCellProps> = ({
   activeOtSourceCol,
   activeZtTokenIndex,
   keysPerOTMode = 'single',
+  lockedHomophonesCount: _lockedHomophonesCount,
+  isTentative = false,
 }) => {
   // When we handle an action on pointer down, browsers may still fire a click
   // afterwards (or may cancel it). Use this flag to avoid double-triggering.
@@ -149,7 +151,7 @@ const OTCell: React.FC<OTCellProps> = ({
   const isInvalidOtHover = isOver && isDraggingOT && !canAcceptOtMergeDrop;
   const isValidOtHover = isOver && isDraggingOT && canAcceptOtMergeDrop;
 
-  const hasError = deception || isEmptyRealOtCell || isDuplicateKey;
+  const hasError = deception || (isEmptyRealOtCell && !isTentative) || isDuplicateKey;
   const isHighlighted = Boolean(ot && highlightedOTChar === ot.ch);
   const canShowFixedLengthActions = Boolean(
     isFixedLength 
@@ -158,17 +160,19 @@ const OTCell: React.FC<OTCellProps> = ({
     && flatIndex >= 0
   );
 
-  // Handle lock/unlock toggle
+  // Handle lock/unlock toggle.
+  // In multi-key mode the button works additively:
+  //   - cell token already locked → remove just that token (specific unlock)
+  //   - cell token not yet locked → add it to the homophone set
   const toggleLock = React.useCallback(() => {
     if (!onLockOT || !ot) return;
     
     if (lockedValue) {
-      onUnlockOT?.(ot.ch);
+      // In multi mode pass the specific token so only it gets removed from the array.
+      const specificToken = typeof lockedValue === 'string' ? lockedValue : undefined;
+      onUnlockOT?.(ot.ch, keysPerOTMode === 'multiple' ? specificToken : undefined);
       return;
     }
-    
-    // In multi-key mode, disable locking from cells (use suggestion checkboxes instead)
-    if (keysPerOTMode === 'multiple') return;
     
     if (isEmptyRealOtCell) return;
     
@@ -267,9 +271,11 @@ const OTCell: React.FC<OTCellProps> = ({
   };
 
   const cellBaseClasses = 'relative border rounded p-0.5 shadow-sm transition-colors';
-  const cellColorClasses = hasError 
-    ? 'bg-red-50 border-red-300' 
-    : 'bg-white border-gray-200';
+  const cellColorClasses = hasError
+    ? 'bg-red-50 border-red-300'
+    : isTentative
+      ? 'bg-amber-50 border-amber-300'
+      : 'bg-white border-gray-200';
   const cellDropHintClasses = isValidDropTarget && canAcceptOtMergeDrop 
     ? 'ring-1 ring-green-200' 
     : '';
@@ -373,13 +379,13 @@ const OTCell: React.FC<OTCellProps> = ({
       {ot && (
         <button
           className={`absolute bottom-0 left-0 p-1 text-xs rounded-tl leading-none ${
-            keysPerOTMode === 'multiple' && !lockedValue 
-              ? 'bg-transparent opacity-30 cursor-not-allowed' 
+            !lockedValue && isEmptyRealOtCell
+              ? 'bg-transparent opacity-30 cursor-not-allowed'
               : 'bg-transparent hover:bg-gray-100'
           }`}
           onPointerDown={(e) => {
             // Run on pointer down to avoid click cancellation in complex DnD/virtualized UIs.
-            if ((!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)) {
+            if (!lockedValue && isEmptyRealOtCell) {
               e.stopPropagation();
               return;
             }
@@ -391,13 +397,15 @@ const OTCell: React.FC<OTCellProps> = ({
             if (suppressNextClickRef.current) return;
             toggleLock();
           }}
-          disabled={(!lockedValue && isEmptyRealOtCell) || (keysPerOTMode === 'multiple' && !lockedValue)}
+          disabled={!lockedValue && isEmptyRealOtCell}
           title={
-            keysPerOTMode === 'multiple' && !lockedValue
-              ? 'Use suggestion checkboxes to select homophones ↑'
-              : lockedValue 
-                ? `Unlock ${ot.ch}` 
-                : (isEmptyRealOtCell ? 'Cannot lock an empty cell' : `Lock ${ot.ch}`)
+            lockedValue
+              ? (keysPerOTMode === 'multiple' ? `Remove homophone ${lockedValue} from ${ot.ch}` : `Unlock ${ot.ch}`)
+              : (isEmptyRealOtCell
+                  ? 'Cannot lock an empty cell'
+                  : keysPerOTMode === 'multiple'
+                    ? `Add ${joinTokenTexts(displayedTokens.map(f => f.token))} as homophone for ${ot.ch}`
+                    : `Lock ${ot.ch}`)
           }
           aria-label={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
           aria-pressed={!!lockedValue}

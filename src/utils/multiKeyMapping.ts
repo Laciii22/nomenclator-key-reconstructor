@@ -257,8 +257,18 @@ export function buildMultiKeyColumns(
         }
         
         if (!hasAvailableToken) {
-          // All locked tokens exhausted - leave empty
-          rowCols.push({ ot: otChar, zt: [] });
+          // All confirmed homophones for this char are exhausted at the current
+          // ZT position. Fall back to sequential allocation (like single-key mode)
+          // so the cell still gets a token instead of a red empty error.
+          // Marked tentative so the grid can render it amber (unconfirmed mapping).
+          const { column, tokensConsumed } = allocateNormalCell(
+            otChar,
+            tokenPtr,
+            groupSize,
+            ztTokens
+          );
+          rowCols.push({ ...column, tentative: true });
+          tokenPtr += tokensConsumed;
         } else {
           // Try to find a locked token in remaining ZT
           const { columns, tokensConsumed } = allocateLockedCell(

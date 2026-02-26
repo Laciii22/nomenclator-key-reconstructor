@@ -299,6 +299,12 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					activeOtSourceCol={activeOtSourceCol}
 					activeZtTokenIndex={activeZtTokenIndex}
 					keysPerOTMode={keysPerOTMode}
+					isTentative={Boolean(col.tentative)}
+					lockedHomophonesCount={
+						keysPerOTMode === 'multiple' && col.ot
+							? (() => { const v = lockedKeys?.[col.ot!.ch]; return Array.isArray(v) ? v.length : v ? 1 : 0; })()
+							: undefined
+					}
 					allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;

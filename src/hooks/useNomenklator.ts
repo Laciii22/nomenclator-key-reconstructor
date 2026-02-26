@@ -557,6 +557,7 @@ export function useNomenklator() {
     ztTokens,
     bracketedIndices,
     setSelections,
+    keysPerOTMode,
   });
 
   useNomenklatorPersistence({
@@ -633,38 +634,47 @@ export function useNomenklator() {
     return err;
   }, [bracketedIndices.length, effectiveZtTokens.length, fixedLength, otRows, setSelectionError, ztParseMode]);
 
-  // Choose suggestions where exactly one candidate has score==1 for that OT char.
-  // If any OT char has more than one score==1 candidate, abort and set an error.
-  // In multi-key mode, this function does nothing (manual selection expected).
+  // Choose suggestions where candidates have score==1 for that OT char.
+  // Single mode: exactly one score==1 required (ambiguous = error).
+  // Multi mode: all score==1 candidates are selected together (that's the point of homophones).
   const chooseScoreOneSuggestions = useCallback(() => {
-    // Skip auto-selection in multi-key mode - users manually select homophones
+    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    const precomputedOccMap = buildOccMap(effectiveZtTokens, gs);
+
     if (keysPerOTMode === 'multiple') {
+      // In multi-key mode: for each OT char, pick ALL perfect candidates as an array.
+      const picks: Record<string, string[]> = {};
+      for (const [ch, list] of Object.entries(candidatesByChar)) {
+        const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
+        if (perfect.length === 0) continue;
+        const existing = normalizeToArray(selections[ch]);
+        const merged = [...new Set([...existing, ...perfect.map(c => c.token)])];
+        picks[ch] = merged;
+      }
+      if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
       setSelectionError(null);
       return true;
     }
-    
+
     const picks: Record<string, string> = {};
     const ambiguous: string[] = [];
-    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const precomputedOccMap = buildOccMap(effectiveZtTokens, gs);
     for (const [ch, list] of Object.entries(candidatesByChar)) {
       // build candidate options to know which candidates are disabled by ordering/reserved rules
-      // In single-key mode, normalize array values to strings
       const lockedVal = lockedKeys?.[ch];
       const normalizedLocked = Array.isArray(lockedVal) ? lockedVal[0] : lockedVal;
       const selectionVal = selections[ch];
       const normalizedSelection = Array.isArray(selectionVal) ? selectionVal[0] : selectionVal;
-      
-      const opts = list.map((c, idx) => buildCandidateOptions({ 
-        c, 
-        idx, 
-        ch, 
-        otRows, 
-        effectiveZtTokens, 
-        groupSize: gs, 
-        reservedTokens, 
-        selectionVal: normalizedSelection, 
-        lockedVal: normalizedLocked, 
+
+      const opts = list.map((c, idx) => buildCandidateOptions({
+        c,
+        idx,
+        ch,
+        otRows,
+        effectiveZtTokens,
+        groupSize: gs,
+        reservedTokens,
+        selectionVal: normalizedSelection,
+        lockedVal: normalizedLocked,
         sharedColumns: columns,
         _occMap: precomputedOccMap,
       }));
@@ -906,12 +916,15 @@ export function useNomenklator() {
   // This ensures choosing a suggestion for one OT (e.g., `A -> 11`) immediately
   // updates candidate lists for other OT chars (e.g., `H`). Debounced to avoid
   // excessive work while the user changes selections rapidly.
+  // Skipped in multi-key mode: selections there are not a scoring input, so
+  // refreshing on every checkbox click would cause a ping-pong with setSelections.
   React.useEffect(() => {
     if (!analysisDone) return;
+    if (keysPerOTMode === 'multiple') return;
     // Only refresh when there is at least one selection to consider
     if (!selections || Object.keys(selections).length === 0) return;
     refreshAnalysisPreserveDebounced();
-  }, [selections, analysisDone, refreshAnalysisPreserveDebounced]);
+  }, [selections, analysisDone, keysPerOTMode, refreshAnalysisPreserveDebounced]);
 
   const { shiftRight, shiftLeft } = mapping;
 

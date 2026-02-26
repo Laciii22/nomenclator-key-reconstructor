@@ -144,6 +144,10 @@ export type OTCellProps = {
   activeZtTokenIndex?: number | null;
   /** Keys per OT mode: 'single' or 'multiple' */
   keysPerOTMode?: 'single' | 'multiple';
+  /** Number of locked homophones for this OT character (multi-key mode badge) */
+  lockedHomophonesCount?: number;
+  /** True when token is sequentially consumed but not yet confirmed as a homophone */
+  isTentative?: boolean;
 };
 
 /**
@@ -180,4 +184,6 @@ export type Column = {
   zt: number[];
   /** True if this is a deception/null cell */
   deception?: boolean;
+  /** True if the token is consumed sequentially (no confirmed homophone lock yet) */
+  tentative?: boolean;
 };

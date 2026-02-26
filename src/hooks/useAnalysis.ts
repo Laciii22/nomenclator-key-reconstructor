@@ -202,7 +202,14 @@ export function useAnalysis(params: {
           const next: SelectionMap = {};
           for (const [ch, sel] of Object.entries(prev)) {
             const list = sorted[ch];
-            if (list && list.some(c => c.token === sel)) next[ch] = sel;
+            if (!list) continue;
+            if (Array.isArray(sel)) {
+              // Multi-key mode: keep only tokens that still appear in the candidate list
+              const kept = sel.filter(t => list.some(c => c.token === t));
+              if (kept.length > 0) next[ch] = kept;
+            } else {
+              if (list.some(c => c.token === sel)) next[ch] = sel;
+            }
           }
           return next;
         });

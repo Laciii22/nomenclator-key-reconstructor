@@ -9,11 +9,14 @@ export function useAutoPickScoreOneSequential(params: {
   ztTokens: ZTToken[];
   bracketedIndices: number[];
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
+  keysPerOTMode: 'single' | 'multiple';
 }) {
-  const { candidatesByChar, otRows, ztTokens, bracketedIndices, setSelections } = params;
+  const { candidatesByChar, otRows, ztTokens, bracketedIndices, setSelections, keysPerOTMode } = params;
 
-  // Auto-select candidates with score==1 matching sequential expected indices
+  // Auto-select candidates with score==1 matching sequential expected indices.
+  // Disabled in multi-key (homophones) mode — the user selects homophones manually.
   React.useEffect(() => {
+    if (keysPerOTMode === 'multiple') return;
     if (!Object.keys(candidatesByChar).length) return;
     const expected = getExpectedZTIndicesForOT(otRows, ztTokens, bracketedIndices);
     setSelections(prev => {
@@ -30,5 +33,5 @@ export function useAutoPickScoreOneSequential(params: {
       }
       return next;
     });
-  }, [bracketedIndices, candidatesByChar, otRows, setSelections, ztTokens]);
+  }, [bracketedIndices, candidatesByChar, keysPerOTMode, otRows, setSelections, ztTokens]);
 }
