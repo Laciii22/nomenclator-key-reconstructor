@@ -205,7 +205,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	// Grid dimensions
 	const containerRef = useRef<HTMLDivElement>(null);
-	const CELL_HEIGHT = 55; // approximate height per cell in pixels
+	const CELL_HEIGHT = 65; // approximate height per cell in pixels
 
 	// Calculate cell width to fit all columns without horizontal scroll
 	const getCellWidth = () => {
@@ -338,8 +338,8 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	if (rows.length === 0) {
 		return (
-			<div className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-2 bg-red-50' : ''}`}>
-				<div className="text-gray-400 text-sm">(empty)</div>
+			<div className="text-sm text-gray-400 italic p-4 text-center border border-dashed border-gray-200 rounded-lg">
+				No data yet — enter OT and ZT text above and run analysis.
 			</div>
 		);
 	}
@@ -349,18 +349,28 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	const isDev = ((import.meta as any)?.env?.DEV ?? false) as boolean;
 
 	return (
+		<div>
+		{/* Color legend */}
+		<div className="flex flex-wrap gap-3 mb-2 text-xs text-gray-500 select-none">
+			<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200 border border-green-300"></span> Locked</span>
+			<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-100 border border-yellow-300"></span> Unlocked</span>
+			<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-50 border border-red-300"></span> Error / empty</span>
+			<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-purple-50 border border-purple-300"></span> Highlighted</span>
+		</div>
+		{hasDeceptionWarning && (
+			<div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-300 rounded-lg px-3 py-2 mb-2">
+				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+				<span>ZT has more tokens than OT characters — mark extra tokens as <strong>Null / Deception</strong> using the panel above.</span>
+			</div>
+		)}
 		<div
 			ref={containerRef}
-			className={`${hasDeceptionWarning ? 'border border-red-300 rounded p-1 bg-red-50' : ''}`}
-				style={{
+			style={{
 				width: '100%',
-				minHeight: '500px',
+				minHeight: '200px',
 				height: rowCount * CELL_HEIGHT,
 				overflowY: 'auto',
-
 			}}
-
-
 		>
 			<Grid
 				columnCount={columnCount}
@@ -378,6 +388,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					</pre>
 				</div>
 			) : null}
+		</div>
 		</div>
 	);
 }

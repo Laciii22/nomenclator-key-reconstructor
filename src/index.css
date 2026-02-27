@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Global smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Consistent focus ring for accessibility */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
 /* Modal animations */
 @keyframes fadeIn {
   from {

@@ -42,18 +42,24 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
   onClear,
 }) => {
   if (ztTokens.length === 0 || !analysisDone) return null;
+  const bracketedCount = uniqueZTTokenTexts.filter(t => t.allBracketed).length;
+
   return (
-    <div className="border rounded p-3 border-purple-200 bg-purple-50/40">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold">Deception token (move tokens into brackets)</div>
-        <div className="flex gap-2">
-          <button
-            className="text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200"
-            onClick={onClear}
-            title="Clear all deception brackets"
-          >Clear</button>
+    <div className="border rounded-lg p-3 border-purple-200 bg-purple-50/50">
+      <div className="flex items-center justify-between mb-1">
+        <div>
+          <span className="text-sm font-semibold text-purple-900">Null / Deception Tokens</span>
+          {bracketedCount > 0 && (
+            <span className="ml-2 text-xs font-medium bg-purple-200 text-purple-800 rounded-full px-2 py-0.5">{bracketedCount} excluded</span>
+          )}
         </div>
+        <button
+          className="text-xs px-2 py-0.5 rounded-md border border-purple-200 bg-white hover:bg-purple-50 text-purple-700"
+          onClick={onClear}
+          title="Clear all deception brackets"
+        >Clear all</button>
       </div>
+      <p className="text-xs text-purple-600 mb-2">Click a token to mark it as a null/deception entry — it will be excluded from analysis. Click again to restore it.</p>
       {bracketWarning && (
         <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-2">{bracketWarning}</div>
       )}
@@ -61,13 +67,15 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
         {uniqueZTTokenTexts.map(({ text, allBracketed }) => (
           <button
             key={text}
-            className={`text-xs font-mono px-1.5 py-0.5 rounded border select-none ${
-              allBracketed ? 'bg-purple-200 border-purple-300 text-purple-900' : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
+            className={`text-xs font-mono px-2 py-1 rounded-md border select-none transition-colors ${
+              allBracketed
+                ? 'bg-purple-200 border-purple-400 text-purple-900 font-semibold'
+                : 'bg-white border-gray-300 text-gray-700 hover:bg-purple-50 hover:border-purple-300'
             }`}
             onClick={() => onToggleText(text)}
-            title={allBracketed ? 'Return all identical tokens from brackets' : 'Move all identical tokens into brackets'}
+            title={allBracketed ? 'Click to restore all occurrences of this token' : 'Click to exclude all occurrences of this token from analysis'}
           >
-            {text}
+            {allBracketed ? `[${text}]` : text}
           </button>
         ))}
       </div>

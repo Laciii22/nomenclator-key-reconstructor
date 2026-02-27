@@ -241,7 +241,7 @@ const OTCell: React.FC<OTCellProps> = ({
         disabled={!canShift}
         title={title}
       >
-        <img src={icon} alt={direction} className="w-1.5 h-1.5" />
+        <img src={icon} alt={direction} className="w-3 h-3" />
       </button>
     );
   };
@@ -252,7 +252,7 @@ const OTCell: React.FC<OTCellProps> = ({
     dragging: boolean, 
     highlighted: boolean
   ) => {
-    const baseClasses = 'inline-block px-0.5 py-0 rounded font-mono text-xs font-bold select-none';
+    const baseClasses = 'inline-block px-1 py-0.5 rounded font-mono text-sm font-bold select-none border';
     
     const isLocked = locked && (typeof locked === 'string' || locked.length > 0);
     
@@ -292,7 +292,7 @@ const OTCell: React.FC<OTCellProps> = ({
   return (
     <div ref={setNodeRef} className={cellClassName}>
       {/* Render OT label with optional left/right shift buttons */}
-      <div className="text-center font-mono text-xs mt-1.5 flex items-center justify-center gap-0.5">
+      <div className="text-center font-mono text-xs mt-1 mb-0.5 flex items-center justify-center gap-0.5">
         {renderShiftButton('left', canShiftLeft, onShiftLeft)}
         {ot ? (
           <span
@@ -306,10 +306,10 @@ const OTCell: React.FC<OTCellProps> = ({
           </span>
         ) : (
           <span 
-            className="inline-block px-0.5 rounded bg-red-100 text-red-800 border border-red-300 font-mono text-xs" 
-            title="Probable deception token"
+            className="inline-block px-1 py-0.5 rounded bg-red-100 text-red-700 border border-red-300 font-mono text-xs font-semibold" 
+            title="Probable deception / null token"
           >
-            !
+            null
           </span>
         )}
         {renderShiftButton('right', canShiftRight, onShiftRight)}
@@ -317,7 +317,7 @@ const OTCell: React.FC<OTCellProps> = ({
       {/* Render assigned ZT tokens or empty state */}
       <div className="flex flex-wrap gap-0.5 justify-center">
         {displayedTokens.length === 0 ? (
-          <span className={isEmptyRealOtCell ? 'text-red-500 text-xs' : 'text-gray-300 text-xs'}>—</span>
+          <span className={isEmptyRealOtCell ? 'text-red-400 text-xs font-semibold' : 'text-gray-300 text-xs'} title={isEmptyRealOtCell ? 'No token assigned' : undefined}>∅</span>
         ) : (
           displayedTokens.map(({ token, tokenIndex }, i) => {
             const currentGroupText = displayedTokens.map(x => x.token.text).join('');
@@ -341,7 +341,7 @@ const OTCell: React.FC<OTCellProps> = ({
       </div>
       {canShowFixedLengthActions && (
         <button
-          className="absolute top-0 right-0 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
+          className="absolute top-0 right-0 p-0.5 text-xs rounded-br bg-purple-50 hover:bg-purple-200 border-l border-b border-purple-100 leading-none"
           onPointerDown={(e) => {
             if (typeof flatIndex !== 'number' || flatIndex < 0) {
               e.stopPropagation();
@@ -356,13 +356,13 @@ const OTCell: React.FC<OTCellProps> = ({
           }}
           title="Add raw ZT token to this group"
         >
-          <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
+          <img src={plusIcon} alt="edit ZT token" className="w-3 h-3" />
         </button>
       )}
       {/* In separator mode show a + to edit the token, or insert when empty */}
       {!isFixedLength && ot && !lockedValue && (
         <button
-          className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded-br bg-purple-100 hover:bg-purple-200 leading-none"
+          className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded bg-purple-50 hover:bg-purple-200 border border-purple-100"
           onPointerDown={(e) => {
             runPointerAction(e, editOrInsert);
           }}
@@ -373,15 +373,15 @@ const OTCell: React.FC<OTCellProps> = ({
           }}
           title={displayedTokens.length === 0 ? 'Insert ZT token for this OT' : 'Edit raw ZT token for this OT'}
         >
-          <img src={plusIcon} alt="edit ZT token" className="w-1.5 h-1.5 " />
+          <img src={plusIcon} alt="edit ZT token" className="w-3 h-3" />
         </button>
       )}
       {ot && (
         <button
-          className={`absolute bottom-0 left-0 p-1 text-xs rounded-tl leading-none ${
+          className={`absolute bottom-0 left-0 p-1 text-xs rounded-tr leading-none ${
             !lockedValue && isEmptyRealOtCell
-              ? 'bg-transparent opacity-30 cursor-not-allowed'
-              : 'bg-transparent hover:bg-gray-100'
+              ? 'opacity-20 cursor-not-allowed'
+              : 'hover:bg-gray-100'
           }`}
           onPointerDown={(e) => {
             // Run on pointer down to avoid click cancellation in complex DnD/virtualized UIs.
@@ -414,14 +414,14 @@ const OTCell: React.FC<OTCellProps> = ({
             src={padlock} 
             alt="lock" 
             aria-hidden="true" 
-            className={`w-2.5 h-2.5 ${lockedValue ? 'opacity-100' : 'opacity-80'}`} 
+            className={`w-3.5 h-3.5 ${lockedValue ? 'opacity-100' : 'opacity-60'}`} 
           />
         </button>
       )}
 
       {ot && ot.ch.length > 1 && typeof flatOtIndex === 'number' && flatOtIndex >= 0 && (
         <button
-          className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded-bl bg-gray-100 hover:bg-gray-200 leading-none"
+          className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 border border-gray-200"
           onPointerDown={(e) => {
             runPointerAction(e, splitGroup);
           }}
@@ -434,7 +434,7 @@ const OTCell: React.FC<OTCellProps> = ({
         >
         <img
           src = {minus}
-          className="h-1.5 w-1.5"
+          className="h-3 w-3"
         />
 
         </button>
