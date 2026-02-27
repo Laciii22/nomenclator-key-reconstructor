@@ -102,10 +102,31 @@ export function useNomenklator() {
   // Optional custom grouping of OT characters (supports merging adjacent OT cells)
   const [customOtGroups, setCustomOtGroups] = useState<OTChar[] | null>(null);
   const [mergeAllPrompt, setMergeAllPrompt] = useState<{ pattern: string; remaining: number } | null>(null);
+
   const otChars = useMemo(() => {
     if (customOtGroups && customOtGroups.length) return customOtGroups;
-    const chars = Array.from(otRaw).filter(ch => !/\s/.test(ch));
-    return chars.map((ch, i) => ({ id: `ot_${i}`, ch }));
+    // Bracket syntax: [WORD] is a single multi-char token, bare chars are single tokens.
+    // e.g. "[PES]AHOJ[PES]" → ["PES", "A", "H", "O", "J", "PES"]
+    const stripped = otRaw.replace(/\s/g, '');
+    const tokens: string[] = [];
+    let i = 0;
+    while (i < stripped.length) {
+      if (stripped[i] === '[') {
+        const end = stripped.indexOf(']', i + 1);
+        if (end === -1) {
+          // unclosed bracket — treat remaining chars individually
+          for (let j = i + 1; j < stripped.length; j++) tokens.push(stripped[j]);
+          break;
+        }
+        const word = stripped.slice(i + 1, end);
+        if (word) tokens.push(word);
+        i = end + 1;
+      } else {
+        tokens.push(stripped[i]);
+        i++;
+      }
+    }
+    return tokens.map((ch, i) => ({ id: `ot_${i}`, ch }));
   }, [otRaw, customOtGroups]);
 
   const getFlatOTGroups = useCallback((): OTChar[] => {

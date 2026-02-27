@@ -248,26 +248,26 @@ const NomenklatorPage: React.FC = () => {
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="block text-sm font-semibold text-gray-700" htmlFor={otTextareaId}>Plain text (OT)</label>
-                <p className="text-xs text-gray-400">Capital letters only, e.g. <span className="font-mono">HELLO</span></p>
+                <label className="block text-sm font-semibold text-gray-700" htmlFor={otTextareaId}>Plain text (PT)</label>
+                <p className="text-xs text-gray-400"> Use <span className="font-mono">[brackets]</span> for multi-char tokens, e.g. <span className="font-mono">[HELLO]WORLD</span></p>
               </div>
-              <FileImport label="Import OT" onFileLoad={onOtFileLoad} />
+              <FileImport label="Import PT" onFileLoad={onOtFileLoad} />
             </div>
             <textarea
               id={otTextareaId}
               rows={3}
               className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
-              placeholder="HELLOWORLD"
+              placeholder="[HELLO]WORLD"
               value={otRaw}
               onChange={onOtChange}
             />
 
             <div className="flex items-center justify-between mt-1">
               <div>
-                <label className="block text-sm font-semibold text-gray-700" htmlFor={ztTextareaId}>Cipher text (ZT)</label>
-                <p className="text-xs text-gray-400">Tokens separated by space, or a single continuous string, e.g. <span className="font-mono">11 34 12 12 56</span></p>
+                <label className="block text-sm font-semibold text-gray-700" htmlFor={ztTextareaId}>Cipher text (CT)</label>
+                <p className="text-xs text-gray-400">Tokens separated by space, or a single continuous string, e.g. <span className="font-mono">11:22:33:33:44</span></p>
               </div>
-              <FileImport label="Import ZT" onFileLoad={onZtFileLoad} />
+              <FileImport label="Import CT" onFileLoad={onZtFileLoad} />
             </div>
             <textarea
               id={ztTextareaId}
@@ -425,8 +425,8 @@ const NomenklatorPage: React.FC = () => {
 
                     <div>
               <div className="flex items-center gap-4 text-xs text-gray-500 mb-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                <span>📄 OT characters: <strong>{otChars.length}</strong></span>
-                <span>🔢 ZT tokens: <strong>{ztParseMode === 'fixedLength' ? Math.floor(ztTokens.length / Math.max(1, fixedLength)) : ztTokens.length}</strong></span>
+                <span>OT characters: <strong>{otChars.length}</strong></span>
+                <span>ZT tokens: <strong>{ztParseMode === 'fixedLength' ? Math.floor(ztTokens.length / Math.max(1, fixedLength)) : ztTokens.length}</strong></span>
               </div>
 
               {mergeAllPrompt ? (
@@ -450,7 +450,7 @@ const NomenklatorPage: React.FC = () => {
 
               <div className="flex items-center justify-between mb-2 mt-1">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mapping Grid</h3>
-                <span className="text-xs text-gray-400 italic">Drag OT characters to merge \u2022 drag ZT tokens to swap</span>
+                <span className="text-xs text-gray-400 italic">Drag OT characters to merge , drag ZT tokens to swap</span>
               </div>
 
               <MappingTable
