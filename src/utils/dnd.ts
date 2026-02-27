@@ -1,7 +1,7 @@
-/**
+﻿/**
  * Utilities for drag-and-drop operations in the mapping grid.
  * 
- * Currently supports merging adjacent OT cells by dragging one onto the next.
+ * Currently supports merging adjacent PT cells by dragging one onto the next.
  */
 
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -19,7 +19,7 @@ interface DragData {
  * Resolve a drag-end event into a valid merge operation.
  * 
  * A merge is valid when:
- * - Source and target are both OT cells
+ * - Source and target are both PT cells
  * - Target is exactly one column to the right of source
  * - Neither cell is a deception/null cell
  * 
@@ -57,9 +57,9 @@ export function resolveMergeFromEvent(evt: DragEndEvent, columns: Column[][]) {
   const srcCell = columns[srcRow]?.[srcCol];
   const dstCell = columns[dstRow]?.[dstCol];
   if (!srcCell || !dstCell) return null;
-  if (!srcCell.ot || !dstCell.ot) return null;
+  if (!srcCell.pt || !dstCell.pt) return null;
 
-  // Compute flat indices of non-empty OT cells
+  // Compute flat indices of non-empty PT cells
   let fromFlat = -1;
   let targetFlat = -1;
   let counter = 0;
@@ -67,7 +67,7 @@ export function resolveMergeFromEvent(evt: DragEndEvent, columns: Column[][]) {
     const rowArr = columns[rr];
     for (let cc = 0; cc < rowArr.length; cc++) {
       const cell = rowArr[cc];
-      if (cell.ot) {
+      if (cell.pt) {
         if (rr === srcRow && cc === srcCol) fromFlat = counter;
         if (rr === dstRow && cc === dstCol) targetFlat = counter;
         counter++;

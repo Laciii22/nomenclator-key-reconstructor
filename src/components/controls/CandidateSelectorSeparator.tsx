@@ -1,11 +1,11 @@
-import React from 'react';
+﻿import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
 import {
   extendCandidateListWithLocked,
   sortCandidatesByScore,
   getCurrentSelectorValue,
   isSelectorDisabled,
-  getOTCharBadgeClasses,
+  getPTCharBadgeClasses,
   getSelectorInputClasses
 } from './candidateSelectorCommon';
 import type { SelectionMap } from '../../utils/analyzer';
@@ -15,13 +15,13 @@ type Props = {
   lockedKeys: Record<string, string>;
   selections: SelectionMap;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
-  otRows: any[];
-  effectiveZtTokens: any[];
+  ptRows: any[];
+  effectiveCtTokens: any[];
   reservedTokens: Set<string>;
   sharedColumns: any;
 };
 
-const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, otRows, effectiveZtTokens, reservedTokens, sharedColumns }) => {
+const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, ptRows, effectiveCtTokens, reservedTokens, sharedColumns }) => {
   const totalChars = Object.keys(candidatesByChar).length;
   const assignedChars = Object.entries(candidatesByChar).filter(([ch]) => lockedKeys[ch] || selections[ch]).length;
 
@@ -45,7 +45,7 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
         return (
           <div key={ch} className="flex items-center gap-3">
             <div className="w-10 font-mono text-center">
-              <span className={`inline-block px-2 py-0.5 rounded border ${getOTCharBadgeClasses(Boolean(lockedVal))}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
+              <span className={`inline-block px-2 py-0.5 rounded border ${getPTCharBadgeClasses(Boolean(lockedVal))}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
             </div>
             <select
               className={getSelectorInputClasses(disabledSelect)}
@@ -58,7 +58,7 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
             >
               <option value="">None (do not lock)</option>
               {sortedByScore.filter((c:any) => c.length === 1).map((c:any, idx:number) => {
-                const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize: 1, reservedTokens, selectionVal, lockedVal, sharedColumns });
+                const opt = buildCandidateOptions({ c, idx, ch, ptRows, effectiveCtTokens, groupSize: 1, reservedTokens, selectionVal, lockedVal, sharedColumns });
                 return (
                   <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>
                 );

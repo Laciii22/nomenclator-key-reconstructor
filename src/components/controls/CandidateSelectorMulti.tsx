@@ -1,7 +1,7 @@
-/**
+﻿/**
  * CandidateSelectorMulti: Multi-key (homophone) mode candidate selector.
  * 
- * Allows users to select multiple ZT tokens per OT character using checkboxes.
+ * Allows users to select multiple CT tokens per PT character using checkboxes.
  * Features:
  * - Checkbox-based selection (instead of radio/dropdown)
  * - Visual indicators for locked tokens
@@ -13,12 +13,12 @@
 import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
 import type { SelectionMap, Candidate } from '../../utils/analyzer';
-import type { OTChar, ZTToken } from '../../types/domain';
+import type { PTChar, CTToken } from '../../types/domain';
 import type { Column } from '../types';
 import { normalizeToArray } from '../../utils/multiKeyHelpers';
 
 /**
- * Check if token is already selected or locked for a different OT character.
+ * Check if token is already selected or locked for a different PT character.
  */
 function isTokenUsedElsewhere(
   token: string,
@@ -79,23 +79,23 @@ interface CandidateSelectorMultiProps {
   lockedKeys: Record<string, string | string[]>;
   selections: SelectionMap;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
-  otRows: OTChar[][];
-  effectiveZtTokens: ZTToken[];
+  ptRows: PTChar[][];
+  effectiveCtTokens: CTToken[];
   reservedTokens: Set<string>;
   sharedColumns: Column[][];
 }
 
 /**
  * Candidate selector for multi-key (homophone) mode.
- * Displays checkboxes for selecting multiple tokens per OT character.
+ * Displays checkboxes for selecting multiple tokens per PT character.
  */
 const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   candidatesByChar,
   lockedKeys,
   selections,
   setSelections,
-  otRows,
-  effectiveZtTokens,
+  ptRows,
+  effectiveCtTokens,
   reservedTokens,
   sharedColumns
 }) => {
@@ -160,8 +160,8 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                     c,
                     idx,
                     ch,
-                    otRows,
-                    effectiveZtTokens,
+                    ptRows,
+                    effectiveCtTokens,
                     groupSize: 1,
                     reservedTokens,
                     selectionVal: selectedTokens[0] ?? null,
@@ -183,7 +183,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                               ? 'bg-gray-50 border border-gray-200 opacity-50 cursor-not-allowed'
                               : 'hover:bg-gray-50 border border-transparent'
                       }`}
-                      title={isUsedElsewhere ? `Already used for another OT character` : opt.title}
+                      title={isUsedElsewhere ? `Already used for another PT character` : opt.title}
                     >
                       <input
                         type="checkbox"

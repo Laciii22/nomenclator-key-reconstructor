@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AppLayout: Main application layout wrapper.
  * 
  * Provides consistent structure with navbar, main content area, and footer.
@@ -13,15 +13,17 @@ type AppLayoutProps = {
     children?: React.ReactNode;
     /** Handler for help button click in navbar */
     onHelpClick?: () => void;
+    /** Handler for frequency button click in navbar */
+    onFrequencyClick?: () => void;
 };
 
 /**
  * Layout wrapper with header, content, and footer.
  */
-const AppLayout: React.FC<AppLayoutProps> = ({ children, onHelpClick }) => {
+const AppLayout: React.FC<AppLayoutProps> = ({ children, onHelpClick, onFrequencyClick }) => {
     return (
         <div className="flex flex-col min-h-screen">
-            <Navbar onHelpClick={onHelpClick} />
+            <Navbar onHelpClick={onHelpClick} onFrequencyClick={onFrequencyClick} />
             <main className="flex-grow">{children}</main>
             <Footer />
         </div>

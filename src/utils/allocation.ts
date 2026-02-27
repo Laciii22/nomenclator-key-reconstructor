@@ -1,23 +1,23 @@
-/**
- * Token allocation algorithm for distributing ZT tokens across OT grid cells.
+﻿/**
+ * Token allocation algorithm for distributing CT tokens across PT grid cells.
  * 
  * Uses a round-robin distribution strategy to allocate tokens evenly.
  * In fixed-length mode, allocates token groups instead of individual tokens.
  */
 
-import type { OTChar, ZTToken } from '../components/types';
+import type { PTChar, CTToken } from '../components/types';
 
 /**
- * Compute how many ZT tokens/groups should be allocated to each OT cell.
+ * Compute how many CT tokens/groups should be allocated to each PT cell.
  * 
- * @param rows OT character rows (empty chars are filtered out)
- * @param tokens ZT tokens to distribute
+ * @param rows PT character rows (empty chars are filtered out)
+ * @param tokens CT tokens to distribute
  * @param groupSize Size of token groups (1 for separator mode, >1 for fixed-length)
  * @returns Row-wise allocation counts and per-cell group sizes
  */
-export function computeRowAlloc(rows: OTChar[][], tokens: ZTToken[], groupSize: number = 1) {
-  const otCellsPerRow = rows.map(r => r.filter(c => c.ch !== ''));
-  const flatCount = otCellsPerRow.reduce((acc, r) => acc + r.length, 0);
+export function computeRowAlloc(rows: PTChar[][], tokens: CTToken[], groupSize: number = 1) {
+  const ptCellsPerRow = rows.map(r => r.filter(c => c.ch !== ''));
+  const flatCount = ptCellsPerRow.reduce((acc, r) => acc + r.length, 0);
   const totalZT = tokens.length;
   if (flatCount === 0) return { rowAlloc: rows.map(() => 0), groups: rows.map(() => [] as number[]) };
 
@@ -40,7 +40,7 @@ export function computeRowAlloc(rows: OTChar[][], tokens: ZTToken[], groupSize: 
   const groups = [];
   const rowAlloc = [];
   let ptr = 0;
-  for (const rowCells of otCellsPerRow) {
+  for (const rowCells of ptCellsPerRow) {
     const rowArr: number[] = [];
     for (let i = 0; i < rowCells.length; i++) {
       rowArr.push(assignCountsFlat[ptr++] || 0);

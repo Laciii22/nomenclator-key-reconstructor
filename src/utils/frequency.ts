@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared frequency computation utilities for nomenclator analysis.
  *
  * These pure functions precompute frequency maps to avoid redundant O(n)
@@ -6,17 +6,17 @@
  * and side-effect free.
  */
 
-import type { OTChar, ZTToken } from '../types/domain';
+import type { PTChar, CTToken } from '../types/domain';
 
 /**
- * Count occurrences of each OT character across all rows.
+ * Count occurrences of each PT character across all rows.
  * Excludes empty placeholder cells.
  *
  * @returns Map of character → occurrence count
  */
-export function countOtFrequency(otRows: readonly OTChar[][]): Map<string, number> {
+export function countPtFrequency(ptRows: readonly PTChar[][]): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const row of otRows) {
+  for (const row of ptRows) {
     for (const cell of row) {
       if (!cell || cell.ch === '') continue;
       counts.set(cell.ch, (counts.get(cell.ch) || 0) + 1);
@@ -26,11 +26,11 @@ export function countOtFrequency(otRows: readonly OTChar[][]): Map<string, numbe
 }
 
 /**
- * Count occurrences of each token text in the ZT array.
+ * Count occurrences of each token text in the CT array.
  *
  * @returns Map of token text → occurrence count
  */
-export function countTokenFrequency(tokens: readonly ZTToken[]): Map<string, number> {
+export function countTokenFrequency(tokens: readonly CTToken[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const t of tokens) {
     counts.set(t.text, (counts.get(t.text) || 0) + 1);
@@ -48,12 +48,12 @@ export function scoreRatio(a: number, b: number): number {
 }
 
 /**
- * Flatten OT rows to a 1D array, excluding empty placeholder cells.
+ * Flatten PT rows to a 1D array, excluding empty placeholder cells.
  * Used by the analyzer to build a flat cell list for position mapping.
  */
-export function flattenOtChars(otRows: readonly OTChar[][]): (OTChar | null)[] {
-  const flat: (OTChar | null)[] = [];
-  for (const row of otRows) {
+export function flattenPtChars(ptRows: readonly PTChar[][]): (PTChar | null)[] {
+  const flat: (PTChar | null)[] = [];
+  for (const row of ptRows) {
     for (const cell of row) {
       if (cell && cell.ch !== '') flat.push(cell);
     }
@@ -62,9 +62,9 @@ export function flattenOtChars(otRows: readonly OTChar[][]): (OTChar | null)[] {
 }
 
 /**
- * Build a mapping from OT character → flat positions where it appears.
+ * Build a mapping from PT character → flat positions where it appears.
  */
-export function buildCharPositionMap(flat: readonly (OTChar | null)[]): Record<string, number[]> {
+export function buildCharPositionMap(flat: readonly (PTChar | null)[]): Record<string, number[]> {
   const positions: Record<string, number[]> = {};
   for (let i = 0; i < flat.length; i++) {
     const ch = flat[i]?.ch;
@@ -75,10 +75,10 @@ export function buildCharPositionMap(flat: readonly (OTChar | null)[]): Record<s
 }
 
 /**
- * Build a token text → position indices map from a ZT array.
+ * Build a token text → position indices map from a CT array.
  * Useful for O(1) token position lookups instead of repeated linear scans.
  */
-export function buildTokenPositionMap(tokens: readonly ZTToken[]): Map<string, number[]> {
+export function buildTokenPositionMap(tokens: readonly CTToken[]): Map<string, number[]> {
   const positions = new Map<string, number[]>();
   for (let i = 0; i < tokens.length; i++) {
     const text = tokens[i].text;

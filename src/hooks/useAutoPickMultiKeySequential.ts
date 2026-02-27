@@ -1,38 +1,38 @@
-import * as React from 'react';
-import type { OTChar, ZTToken } from '../types/domain';
-import { getExpectedZTIndicesForOT } from '../utils/grouping';
+﻿import * as React from 'react';
+import type { PTChar, CTToken } from '../types/domain';
+import { getExpectedCTIndicesForOT } from '../utils/grouping';
 
 /**
  * Automatically identifies deception tokens in multi-key mode.
  * 
- * When user selects homophones for OT characters, this hook determines which
- * ZT tokens are deception (not mapped to any OT character) and updates bracketed indices.
+ * When user selects homophones for PT characters, this hook determines which
+ * CT tokens are deception (not mapped to any PT character) and updates bracketed indices.
  * 
- * Example: OT="AHA", ZT="11:22:99:33"
+ * Example: PT="AHA", CT="11:22:99:33"
  * - User selects: A→[11,33], H→[22]
  * - Auto-detected deception: 99 (at index 2)
  * - Bracketed indices: [2]
  */
 export function useAutoPickMultiKeySequential(params: {
-  otRows: OTChar[][];
-  ztTokens: ZTToken[];
+  ptRows: PTChar[][];
+  ctTokens: CTToken[];
   lockedKeys: Record<string, string | string[]>;
-  keysPerOTMode: 'single' | 'multiple';
+  keysPerPTMode: 'single' | 'multiple';
   setBracketedIndices: React.Dispatch<React.SetStateAction<number[]>>;
 }) {
-  const { otRows, ztTokens, lockedKeys, keysPerOTMode, setBracketedIndices } = params;
+  const { ptRows, ctTokens, lockedKeys, keysPerPTMode, setBracketedIndices } = params;
 
   React.useEffect(() => {
     // Only run in multi-key mode
-    if (keysPerOTMode !== 'multiple') return;
+    if (keysPerPTMode !== 'multiple') return;
     
     // Only run if we have locked selections
     if (!Object.keys(lockedKeys).length) return;
 
-    // Build expected position map for OT characters
-    const expectedPositions = getExpectedZTIndicesForOT(otRows, ztTokens, []);
+    // Build expected position map for PT characters
+    const expectedPositions = getExpectedCTIndicesForOT(ptRows, ctTokens, []);
     
-    // Collect all ZT indices that are locked (assigned to OT characters)
+    // Collect all CT indices that are locked (assigned to PT characters)
     const lockedIndices = new Set<number>();
     
     for (const [ch, lockedValue] of Object.entries(lockedKeys)) {
@@ -42,10 +42,10 @@ export function useAutoPickMultiKeySequential(params: {
       // Get locked tokens (normalize to array)
       const lockedTokens = Array.isArray(lockedValue) ? lockedValue : [lockedValue];
       
-      // For each locked token, find its position in ZT
+      // For each locked token, find its position in CT
       for (const token of lockedTokens) {
         // Find all indices where this token appears
-        const tokenIndices = ztTokens
+        const tokenIndices = ctTokens
           .map((t, i) => t.text === token ? i : -1)
           .filter(i => i >= 0);
         
@@ -59,9 +59,9 @@ export function useAutoPickMultiKeySequential(params: {
       }
     }
 
-    // Any ZT index not locked is a deception token
+    // Any CT index not locked is a deception token
     const deceptionIndices: number[] = [];
-    for (let i = 0; i < ztTokens.length; i++) {
+    for (let i = 0; i < ctTokens.length; i++) {
       if (!lockedIndices.has(i)) {
         deceptionIndices.push(i);
       }
@@ -69,5 +69,5 @@ export function useAutoPickMultiKeySequential(params: {
 
     // Update bracketed indices
     setBracketedIndices(deceptionIndices);
-  }, [otRows, ztTokens, lockedKeys, keysPerOTMode, setBracketedIndices]);
+  }, [ptRows, ctTokens, lockedKeys, keysPerPTMode, setBracketedIndices]);
 }

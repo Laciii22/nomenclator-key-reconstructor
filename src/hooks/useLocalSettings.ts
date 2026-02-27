@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react';
-import type { LockedKeys, KeysPerOTMode } from '../types/domain';
+﻿import { useEffect, useState } from 'react';
+import type { LockedKeys, KeysPerPTMode } from '../types/domain';
 
 
 export type LocalSettings = {
-  fixedPerOTEnabled: boolean;
-  fixedPerOTSize: number;
+  fixedPerPTEnabled: boolean;
+  fixedPerPTSize: number;
   maxTokensCapEnabled: boolean;
   maxTokensPerCell: number;
-  keysPerOTMode: KeysPerOTMode;
+  keysPerPTMode: KeysPerPTMode;
   lockedKeys: LockedKeys;
-  otRaw: string;
-  ztRaw: string;
+  ptRaw: string;
+  ctRaw: string;
   bracketedIndices: number[];
 };
 
@@ -25,14 +25,14 @@ const KEY = 'nkr_settings';
 
 export function useLocalSettings(initial?: Partial<LocalSettings>) {
   const [settings, setSettings] = useState<LocalSettings>({
-    fixedPerOTEnabled: false,
-    fixedPerOTSize: 1,
+    fixedPerPTEnabled: false,
+    fixedPerPTSize: 1,
     maxTokensCapEnabled: false,
     maxTokensPerCell: 3,
-    keysPerOTMode: 'multiple',
+    keysPerPTMode: 'multiple',
     lockedKeys: {},
-    otRaw: '',
-    ztRaw: '',
+    ptRaw: '',
+    ctRaw: '',
     bracketedIndices: [],
     ...initial,
   });

@@ -1,7 +1,7 @@
-import type { Candidate } from '../../utils/analyzer';
+﻿import type { Candidate } from '../../utils/analyzer';
 
-// Simple selection helper: pick tokens for OT chars where exactly one candidate
-// fully covers the OT character occurrences. Do not rely on numeric equality
+// Simple selection helper: pick tokens for PT chars where exactly one candidate
+// fully covers the PT character occurrences. Do not rely on numeric equality
 // of `score === 1` because scores may be extended/inserted elsewhere; instead
 // use concrete evidence: token `support` equals `occurrences`.
 export function chooseScoreOneSimple(candidatesByChar: Record<string, Candidate[]>) {

@@ -1,5 +1,5 @@
-/**
- * Custom hook for parsing OT and ZT inputs.
+﻿/**
+ * Custom hook for parsing PT and CT inputs.
  * 
  * Manages:
  * - Parse mode selection (separator vs. fixed-length)
@@ -7,77 +7,77 @@
  * - Token parsing and validation
  * - Deception/null token marking (bracketing)
  * 
- * @param params Configuration with OT count for validation
+ * @param params Configuration with PT count for validation
  * @returns Parsing state and controls
  */
 
 import * as React from 'react';
-import type { ZTToken } from '../types/domain';
+import type { CTToken } from '../types/domain';
 import { parseFixedRaw } from '../utils/parse/fixed';
 import { parseSeparatorRaw } from '../utils/parse/separator';
 import { toggleBracketByGroupText, uniqueGroupTexts } from '../utils/parse/fixedLength';
 
-/** Parsing mode for ZT tokens */
-export type ZtParseMode = 'separator' | 'fixedLength';
+/** Parsing mode for CT tokens */
+export type CtParseMode = 'separator' | 'fixedLength';
 
-/** Status of OT/ZT alignment validation */
+/** Status of PT/CT alignment validation */
 export type KlamacStatus = 'none' | 'needsKlamac' | 'ok' | 'invalid';
 
 /**
- * Hook for managing ZT token parsing and validation.
+ * Hook for managing CT token parsing and validation.
  */
 export function useParsing(params: {
-  /** Number of OT characters (for validation) */
-  otCount: number;
+  /** Number of PT characters (for validation) */
+  ptCount: number;
 }) {
-  const { otCount } = params;
+  const { ptCount } = params;
 
-  const [ztParseMode, setZtParseMode] = React.useState<ZtParseMode>('separator');
+  const [ctParseMode, setCtParseMode] = React.useState<CtParseMode>('separator');
 
   // Separate raw inputs per parse mode so edits in one mode don't overwrite the other
-  const [ztRawSeparator, setZtRawSeparator] = React.useState('');
-  const [ztRawFixed, setZtRawFixed] = React.useState('');
-  const ztRaw = ztParseMode === 'fixedLength' ? ztRawFixed : ztRawSeparator;
+  const [ctRawSeparator, setCtRawSeparator] = React.useState('');
+  const [ctRawFixed, setCtRawFixed] = React.useState('');
+  const ctRaw = ctParseMode === 'fixedLength' ? ctRawFixed : ctRawSeparator;
 
-  const setZtRawActive = React.useCallback((v: string) => {
-    if (ztParseMode === 'fixedLength') setZtRawFixed(v);
-    else setZtRawSeparator(v);
-  }, [ztParseMode]);
+  const setCtRawActive = React.useCallback((v: string) => {
+    if (ctParseMode === 'fixedLength') setCtRawFixed(v);
+    else setCtRawSeparator(v);
+  }, [ctParseMode]);
 
-  const setZtRawForMode = React.useCallback((mode: ZtParseMode, v: string) => {
-    if (mode === 'fixedLength') setZtRawFixed(v);
-    else setZtRawSeparator(v);
+  const setCtRawForMode = React.useCallback((mode: CtParseMode, v: string) => {
+    if (mode === 'fixedLength') setCtRawFixed(v);
+    else setCtRawSeparator(v);
   }, []);
 
   const [separator, setSeparator] = React.useState<string>(':');
   const [fixedLength, setFixedLength] = React.useState<number>(1);
 
-  const groupSize = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+  const groupSize = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
 
   const [klamacStatus, setKlamacStatus] = React.useState<KlamacStatus>('none');
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
 
   const parseRes = React.useMemo(() => {
-    if (ztParseMode === 'separator') {
-      return parseSeparatorRaw(ztRaw, separator, otCount);
+    if (ctParseMode === 'separator') {
+      return parseSeparatorRaw(ctRaw, separator, ptCount);
     }
-    return parseFixedRaw(ztRaw, fixedLength || 1, otCount);
-  }, [ztParseMode, ztRaw, separator, fixedLength, otCount]);
+    return parseFixedRaw(ctRaw, fixedLength || 1, ptCount);
+  }, [ctParseMode, ctRaw, separator, fixedLength, ptCount]);
 
   React.useEffect(() => {
     setKlamacStatus(parseRes.klamacStatus);
     setStatusMessage(parseRes.statusMessage);
   }, [parseRes.klamacStatus, parseRes.statusMessage]);
 
-  const ztTokens = parseRes.tokens as ZTToken[];
+  const ctTokens = parseRes.tokens as CTToken[];
 
   const [bracketedIndices, setBracketedIndices] = React.useState<number[]>([]);
 
-  const effectiveZtTokens = React.useMemo(() => {
-    if (!bracketedIndices.length) return ztTokens;
+  const effectiveCtTokens = React.useMemo(() => {
+    if (!bracketedIndices.length) return ctTokens;
     const br = new Set(bracketedIndices);
-    return ztTokens.filter((_, i) => !br.has(i));
-  }, [ztTokens, bracketedIndices]);
+    return ctTokens.filter((_, i) => !br.has(i));
+  }, [ctTokens, bracketedIndices]);
 
   // Bracket validity post parse-change
   const [bracketWarning, setBracketWarning] = React.useState<string | null>(null);
@@ -85,20 +85,20 @@ export function useParsing(params: {
     setBracketWarning(null);
     setBracketedIndices(prev => {
       if (!prev.length) return prev;
-      const max = ztTokens.length;
+      const max = ctTokens.length;
       const filtered = prev.filter(i => i >= 0 && i < max);
       if (filtered.length !== prev.length) setBracketWarning('Some deception brackets no longer exist after parse change — removed.');
       return filtered;
     });
-  }, [ztTokens.length]);
+  }, [ctTokens.length]);
 
   function toggleBracketGroupByText(text: string) {
     if (!text) return;
-    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
-      setBracketedIndices(prev => toggleBracketByGroupText(text, ztTokens, fixedLength || 1, prev));
+    if (ctParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
+      setBracketedIndices(prev => toggleBracketByGroupText(text, ctTokens, fixedLength || 1, prev));
       return;
     }
-    const same = ztTokens.map((t, i) => t.text === text ? i : -1).filter(i => i >= 0);
+    const same = ctTokens.map((t, i) => t.text === text ? i : -1).filter(i => i >= 0);
     setBracketedIndices(prev => {
       const set = new Set(prev);
       const all = same.every(i => set.has(i));
@@ -108,16 +108,16 @@ export function useParsing(params: {
     });
   }
 
-  const uniqueZTTokenTexts = React.useMemo(() => {
-    if (ztParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
-      return uniqueGroupTexts(ztTokens, fixedLength || 1, bracketedIndices);
+  const uniqueCTTokenTexts = React.useMemo(() => {
+    if (ctParseMode === 'fixedLength' && (fixedLength || 1) > 1) {
+      return uniqueGroupTexts(ctTokens, fixedLength || 1, bracketedIndices);
     }
     const br = new Set(bracketedIndices);
     const meta = new Map<string, { allBracketed: boolean }>();
     const order: string[] = [];
 
-    for (let i = 0; i < ztTokens.length; i++) {
-      const text = ztTokens[i].text;
+    for (let i = 0; i < ctTokens.length; i++) {
+      const text = ctTokens[i].text;
       const isBr = br.has(i);
       const prev = meta.get(text);
       if (!prev) {
@@ -129,30 +129,30 @@ export function useParsing(params: {
     }
 
     return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
-  }, [bracketedIndices, fixedLength, ztParseMode, ztTokens]);
+  }, [bracketedIndices, fixedLength, ctParseMode, ctTokens]);
 
   return {
-    ztParseMode,
-    setZtParseMode,
-    ztRaw,
-    setZtRaw: setZtRawActive,
-    setZtRawForMode,
-    ztRawSeparator,
-    setZtRawSeparator,
-    ztRawFixed,
-    setZtRawFixed,
+    ctParseMode,
+    setCtParseMode,
+    ctRaw,
+    setCtRaw: setCtRawActive,
+    setCtRawForMode,
+    ctRawSeparator,
+    setCtRawSeparator,
+    ctRawFixed,
+    setCtRawFixed,
     separator,
     setSeparator,
     fixedLength,
     setFixedLength,
     groupSize,
-    ztTokens,
-    effectiveZtTokens,
+    ctTokens,
+    effectiveCtTokens,
     bracketedIndices,
     setBracketedIndices,
     bracketWarning,
     toggleBracketGroupByText,
-    uniqueZTTokenTexts,
+    uniqueCTTokenTexts,
     klamacStatus,
     statusMessage,
   } as const;

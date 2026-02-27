@@ -1,4 +1,4 @@
-export function buildEffectiveToOriginalIndexMap(
+﻿export function buildEffectiveToOriginalIndexMap(
   tokenCount: number,
   bracketedIndices: readonly number[]
 ): number[] {

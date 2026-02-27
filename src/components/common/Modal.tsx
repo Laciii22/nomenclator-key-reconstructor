@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Modal: Reusable modal dialog component with backdrop and animations.
  * 
  * Features:

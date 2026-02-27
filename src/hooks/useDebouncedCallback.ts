@@ -1,4 +1,4 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 
 /**
  * Returns a debounced version of a callback that delays invocation until

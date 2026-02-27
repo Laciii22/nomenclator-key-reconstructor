@@ -1,8 +1,8 @@
-import type { ZTToken } from '../../types/domain';
+﻿import type { CTToken } from '../../types/domain';
 
 
 
-export function logicalGroups(tokens: ZTToken[], groupSize: number): { text: string; start: number }[] {
+export function logicalGroups(tokens: CTToken[], groupSize: number): { text: string; start: number }[] {
   const size = Math.max(1, groupSize);
   const out: { text: string; start: number }[] = [];
   for (let i = 0; i + size - 1 < tokens.length; i += size) {
@@ -12,7 +12,7 @@ export function logicalGroups(tokens: ZTToken[], groupSize: number): { text: str
   return out;
 }
 
-export function uniqueGroupTexts(tokens: ZTToken[], groupSize: number, bracketedIndices: number[]): { text: string; allBracketed: boolean }[] {
+export function uniqueGroupTexts(tokens: CTToken[], groupSize: number, bracketedIndices: number[]): { text: string; allBracketed: boolean }[] {
   const size = Math.max(1, groupSize);
   const br = new Set(bracketedIndices);
   const meta = new Map<string, { allBracketed: boolean }>();
@@ -38,7 +38,7 @@ export function uniqueGroupTexts(tokens: ZTToken[], groupSize: number, bracketed
   return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
 }
 
-export function toggleBracketByGroupText(text: string, tokens: ZTToken[], groupSize: number, bracketedIndices: number[]): number[] {
+export function toggleBracketByGroupText(text: string, tokens: CTToken[], groupSize: number, bracketedIndices: number[]): number[] {
   const size = Math.max(1, groupSize);
   const indicesToToggle: number[] = [];
 

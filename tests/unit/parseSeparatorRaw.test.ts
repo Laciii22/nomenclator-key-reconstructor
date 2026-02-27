@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+﻿import { describe, it, expect, beforeEach } from 'vitest';
 import { parseSeparatorRaw } from '../../src/utils/parse/separator';
 import { resetIds } from '../helpers';
 
@@ -26,7 +26,7 @@ describe('parseSeparatorRaw', () => {
   // -----------------------------------------------------------------
   // Status: ok
   // -----------------------------------------------------------------
-  describe('status "ok" — token count === otCount', () => {
+  describe('status "ok" — token count === ptCount', () => {
     it('parses tokens correctly and reports ok', () => {
       const res = parseSeparatorRaw('1:2:3', ':', 3);
 
@@ -36,7 +36,7 @@ describe('parseSeparatorRaw', () => {
       expect(res.statusMessage).toBeNull();
     });
 
-    it('works with single token matching single OT char', () => {
+    it('works with single token matching single PT char', () => {
       const res = parseSeparatorRaw('42', ':', 1);
 
       expect(res.tokens).toHaveLength(1);
@@ -48,7 +48,7 @@ describe('parseSeparatorRaw', () => {
   // -----------------------------------------------------------------
   // Status: needsKlamac
   // -----------------------------------------------------------------
-  describe('status "needsKlamac" — token count > otCount', () => {
+  describe('status "needsKlamac" — token count > ptCount', () => {
     it('sets needsKlamac and reports counts in message', () => {
       const res = parseSeparatorRaw('11:22:11:22:99:33:99', ':', 5);
 
@@ -56,8 +56,8 @@ describe('parseSeparatorRaw', () => {
       expect(res.tokens).toHaveLength(7);
 
       // Avoid brittle exact-string check; verify the key numbers instead
-      expect(res.statusMessage).toContain('5');  // OT count
-      expect(res.statusMessage).toContain('7');  // ZT count
+      expect(res.statusMessage).toContain('5');  // PT count
+      expect(res.statusMessage).toContain('7');  // CT count
     });
 
     it('even one extra token triggers needsKlamac', () => {
@@ -69,8 +69,8 @@ describe('parseSeparatorRaw', () => {
   // -----------------------------------------------------------------
   // Status: invalid
   // -----------------------------------------------------------------
-  describe('status "invalid" — token count < otCount', () => {
-    it('sets invalid when fewer tokens than OT chars', () => {
+  describe('status "invalid" — token count < ptCount', () => {
+    it('sets invalid when fewer tokens than PT chars', () => {
       const res = parseSeparatorRaw('1:2', ':', 5);
 
       expect(res.klamacStatus).toBe('invalid');
@@ -83,7 +83,7 @@ describe('parseSeparatorRaw', () => {
   // Edge cases
   // -----------------------------------------------------------------
   describe('edge cases', () => {
-    it('otCount = 0 yields status "none"', () => {
+    it('ptCount = 0 yields status "none"', () => {
       const res = parseSeparatorRaw('1:2:3', ':', 0);
       expect(res.klamacStatus).toBe('none');
     });

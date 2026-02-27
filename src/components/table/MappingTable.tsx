@@ -1,7 +1,7 @@
-import React, { useMemo, useRef } from 'react';
+﻿import React, { useMemo, useRef } from 'react';
 import { Grid } from 'react-window';
 import type { MappingTableProps } from '../types';
-import OTCell from './OTCell';
+import PTCell from './PTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
 
 type MappingTableExtraProps = {
@@ -14,7 +14,7 @@ type MappingTableExtraProps = {
 };
 
 /**
- * Renders the OT→ZT allocation grid using react-window virtualization.
+ * Renders the PT→CT allocation grid using react-window virtualization.
  * Only visible cells are rendered (massive performance improvement for large grids).
  *
  * This component accepts precomputed `columns` (preferred) but can also derive them
@@ -22,7 +22,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { otRows, ztTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, keysPerOTMode = 'single', bracketedIndices = [] } = props;
+	const { ptRows, ctTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [] } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -37,8 +37,8 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
 		}
 
-		return buildShiftOnlyColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, groupSize, bracketedIndices);
-	}, [columns, otRows, ztTokens, lockedKeys, selections, groupSize, bracketedIndices]);
+		return buildShiftOnlyColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, groupSize, bracketedIndices);
+	}, [columns, ptRows, ctTokens, lockedKeys, selections, groupSize, bracketedIndices]);
 
 	// Flat index of all cells (including deception) for shift operations in fixedLength mode
 	const flatIndices = useMemo(() => {
@@ -50,24 +50,24 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		}));
 	}, [rows]);
 
-	// Flat OT index - counts only OT cells (excludes deception) - for split operations
-	const flatOtIndices = useMemo(() => {
+	// Flat PT index - counts only PT cells (excludes deception) - for split operations
+	const flatPtIndices = useMemo(() => {
 		let counter = 0;
 		return rows.map(row => row.map(col => {
-			if (!col.ot || col.deception) return -1;
+			if (!col.pt || col.deception) return -1;
 			const idx = counter;
 			counter++;
 			return idx;
 		}));
 	}, [rows]);
 
-	// Owned raw ZT indices across the whole grid (used to decide whether a short group
+	// Owned raw CT indices across the whole grid (used to decide whether a short group
 	// can safely expand from its start without overlapping another cell).
 	const allOwnedIndices = React.useMemo(() => {
 		const allOwned = new Set<number>();
 		for (let rr = 0; rr < rows.length; rr++) {
 			for (let cc = 0; cc < rows[rr].length; cc++) {
-				for (const idx of rows[rr][cc].zt) allOwned.add(idx);
+				for (const idx of rows[rr][cc].ct) allOwned.add(idx);
 			}
 		}
 		return allOwned;
@@ -83,20 +83,20 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				const col = rows[rIdx][cIdx];
 				const key = `${rIdx}-${cIdx}`;
 
-				if (!col.zt || col.zt.length === 0 || col.zt.length >= groupSize) {
+				if (!col.ct || col.ct.length === 0 || col.ct.length >= groupSize) {
 					map.set(key, false);
 					continue;
 				}
 
-				const start = col.zt[0];
+				const start = col.ct[0];
 				let canExpand = true;
 				for (let k = 1; k < groupSize; k++) {
 					const idx = start + k;
-					if (allOwnedIndices.has(idx) && !col.zt.includes(idx)) {
+					if (allOwnedIndices.has(idx) && !col.ct.includes(idx)) {
 						canExpand = false;
 						break;
 					}
-					if (idx >= ztTokens.length) {
+					if (idx >= ctTokens.length) {
 						canExpand = false;
 						break;
 					}
@@ -105,59 +105,59 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			}
 		}
 		return map;
-	}, [rows, groupSize, ztTokens.length, allOwnedIndices]);
+	}, [rows, groupSize, ctTokens.length, allOwnedIndices]);
 
 	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
 	// what users see and reason about when spotting collisions.
-	const duplicateOTChars = React.useMemo(() => {
+	const duplicatePTChars = React.useMemo(() => {
 		const tokenToOTs: Record<string, Set<string>> = {};
 
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
 				const col = rows[rIdx][cIdx];
-				if (!col.ot) continue;
+				if (!col.pt) continue;
 				if (col.deception) continue;
-				if (!col.zt || col.zt.length === 0) continue;
+				if (!col.ct || col.ct.length === 0) continue;
 
-				// Match OTCell rendering rules: expand only when len==1 and allowExpandFromStart.
+				// Match PTCell rendering rules: expand only when len==1 and allowExpandFromStart.
 				let displayedIndices: number[] = [];
 				if (groupSize > 1) {
-					if (col.zt.length >= groupSize) {
-						displayedIndices = col.zt.slice(0, groupSize);
-					} else if (col.zt.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
-						const start = col.zt[0];
+					if (col.ct.length >= groupSize) {
+						displayedIndices = col.ct.slice(0, groupSize);
+					} else if (col.ct.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
+						const start = col.ct[0];
 						for (let k = 0; k < groupSize; k++) {
 							const idx = start + k;
-							if (idx < ztTokens.length) displayedIndices.push(idx);
+							if (idx < ctTokens.length) displayedIndices.push(idx);
 						}
 					} else {
-						displayedIndices = col.zt.slice();
+						displayedIndices = col.ct.slice();
 					}
 				} else {
-					displayedIndices = col.zt.slice();
+					displayedIndices = col.ct.slice();
 				}
 
-				const groupText = displayedIndices.map(i => ztTokens[i]?.text ?? '').join('').trim();
+				const groupText = displayedIndices.map(i => ctTokens[i]?.text ?? '').join('').trim();
 				if (!groupText) continue;
-				(tokenToOTs[groupText] ||= new Set()).add(col.ot.ch);
+				(tokenToOTs[groupText] ||= new Set()).add(col.pt.ch);
 			}
 		}
 
 		const dup = new Set<string>();
 		for (const ots of Object.values(tokenToOTs)) {
 			if (ots.size <= 1) continue;
-			for (const ot of ots) dup.add(ot);
+			for (const pt of ots) dup.add(pt);
 		}
 		return dup;
-	}, [groupSize, rows, ztTokens, allowExpandMap]);
+	}, [groupSize, rows, ctTokens, allowExpandMap]);
 
-	// Use a single fixed-width grid so subsequent OT rows can visually continue
+	// Use a single fixed-width grid so subsequent PT rows can visually continue
 	// filling any remaining space on the last line (layout-only).
 	const visualColumnsPerRow = React.useMemo(() => {
 		let max = 1;
-		for (const r of otRows) max = Math.max(max, r.length);
+		for (const r of ptRows) max = Math.max(max, r.length);
 		return Math.max(1, max);
-	}, [otRows]);
+	}, [ptRows]);
 
 	// Responsive column count based on viewport width
 	const [viewportWidth, setViewportWidth] = React.useState(() =>
@@ -243,31 +243,31 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		const { rIdx, cIdx, col } = flatCells[flatIdx];
 
 		// Get displayed token indices/text for this cell.
-		// Must match OTCell display rules, otherwise locks/shifts look like they require double-click.
+		// Must match PTCell display rules, otherwise locks/shifts look like they require double-click.
 		const displayedIndices = (() => {
-			if (!col.zt || col.zt.length === 0) return [] as number[];
-			if (groupSize <= 1) return col.zt.slice();
-			if (col.zt.length >= groupSize) return col.zt.slice(0, groupSize);
-			if (col.zt.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
-				const start = col.zt[0];
+			if (!col.ct || col.ct.length === 0) return [] as number[];
+			if (groupSize <= 1) return col.ct.slice();
+			if (col.ct.length >= groupSize) return col.ct.slice(0, groupSize);
+			if (col.ct.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
+				const start = col.ct[0];
 				const expanded: number[] = [];
 				for (let k = 0; k < groupSize; k++) {
 					const idx = start + k;
-					if (idx < ztTokens.length) expanded.push(idx);
+					if (idx < ctTokens.length) expanded.push(idx);
 				}
 				return expanded;
 			}
-			return col.zt.slice();
+			return col.ct.slice();
 		})();
 
 		const currentTokenText = displayedIndices.length
-			? displayedIndices.map(i => ztTokens[i]?.text || '').join('')
+			? displayedIndices.map(i => ctTokens[i]?.text || '').join('')
 			: '';
 
 		// Check if this specific token is in the locked homophones
-		const lockedHomophones = col.ot ? lockedKeys?.[col.ot.ch] : undefined;
+		const lockedHomophones = col.pt ? lockedKeys?.[col.pt.ch] : undefined;
 		const isThisTokenLocked = (() => {
-			if (!col.ot || !lockedHomophones || !currentTokenText) return false;
+			if (!col.pt || !lockedHomophones || !currentTokenText) return false;
 			if (Array.isArray(lockedHomophones)) {
 				return lockedHomophones.includes(currentTokenText);
 			}
@@ -276,47 +276,47 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 		return (
 			<div style={{ ...style, padding: '2px' }} {...ariaAttributes}>
-				<OTCell
-					highlightedOTChar={props.highlightedOTChar}
+				<PTCell
+					highlightedPTChar={props.highlightedPTChar}
 					key={`${rIdx}-${cIdx}`}
-					ot={col.ot ?? null}
-					tokens={ztTokens}
-					tokenIndices={col.zt}
+					pt={col.pt ?? null}
+					tokens={ctTokens}
+					tokenIndices={col.ct}
 					row={rIdx}
 					col={cIdx}
 					onLockOT={onLockOT}
 					onUnlockOT={onUnlockOT}
 					lockedValue={isThisTokenLocked ? currentTokenText : undefined}
-					deception={Boolean(col.deception || col.ot == null)}
-					hasDuplicateKey={Boolean(col.ot && duplicateOTChars.has(col.ot.ch))}
+					deception={Boolean(col.deception || col.pt == null)}
+					hasDuplicateKey={Boolean(col.pt && duplicatePTChars.has(col.pt.ch))}
 					onEditToken={onEditToken}
 					isFixedLength={groupSize > 1}
 					groupSize={groupSize}
 					flatIndex={flatIndices[rIdx][cIdx]}
-					flatOtIndex={flatOtIndices[rIdx][cIdx]}
+					flatPtIndex={flatPtIndices[rIdx][cIdx]}
 					activeDragType={activeDragType}
-					activeOtSourceRow={activeOtSourceRow}
-					activeOtSourceCol={activeOtSourceCol}
-					activeZtTokenIndex={activeZtTokenIndex}
-					keysPerOTMode={keysPerOTMode}
+					activePtSourceRow={activePtSourceRow}
+					activePtSourceCol={activePtSourceCol}
+					activeCtTokenIndex={activeCtTokenIndex}
+					keysPerPTMode={keysPerPTMode}
 					isTentative={Boolean(col.tentative)}
 					lockedHomophonesCount={
-						keysPerOTMode === 'multiple' && col.ot
-							? (() => { const v = lockedKeys?.[col.ot!.ch]; return Array.isArray(v) ? v.length : v ? 1 : 0; })()
+						keysPerPTMode === 'multiple' && col.pt
+							? (() => { const v = lockedKeys?.[col.pt!.ch]; return Array.isArray(v) ? v.length : v ? 1 : 0; })()
 							: undefined
 					}
 					allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;
-						const flatColumns: { otCh: string | null; indices: number[] }[] = [];
-						for (const row of rows) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
+						const flatColumns: { ptCh: string | null; indices: number[] }[] = [];
+						for (const row of rows) for (const col of row) flatColumns.push({ ptCh: col.pt ? col.pt.ch : null, indices: col.ct });
 						const target = flatColumns[fi];
-						if (!target || !target.otCh) return;
-						const current = target && target.indices.length ? target.indices.map(i => ztTokens[i]?.text || '').join('') : '';
-						const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this OT (no spaces):';
+						if (!target || !target.ptCh) return;
+						const current = target && target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
+						const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this PT (no spaces):';
 						const input = window.prompt(label, current);
-						const otOnlyIndex = flatColumns.slice(0, fi).filter(f => f.otCh != null).length;
-						if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(otOnlyIndex, input, true);
+						const ptOnlyIndex = flatColumns.slice(0, fi).filter(f => f.ptCh != null).length;
+						if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(ptOnlyIndex, input, true);
 					}}
 					onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
 					onShiftLeft={onShiftGroupLeft}
@@ -334,12 +334,12 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				/>
 			</div>
 		);
-	}, [flatCells, columnCount, groupSize, ztTokens, lockedKeys, props.highlightedOTChar, onLockOT, onUnlockOT, onEditToken, duplicateOTChars, flatIndices, flatOtIndices, activeDragType, activeOtSourceRow, activeOtSourceCol, activeZtTokenIndex, allowExpandMap, canInsertRaw, rows, onInsertRawCharsAfterPosition, canSplitGroup, onSplitGroup, onShiftGroupLeft, onShiftGroupRight, shiftMeta]);
+	}, [flatCells, columnCount, groupSize, ctTokens, lockedKeys, props.highlightedPTChar, onLockOT, onUnlockOT, onEditToken, duplicatePTChars, flatIndices, flatPtIndices, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, allowExpandMap, canInsertRaw, rows, onInsertRawCharsAfterPosition, canSplitGroup, onSplitGroup, onShiftGroupLeft, onShiftGroupRight, shiftMeta]);
 
 	if (rows.length === 0) {
 		return (
 			<div className="text-sm text-gray-400 italic p-4 text-center border border-dashed border-gray-200 rounded-lg">
-				No data yet — enter OT and ZT text above and run analysis.
+				No data yet — enter PT and CT text above and run analysis.
 			</div>
 		);
 	}
@@ -356,7 +356,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			{hasDeceptionWarning && (
 				<div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-300 rounded-lg px-3 py-2 mb-2">
 					<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-					<span>ZT has more tokens than OT characters — mark extra tokens as <strong>Null / Deception</strong> using the panel above.</span>
+					<span>CT has more tokens than PT characters — mark extra tokens as <strong>Null / Deception</strong> using the panel above.</span>
 				</div>
 			)}
 			<div

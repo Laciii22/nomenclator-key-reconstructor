@@ -1,22 +1,22 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 import type { Candidate, SelectionMap } from '../utils/analyzer';
 import { fixedModeScore, separatorModeScore, buildFixedModeGridContext } from '../utils/analyzer';
-import { countOtFrequency, countTokenFrequency } from '../utils/frequency';
+import { countPtFrequency, countTokenFrequency } from '../utils/frequency';
 import { computeRowAlloc } from '../utils/allocation';
-import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
+import type { PTChar, CTToken, KeysPerPTMode } from '../types/domain';
 import buildLogicalTokens from '../utils/parse/logicalTokens';
 import { computePairsFromColumns } from '../utils/columns';
 import type { AnalysisWorkerRequest, AnalysisWorkerResponse } from '../workers/analysis.worker';
 
 function collectGridTokenSet(
-  columns: { ot: { ch: string } | null; zt: number[] }[][],
-  effectiveZtTokens: ZTToken[]
+  columns: { pt: { ch: string } | null; ct: number[] }[][],
+  effectiveCtTokens: CTToken[]
 ): Set<string> {
   const set = new Set<string>();
   for (const row of columns) {
     for (const col of row) {
-      if (!col.zt || col.zt.length === 0) continue;
-      const text = col.zt.map((i: number) => effectiveZtTokens[i]?.text || '').join('');
+      if (!col.ct || col.ct.length === 0) continue;
+      const text = col.ct.map((i: number) => effectiveCtTokens[i]?.text || '').join('');
       if (text) set.add(text);
     }
   }
@@ -41,43 +41,43 @@ function sortCandidates(map: Record<string, Candidate[]>): Record<string, Candid
 }
 
 export function useAnalysis(params: {
-  otRows: OTChar[][];
-  ztParseMode: 'separator' | 'fixedLength';
+  ptRows: PTChar[][];
+  ctParseMode: 'separator' | 'fixedLength';
   fixedLength: number;
-  effectiveZtTokens: ZTToken[];
-  columns: { ot: { ch: string } | null; zt: number[] }[][];
-  keysPerOTMode: KeysPerOTMode;
+  effectiveCtTokens: CTToken[];
+  columns: { pt: { ch: string } | null; ct: number[] }[][];
+  keysPerPTMode: KeysPerPTMode;
   lockedKeys: Record<string, string | string[]>;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
 }) {
-  const { otRows, ztParseMode, fixedLength, effectiveZtTokens, columns, keysPerOTMode, lockedKeys, setSelections } = params;
+  const { ptRows, ctParseMode, fixedLength, effectiveCtTokens, columns, keysPerPTMode, lockedKeys, setSelections } = params;
 
   const gridTokenSet = React.useMemo(() => {
-    if (ztParseMode !== 'fixedLength') return new Set<string>();
-    return collectGridTokenSet(columns, effectiveZtTokens);
-  }, [columns, effectiveZtTokens, ztParseMode]);
+    if (ctParseMode !== 'fixedLength') return new Set<string>();
+    return collectGridTokenSet(columns, effectiveCtTokens);
+  }, [columns, effectiveCtTokens, ctParseMode]);
 
   const [candidatesByChar, setCandidatesByChar] = React.useState<Record<string, Candidate[]>>({});
   const [analysisDone, setAnalysisDone] = React.useState(false);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
 
   const augmentCandidatesWithCurrentMapping = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
-    if (ztParseMode !== 'fixedLength') return base;
+    if (ctParseMode !== 'fixedLength') return base;
 
     const gs = fixedLength || 1;
-    const pairs = computePairsFromColumns(columns, effectiveZtTokens, gs, keysPerOTMode);
+    const pairs = computePairsFromColumns(columns, effectiveCtTokens, gs, keysPerPTMode);
 
     const currentByChar: Record<string, Set<string>> = {};
     for (const p of pairs) {
-      if (!p.zt) continue;
-      (currentByChar[p.ot] ||= new Set()).add(p.zt);
+      if (!p.ct) continue;
+      (currentByChar[p.pt] ||= new Set()).add(p.ct);
     }
 
     if (!Object.keys(currentByChar).length && gridTokenSet.size === 0) return base;
 
     const result: Record<string, Candidate[]> = { ...base };
 
-    // Extend candidate lists for every OT char with:
+    // Extend candidate lists for every PT char with:
     // 1) tokens already mapped to that char (pairs)
     // 2) tokens currently present anywhere in the grid (gridTokenSet)
     // Scoring will be recomputed in applyScores().
@@ -100,10 +100,10 @@ export function useAnalysis(params: {
     }
 
     return result;
-  }, [columns, effectiveZtTokens, fixedLength, gridTokenSet, keysPerOTMode, ztParseMode]);
+  }, [columns, effectiveCtTokens, fixedLength, gridTokenSet, keysPerPTMode, ctParseMode]);
 
   const filterCandidatesForShiftedGrid = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
-    if (ztParseMode !== 'fixedLength') return base;
+    if (ctParseMode !== 'fixedLength') return base;
 
     // Only keep candidates that exist as a token in the *current shifted grid*
     // OR have a non-zero score.
@@ -112,19 +112,19 @@ export function useAnalysis(params: {
       out[ch] = list.filter(c => c.score > 0 || gridTokenSet.has(c.token));
     }
     return out;
-  }, [gridTokenSet, ztParseMode]);
+  }, [gridTokenSet, ctParseMode]);
 
   const applyScores = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
-    if (ztParseMode !== 'fixedLength') {
+    if (ctParseMode !== 'fixedLength') {
       // Precompute frequency maps once for the entire batch
-      const otFreq = countOtFrequency(otRows);
-      const tokenFreq = countTokenFrequency(effectiveZtTokens);
-      const precomputed = { otFreq, tokenFreq } as const;
+      const ptFreq = countPtFrequency(ptRows);
+      const tokenFreq = countTokenFrequency(effectiveCtTokens);
+      const precomputed = { ptFreq, tokenFreq } as const;
 
       const out: Record<string, Candidate[]> = {};
       for (const [ch, list] of Object.entries(base)) {
         out[ch] = list.map(c => {
-          const scored = separatorModeScore({ token: c.token, otChar: ch, otRows, effectiveZtTokens, _precomputed: precomputed });
+          const scored = separatorModeScore({ token: c.token, ptChar: ch, ptRows, effectiveCtTokens, _precomputed: precomputed });
           return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
         });
       }
@@ -132,24 +132,24 @@ export function useAnalysis(params: {
     }
 
     // Precompute grid context once for the entire batch
-    const gridCtx = buildFixedModeGridContext(columns, effectiveZtTokens);
+    const gridCtx = buildFixedModeGridContext(columns, effectiveCtTokens);
     const gs = fixedLength || 1;
     const out: Record<string, Candidate[]> = {};
     for (const [ch, list] of Object.entries(base)) {
       out[ch] = list.map(c => {
-        const scored = fixedModeScore({ token: c.token, otChar: ch, columns, effectiveZtTokens, groupSize: gs, keysPerOTMode, _gridCtx: gridCtx });
+        const scored = fixedModeScore({ token: c.token, ptChar: ch, columns, effectiveCtTokens, groupSize: gs, keysPerPTMode, _gridCtx: gridCtx });
         return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
       });
     }
     return out;
-  }, [columns, effectiveZtTokens, fixedLength, otRows, ztParseMode, keysPerOTMode]);
+  }, [columns, effectiveCtTokens, fixedLength, ptRows, ctParseMode, keysPerPTMode]);
 
   const runAnalysis = React.useCallback(() => {
     setIsAnalyzing(true);
     
-    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(effectiveZtTokens, gs);
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
+    const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
+    const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
 
     const worker = getAnalysisWorker();
@@ -171,21 +171,21 @@ export function useAnalysis(params: {
     
     const request: AnalysisWorkerRequest = {
       type: 'analyze',
-      otRows: otRows as OTChar[][],
-      ztTokens: logicalTokens,
+      ptRows: ptRows as PTChar[][],
+      ctTokens: logicalTokens,
       rowGroups: baseCounts,
-      keysPerOTMode,
+      keysPerPTMode,
       groupSize: gs,
       lockedKeys,
     };
     
     worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
+  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
-    const gs = ztParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(effectiveZtTokens, gs);
-    const alloc = computeRowAlloc(otRows as OTChar[][], logicalTokens);
+    const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
+    const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
 
     const worker = getAnalysisWorker();
@@ -221,16 +221,16 @@ export function useAnalysis(params: {
     
     const request: AnalysisWorkerRequest = {
       type: 'analyze',
-      otRows: otRows as OTChar[][],
-      ztTokens: logicalTokens,
+      ptRows: ptRows as PTChar[][],
+      ctTokens: logicalTokens,
       rowGroups: baseCounts,
-      keysPerOTMode,
+      keysPerPTMode,
       groupSize: gs,
       lockedKeys,
     };
     
     worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveZtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerOTMode, lockedKeys, otRows, setSelections, ztParseMode]);
+  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode]);
 
   return {
     candidatesByChar,

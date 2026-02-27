@@ -1,23 +1,23 @@
-/**
- * Helper functions for working with ZT tokens.
+﻿/**
+ * Helper functions for working with CT tokens.
  */
 
-import type { ZTToken } from '../types/domain';
+import type { CTToken } from '../types/domain';
 
 /**
- * Convert an array of indices to an array of ZT tokens.
+ * Convert an array of indices to an array of CT tokens.
  * Filters out undefined/null entries (for out-of-bounds indices).
  */
-export function tokensFromIndices(ztTokens: ZTToken[], indices: number[] | undefined): ZTToken[] {
+export function tokensFromIndices(ctTokens: CTToken[], indices: number[] | undefined): CTToken[] {
   if (!Array.isArray(indices) || indices.length === 0) return [];
-  return indices.map(i => ztTokens[i]).filter(Boolean) as ZTToken[];
+  return indices.map(i => ctTokens[i]).filter(Boolean) as CTToken[];
 }
 
 /**
  * Join token text values into a single string.
  * Useful for displaying fixed-length token groups.
  */
-export function joinTokenTexts(tokens: ZTToken[], fallback = ''): string {
+export function joinTokenTexts(tokens: CTToken[], fallback = ''): string {
   if (!tokens || tokens.length === 0) return fallback;
   return tokens.map(t => t.text).join('');
 }

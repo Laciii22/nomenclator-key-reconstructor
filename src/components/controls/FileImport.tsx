@@ -1,8 +1,8 @@
-/**
- * FileImport: Component for importing OT and ZT text from .txt files
+﻿/**
+ * FileImport: Component for importing PT and CT text from .txt files
  * 
  * Allows users to:
- * - Upload .txt files for OT or ZT input
+ * - Upload .txt files for PT or CT input
  * - Read file contents using FileReader API
  * - Clear current input and load file content
  */

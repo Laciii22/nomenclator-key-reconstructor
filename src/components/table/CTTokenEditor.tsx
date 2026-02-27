@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 
 type EditorProps = {
   tokenText: string;
@@ -7,7 +7,7 @@ type EditorProps = {
   onCancel: () => void;
 };
 
-export const ZTTokenEditor: React.FC<EditorProps> = ({ tokenText, isLocked, onCommit, onCancel }) => {
+export const CTTokenEditor: React.FC<EditorProps> = ({ tokenText, isLocked, onCommit, onCancel }) => {
   const [value, setValue] = useState(tokenText);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -40,4 +40,4 @@ export const ZTTokenEditor: React.FC<EditorProps> = ({ tokenText, isLocked, onCo
   );
 };
 
-export default ZTTokenEditor;
+export default CTTokenEditor;

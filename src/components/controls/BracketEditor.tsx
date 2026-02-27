@@ -1,14 +1,14 @@
-/**
+﻿/**
  * BracketEditor: Interface for marking deception/null tokens.
  * 
  * Allows users to exclude tokens from analysis by "bracketing" them.
- * Useful when ZT has extra tokens that don't correspond to OT characters.
+ * Useful when CT has extra tokens that don't correspond to PT characters.
  */
 
 import React from 'react';
-import type { ZTToken } from '../../types/domain';
+import type { CTToken } from '../../types/domain';
 
-export interface UniqueZTTokenText {
+export interface UniqueCTTokenText {
   /** The token text value */
   text: string;
   /** True if all occurrences of this token are currently bracketed */
@@ -16,14 +16,14 @@ export interface UniqueZTTokenText {
 }
 
 interface BracketEditorProps {
-  /** All ZT tokens */
-  ztTokens: ZTToken[];
+  /** All CT tokens */
+  ctTokens: CTToken[];
   /** Whether analysis has been run (editor only shows after analysis) */
   analysisDone: boolean;
   /** Warning message about bracket validity */
   bracketWarning: string | null;
   /** Unique token texts with bracket status */
-  uniqueZTTokenTexts: UniqueZTTokenText[];
+  uniqueCTTokenTexts: UniqueCTTokenText[];
   /** Callback to toggle bracket status for a token text */
   onToggleText: (text: string) => void;
   /** Callback to clear all brackets */
@@ -34,15 +34,15 @@ interface BracketEditorProps {
  * Control panel for marking tokens as deception/null.
  */
 const BracketEditor: React.FC<BracketEditorProps> = ({
-  ztTokens,
+  ctTokens,
   analysisDone,
   bracketWarning,
-  uniqueZTTokenTexts,
+  uniqueCTTokenTexts,
   onToggleText,
   onClear,
 }) => {
-  if (ztTokens.length === 0 || !analysisDone) return null;
-  const bracketedCount = uniqueZTTokenTexts.filter(t => t.allBracketed).length;
+  if (ctTokens.length === 0 || !analysisDone) return null;
+  const bracketedCount = uniqueCTTokenTexts.filter(t => t.allBracketed).length;
 
   return (
     <div className="border rounded-lg p-3 border-purple-200 bg-purple-50/50">
@@ -64,7 +64,7 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
         <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-2">{bracketWarning}</div>
       )}
       <div className="flex flex-wrap gap-2 items-center">
-        {uniqueZTTokenTexts.map(({ text, allBracketed }) => (
+        {uniqueCTTokenTexts.map(({ text, allBracketed }) => (
           <button
             key={text}
             className={`text-xs font-mono px-2 py-1 rounded-md border select-none transition-colors ${

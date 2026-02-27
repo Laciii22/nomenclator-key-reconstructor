@@ -1,62 +1,62 @@
-/**
- * Shared test factories for OTChar / ZTToken creation.
+﻿/**
+ * Shared test factories for PTChar / CTToken creation.
  *
  * Usage:
  *   beforeEach(() => resetIds());
- *   const rows = [otRow('A', 'H', 'A')];
- *   const tokens = ztList('11', '22', '11');
+ *   const rows = [ptRow('A', 'H', 'A')];
+ *   const tokens = ctList('11', '22', '11');
  */
 
-import type { OTChar, ZTToken } from '../src/types/domain';
+import type { PTChar, CTToken } from '../src/types/domain';
 import type { AnalysisOptions, AnalysisResult } from '../src/utils/analyzer';
 
 // ---------------------------------------------------------------------------
 // Id counters (reset between tests to keep ids deterministic)
 // ---------------------------------------------------------------------------
-let _otId = 0;
-let _ztId = 0;
+let _ptId = 0;
+let _ctId = 0;
 
 export function resetIds(): void {
-  _otId = 0;
-  _ztId = 0;
+  _ptId = 0;
+  _ctId = 0;
 }
 
 // ---------------------------------------------------------------------------
-// OT factories
+// PT factories
 // ---------------------------------------------------------------------------
 
-/** Single OTChar with auto-incremented id. */
-export function ot(ch: string): OTChar {
-  return { id: `ot_${_otId++}`, ch };
+/** Single PTChar with auto-incremented id. */
+export function pt(ch: string): PTChar {
+  return { id: `ot_${_ptId++}`, ch };
 }
 
-/** One row of OTChars from a list of characters. */
-export function otRow(...chars: string[]): OTChar[] {
-  return chars.map(ch => ot(ch));
+/** One row of PTChars from a list of characters. */
+export function ptRow(...chars: string[]): PTChar[] {
+  return chars.map(ch => pt(ch));
 }
 
-/** OTChar[][] (single row) from a plain string – one char per cell. */
-export function otFromString(s: string): OTChar[][] {
-  return [otRow(...s.split(''))];
+/** PTChar[][] (single row) from a plain string – one char per cell. */
+export function ptFromString(s: string): PTChar[][] {
+  return [ptRow(...s.split(''))];
 }
 
 // ---------------------------------------------------------------------------
-// ZT factories
+// CT factories
 // ---------------------------------------------------------------------------
 
-/** Single ZTToken with auto-incremented id. */
-export function zt(text: string): ZTToken {
-  return { id: `zt_${_ztId++}`, text };
+/** Single CTToken with auto-incremented id. */
+export function ct(text: string): CTToken {
+  return { id: `zt_${_ctId++}`, text };
 }
 
-/** Array of ZTTokens from a list of text values. */
-export function ztList(...texts: string[]): ZTToken[] {
-  return texts.map(t => zt(t));
+/** Array of CTTokens from a list of text values. */
+export function ctList(...texts: string[]): CTToken[] {
+  return texts.map(t => ct(t));
 }
 
-/** Parse a separator-delimited string into ZTTokens. */
-export function ztFromRaw(raw: string, sep = ':'): ZTToken[] {
-  return raw.split(sep).filter(Boolean).map(t => zt(t));
+/** Parse a separator-delimited string into CTTokens. */
+export function ctFromRaw(raw: string, sep = ':'): CTToken[] {
+  return raw.split(sep).filter(Boolean).map(t => ct(t));
 }
 
 // ---------------------------------------------------------------------------
@@ -77,8 +77,8 @@ export function uniformRowGroups(cols: number, total: number): number[][] {
 // Analysis options shorthand
 // ---------------------------------------------------------------------------
 
-export const OPTS_SINGLE: AnalysisOptions = { keysPerOTMode: 'single', groupSize: 1 };
-export const OPTS_MULTI: AnalysisOptions = { keysPerOTMode: 'multiple', groupSize: 1 };
+export const OPTS_SINGLE: AnalysisOptions = { keysPerPTMode: 'single', groupSize: 1 };
+export const OPTS_MULTI: AnalysisOptions = { keysPerPTMode: 'multiple', groupSize: 1 };
 
 // ---------------------------------------------------------------------------
 // Invariant assertion helpers
@@ -90,7 +90,7 @@ export const OPTS_MULTI: AnalysisOptions = { keysPerOTMode: 'multiple', groupSiz
  */
 export function assertAnalysisInvariants(
   result: AnalysisResult,
-  ztCount: number,
+  ctCount: number,
 ): void {
   const flat = result.proposedRowGroups.flat();
 
@@ -99,10 +99,10 @@ export function assertAnalysisInvariants(
     if (v < 0) throw new Error(`Negative cell count: ${v}`);
   }
 
-  // 2. Sum of cell counts === total ZT tokens
+  // 2. Sum of cell counts === total CT tokens
   const sum = flat.reduce((s, v) => s + v, 0);
-  if (sum !== ztCount) {
-    throw new Error(`rowGroups sum ${sum} ≠ expected ${ztCount}`);
+  if (sum !== ctCount) {
+    throw new Error(`rowGroups sum ${sum} ≠ expected ${ctCount}`);
   }
 
   // 3. Every candidate score ∈ [0, 1]

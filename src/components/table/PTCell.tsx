@@ -1,18 +1,18 @@
-/**
- * OTCell: A single grid cell representing an OT character and its allocated ZT tokens.
+﻿/**
+ * PTCell: A single grid cell representing an PT character and its allocated CT tokens.
  * 
  * Features:
- * - Displays ZT tokens allocated to this OT character
- * - Drag-and-drop support for merging adjacent OT cells
- * - Lock/unlock controls for fixing OT→ZT mappings
+ * - Displays CT tokens allocated to this PT character
+ * - Drag-and-drop support for merging adjacent PT cells
+ * - Lock/unlock controls for fixing PT→CT mappings
  * - Fixed-length mode: shift controls and group expansion
  * - Visual feedback for errors (empty, duplicate, highlighted)
  */
 
 import React from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
-import type { OTCellProps } from '../types';
-import ZTTokenComp from './ZTToken';
+import type { PTCellProps } from '../types';
+import CTTokenComp from './CTToken';
 import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
 import padlock from '../../assets/icons/padlock.png';
 import plusIcon from '../../assets/icons/plus.png';
@@ -21,11 +21,11 @@ import leftIcon from '../../assets/icons/left-arrow.png';
 import rightIcon from '../../assets/icons/right-arrow.png';
 
 /**
- * A single OT grid cell with its allocated ZT tokens.
+ * A single PT grid cell with its allocated CT tokens.
  * Supports drag-and-drop, locking, and visual error states.
  */
-const OTCell: React.FC<OTCellProps> = ({ 
-  ot, 
+const PTCell: React.FC<PTCellProps> = ({ 
+  pt, 
   tokens, 
   tokenIndices, 
   row, 
@@ -38,21 +38,21 @@ const OTCell: React.FC<OTCellProps> = ({
   isFixedLength, 
   groupSize = 1, 
   flatIndex, 
-  flatOtIndex,
+  flatPtIndex,
   onInsertAfterGroup, 
   onSplitGroup, 
   allowExpandFromStart, 
-  highlightedOTChar, 
+  highlightedPTChar, 
   hasDuplicateKey, 
   onShiftLeft, 
   onShiftRight, 
   canShiftLeft, 
   canShiftRight,
   activeDragType,
-  activeOtSourceRow,
-  activeOtSourceCol,
-  activeZtTokenIndex,
-  keysPerOTMode = 'single',
+  activePtSourceRow,
+  activePtSourceCol,
+  activeCtTokenIndex,
+  keysPerPTMode = 'single',
   lockedHomophonesCount: _lockedHomophonesCount,
   isTentative = false,
 }) => {
@@ -71,20 +71,20 @@ const OTCell: React.FC<OTCellProps> = ({
     action();
   }, []);
 
-  const isDraggingOT = activeDragType === 'ot';
+  const isDraggingOT = activeDragType === 'pt';
 
   // Merge is only valid when dropping onto the immediate right neighbor.
   // Keeping *only* that one droppable enabled dramatically reduces DnD overhead
   // for large grids (collision detection + droppable measuring).
-  const sourceRow = isDraggingOT ? activeOtSourceRow : undefined;
-  const sourceCol = isDraggingOT ? activeOtSourceCol : undefined;
+  const sourceRow = isDraggingOT ? activePtSourceRow : undefined;
+  const sourceCol = isDraggingOT ? activePtSourceCol : undefined;
   const isAdjacentRightCell = typeof sourceRow === 'number'
     && typeof sourceCol === 'number'
     && sourceRow === row
     && sourceCol + 1 === col;
-  const isPotentialOtMergeTarget = Boolean(
+  const isPotentialPtMergeTarget = Boolean(
     isDraggingOT
-    && ot
+    && pt
     && !deception
     && !lockedValue
     && isAdjacentRightCell
@@ -92,16 +92,16 @@ const OTCell: React.FC<OTCellProps> = ({
 
   const { setNodeRef, isOver } = useDroppable({ 
     id: `cell-${row}-${col}`, 
-    data: { row, col, isKlamac: !ot, flatIndex },
-    disabled: !isPotentialOtMergeTarget,
+    data: { row, col, isKlamac: !pt, flatIndex },
+    disabled: !isPotentialPtMergeTarget,
   });
 
   // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
   const displayedIndices = React.useMemo((): number[] => {
     if (!Array.isArray(tokenIndices) || tokenIndices.length === 0) return [];
 
-    const isRealOtCell = !!ot;
-    const shouldExpandGroup = isRealOtCell && isFixedLength && groupSize > 1;
+    const isRealPtCell = !!pt;
+    const shouldExpandGroup = isRealPtCell && isFixedLength && groupSize > 1;
 
     if (!shouldExpandGroup) {
       return tokenIndices.slice();
@@ -123,7 +123,7 @@ const OTCell: React.FC<OTCellProps> = ({
     }
 
     return tokenIndices.slice();
-  }, [tokenIndices, ot, isFixedLength, groupSize, allowExpandFromStart, tokens.length]);
+  }, [tokenIndices, pt, isFixedLength, groupSize, allowExpandFromStart, tokens.length]);
   
   const displayedTokens = React.useMemo(() => 
     displayedIndices.length
@@ -135,24 +135,24 @@ const OTCell: React.FC<OTCellProps> = ({
     [displayedIndices, tokens]
   );
 
-  const isEmptyRealOtCell = Boolean(ot) && !deception && displayedTokens.length === 0;
-  const isDuplicateKey = Boolean(ot) && !deception && Boolean(hasDuplicateKey);
+  const isEmptyRealPtCell = Boolean(pt) && !deception && displayedTokens.length === 0;
+  const isDuplicateKey = Boolean(pt) && !deception && Boolean(hasDuplicateKey);
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
-    id: ot ? `ot-${row}-${col}` : `ot-empty-${row}-${col}`,
-    data: { type: 'ot', otChar: ot?.ch, flatIndex, sourceRow: row, sourceCol: col },
-    disabled: !ot || Boolean(lockedValue),
+    id: pt ? `pt-${row}-${col}` : `pt-empty-${row}-${col}`,
+    data: { type: 'pt', ptChar: pt?.ch, flatIndex, sourceRow: row, sourceCol: col },
+    disabled: !pt || Boolean(lockedValue),
   });
 
-  // Visual-only drop affordance for OT merging (real enforcement in resolveMergeFromEvent + joinOTAt)
-  const canAcceptOtMergeDrop = isPotentialOtMergeTarget;
+  // Visual-only drop affordance for PT merging (real enforcement in resolveMergeFromEvent + joinPTAt)
+  const canAcceptPtMergeDrop = isPotentialPtMergeTarget;
 
-  const isValidDropTarget = isDraggingOT && ot && !deception;
-  const isInvalidOtHover = isOver && isDraggingOT && !canAcceptOtMergeDrop;
-  const isValidOtHover = isOver && isDraggingOT && canAcceptOtMergeDrop;
+  const isValidDropTarget = isDraggingOT && pt && !deception;
+  const isInvalidPtHover = isOver && isDraggingOT && !canAcceptPtMergeDrop;
+  const isValidPtHover = isOver && isDraggingOT && canAcceptPtMergeDrop;
 
-  const hasError = deception || (isEmptyRealOtCell && !isTentative) || isDuplicateKey;
-  const isHighlighted = Boolean(ot && highlightedOTChar === ot.ch);
+  const hasError = deception || (isEmptyRealPtCell && !isTentative) || isDuplicateKey;
+  const isHighlighted = Boolean(pt && highlightedPTChar === pt.ch);
   const canShowFixedLengthActions = Boolean(
     isFixedLength 
     && !lockedValue 
@@ -165,20 +165,20 @@ const OTCell: React.FC<OTCellProps> = ({
   //   - cell token already locked → remove just that token (specific unlock)
   //   - cell token not yet locked → add it to the homophone set
   const toggleLock = React.useCallback(() => {
-    if (!onLockOT || !ot) return;
+    if (!onLockOT || !pt) return;
     
     if (lockedValue) {
       // In multi mode pass the specific token so only it gets removed from the array.
       const specificToken = typeof lockedValue === 'string' ? lockedValue : undefined;
-      onUnlockOT?.(ot.ch, keysPerOTMode === 'multiple' ? specificToken : undefined);
+      onUnlockOT?.(pt.ch, keysPerPTMode === 'multiple' ? specificToken : undefined);
       return;
     }
     
-    if (isEmptyRealOtCell) return;
+    if (isEmptyRealPtCell) return;
     
     const groupText = joinTokenTexts(displayedTokens.map(f => f.token));
-    if (groupText) onLockOT(ot.ch, groupText);
-  }, [displayedTokens, isEmptyRealOtCell, lockedValue, onLockOT, onUnlockOT, ot, keysPerOTMode]);
+    if (groupText) onLockOT(pt.ch, groupText);
+  }, [displayedTokens, isEmptyRealPtCell, lockedValue, onLockOT, onUnlockOT, pt, keysPerPTMode]);
 
   // Handle edit or insert in separator mode
   const editOrInsert = React.useCallback(() => {
@@ -192,7 +192,7 @@ const OTCell: React.FC<OTCellProps> = ({
     if (!onEditToken) return;
     
     const currentGroupText = displayedTokens.map(f => f.token.text).join('');
-    const userInput = window.prompt('Edit token for this OT (no spaces):', currentGroupText);
+    const userInput = window.prompt('Edit token for this PT (no spaces):', currentGroupText);
     
     if (userInput?.trim()) {
       onEditToken(displayedTokens[0].tokenIndex, userInput.trim());
@@ -201,9 +201,9 @@ const OTCell: React.FC<OTCellProps> = ({
 
   const splitGroup = React.useCallback(() => {
     if (lockedValue) return;
-    if (typeof flatOtIndex !== 'number' || flatOtIndex < 0) return;
-    onSplitGroup?.(flatOtIndex);
-  }, [flatOtIndex, lockedValue, onSplitGroup]);
+    if (typeof flatPtIndex !== 'number' || flatPtIndex < 0) return;
+    onSplitGroup?.(flatPtIndex);
+  }, [flatPtIndex, lockedValue, onSplitGroup]);
 
   // Helper to render shift buttons for fixed-length mode
   const renderShiftButton = (
@@ -246,8 +246,8 @@ const OTCell: React.FC<OTCellProps> = ({
     );
   };
 
-  // Helper to get OT label className
-  const getOtLabelClassName = (
+  // Helper to get PT label className
+  const getPtLabelClassName = (
     locked: string | string[] | null | undefined, 
     dragging: boolean, 
     highlighted: boolean
@@ -276,12 +276,12 @@ const OTCell: React.FC<OTCellProps> = ({
     : isTentative
       ? 'bg-amber-50 border-amber-300'
       : 'bg-white border-gray-200';
-  const cellDropHintClasses = isValidDropTarget && canAcceptOtMergeDrop 
+  const cellDropHintClasses = isValidDropTarget && canAcceptPtMergeDrop 
     ? 'ring-1 ring-green-200' 
     : '';
-  const cellHoverClasses = isValidOtHover 
+  const cellHoverClasses = isValidPtHover 
     ? 'bg-green-50 border-green-300 ring-2 ring-green-300' 
-    : isInvalidOtHover 
+    : isInvalidPtHover 
       ? 'bg-red-50 border-red-300 ring-2 ring-red-300' 
       : '';
   const cellDragClasses = isDragging ? 'opacity-70' : '';
@@ -291,18 +291,18 @@ const OTCell: React.FC<OTCellProps> = ({
 
   return (
     <div ref={setNodeRef} className={cellClassName}>
-      {/* Render OT label with optional left/right shift buttons */}
+      {/* Render PT label with optional left/right shift buttons */}
       <div className="text-center font-mono text-xs mt-1 mb-0.5 flex items-center justify-center gap-0.5">
         {renderShiftButton('left', canShiftLeft, onShiftLeft)}
-        {ot ? (
+        {pt ? (
           <span
             ref={setDragRef}
             {...attributes}
             {...(!lockedValue ? listeners : {})}
-            className={getOtLabelClassName(lockedValue, isDragging, isHighlighted)}
-            title={lockedValue ? `OT: ${ot.ch} — locked (${Array.isArray(lockedValue) ? lockedValue.join(', ') : lockedValue})` : `OT: ${ot.ch}`}
+            className={getPtLabelClassName(lockedValue, isDragging, isHighlighted)}
+            title={lockedValue ? `PT: ${pt.ch} — locked (${Array.isArray(lockedValue) ? lockedValue.join(', ') : lockedValue})` : `PT: ${pt.ch}`}
           >
-            {ot.ch}
+            {pt.ch}
           </span>
         ) : (
           <span 
@@ -314,17 +314,17 @@ const OTCell: React.FC<OTCellProps> = ({
         )}
         {renderShiftButton('right', canShiftRight, onShiftRight)}
       </div>
-      {/* Render assigned ZT tokens or empty state */}
+      {/* Render assigned CT tokens or empty state */}
       <div className="flex flex-wrap gap-0.5 justify-center">
         {displayedTokens.length === 0 ? (
-          <span className={isEmptyRealOtCell ? 'text-red-400 text-xs font-semibold' : 'text-gray-300 text-xs'} title={isEmptyRealOtCell ? 'No token assigned' : undefined}>∅</span>
+          <span className={isEmptyRealPtCell ? 'text-red-400 text-xs font-semibold' : 'text-gray-300 text-xs'} title={isEmptyRealPtCell ? 'No token assigned' : undefined}>∅</span>
         ) : (
           displayedTokens.map(({ token, tokenIndex }, i) => {
             const currentGroupText = displayedTokens.map(x => x.token.text).join('');
             const isTokenLocked = Boolean(lockedValue && lockedValue === currentGroupText);
 
             return (
-              <ZTTokenComp
+              <CTTokenComp
                 key={`${token.id}-${i}`}
                 token={token}
                 tokenIndex={tokenIndex}
@@ -333,7 +333,7 @@ const OTCell: React.FC<OTCellProps> = ({
                 onEdit={onEditToken}
                 isLocked={isTokenLocked}
                 activeDragType={activeDragType}
-                activeZtTokenIndex={activeZtTokenIndex}
+                activeCtTokenIndex={activeCtTokenIndex}
               />
             );
           })
@@ -354,13 +354,13 @@ const OTCell: React.FC<OTCellProps> = ({
             if (suppressNextClickRef.current) return;
             onInsertAfterGroup?.(flatIndex!);
           }}
-          title="Add raw ZT token to this group"
+          title="Add raw CT token to this group"
         >
-          <img src={plusIcon} alt="edit ZT token" className="w-3 h-3" />
+          <img src={plusIcon} alt="edit CT token" className="w-3 h-3" />
         </button>
       )}
       {/* In separator mode show a + to edit the token, or insert when empty */}
-      {!isFixedLength && ot && !lockedValue && (
+      {!isFixedLength && pt && !lockedValue && (
         <button
           className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded bg-purple-50 hover:bg-purple-200 border border-purple-100"
           onPointerDown={(e) => {
@@ -371,21 +371,21 @@ const OTCell: React.FC<OTCellProps> = ({
             if (suppressNextClickRef.current) return;
             editOrInsert();
           }}
-          title={displayedTokens.length === 0 ? 'Insert ZT token for this OT' : 'Edit raw ZT token for this OT'}
+          title={displayedTokens.length === 0 ? 'Insert CT token for this PT' : 'Edit raw CT token for this PT'}
         >
-          <img src={plusIcon} alt="edit ZT token" className="w-3 h-3" />
+          <img src={plusIcon} alt="edit CT token" className="w-3 h-3" />
         </button>
       )}
-      {ot && (
+      {pt && (
         <button
           className={`absolute bottom-0 left-0 p-1 text-xs rounded-tr leading-none ${
-            !lockedValue && isEmptyRealOtCell
+            !lockedValue && isEmptyRealPtCell
               ? 'opacity-20 cursor-not-allowed'
               : 'hover:bg-gray-100'
           }`}
           onPointerDown={(e) => {
             // Run on pointer down to avoid click cancellation in complex DnD/virtualized UIs.
-            if (!lockedValue && isEmptyRealOtCell) {
+            if (!lockedValue && isEmptyRealPtCell) {
               e.stopPropagation();
               return;
             }
@@ -397,17 +397,17 @@ const OTCell: React.FC<OTCellProps> = ({
             if (suppressNextClickRef.current) return;
             toggleLock();
           }}
-          disabled={!lockedValue && isEmptyRealOtCell}
+          disabled={!lockedValue && isEmptyRealPtCell}
           title={
             lockedValue
-              ? (keysPerOTMode === 'multiple' ? `Remove homophone ${lockedValue} from ${ot.ch}` : `Unlock ${ot.ch}`)
-              : (isEmptyRealOtCell
+              ? (keysPerPTMode === 'multiple' ? `Remove homophone ${lockedValue} from ${pt.ch}` : `Unlock ${pt.ch}`)
+              : (isEmptyRealPtCell
                   ? 'Cannot lock an empty cell'
-                  : keysPerOTMode === 'multiple'
-                    ? `Add ${joinTokenTexts(displayedTokens.map(f => f.token))} as homophone for ${ot.ch}`
-                    : `Lock ${ot.ch}`)
+                  : keysPerPTMode === 'multiple'
+                    ? `Add ${joinTokenTexts(displayedTokens.map(f => f.token))} as homophone for ${pt.ch}`
+                    : `Lock ${pt.ch}`)
           }
-          aria-label={lockedValue ? `Unlock ${ot.ch}` : `Lock ${ot.ch}`}
+          aria-label={lockedValue ? `Unlock ${pt.ch}` : `Lock ${pt.ch}`}
           aria-pressed={!!lockedValue}
         >
           <img 
@@ -419,7 +419,7 @@ const OTCell: React.FC<OTCellProps> = ({
         </button>
       )}
 
-      {ot && ot.ch.length > 1 && typeof flatOtIndex === 'number' && flatOtIndex >= 0 && (
+      {pt && pt.ch.length > 1 && typeof flatPtIndex === 'number' && flatPtIndex >= 0 && (
         <button
           className="absolute top-0.5 left-0.5 p-0.5 text-xs rounded bg-gray-100 hover:bg-gray-200 border border-gray-200"
           onPointerDown={(e) => {
@@ -443,4 +443,4 @@ const OTCell: React.FC<OTCellProps> = ({
   );
 };
 
-export default React.memo(OTCell);
+export default React.memo(PTCell);

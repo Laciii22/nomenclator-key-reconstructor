@@ -1,4 +1,4 @@
-/**
+﻿/**
  * HelpModal: Comprehensive help documentation modal for the Nomenclator tool.
  * 
  * Provides detailed guidance on:
@@ -28,9 +28,9 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
         <section>
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Quick Start</h3>
           <ol className="list-decimal list-inside space-y-2 ml-2">
-            <li><strong>Enter OT (plain text)</strong>: Type the deciphered text you have</li>
-            <li><strong>Enter ZT (cipher tokens)</strong>: Paste the cipher tokens</li>
-            <li><strong>Choose parse mode</strong>: Select how to split ZT tokens</li>
+            <li><strong>Enter PT (plain text)</strong>: Type the deciphered text you have</li>
+            <li><strong>Enter CT (cipher tokens)</strong>: Paste the cipher tokens</li>
+            <li><strong>Choose parse mode</strong>: Select how to split CT tokens</li>
             <li><strong>Run analysis</strong>: Click the button to get frequency-based suggestions</li>
             <li><strong>Lock confident mappings</strong>: Click lock icons on verified pairs</li>
             <li><strong>Refine manually</strong>: Drag tokens or use candidate selectors</li>
@@ -69,7 +69,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Deception Tokens</h3>
           <p className="mb-3">
             Historical ciphers often included "deception tokens" (nulls) that don't represent any plaintext character. 
-            If your ZT has more tokens than OT characters, some must be marked as deception.
+            If your CT has more tokens than PT characters, some must be marked as deception.
           </p>
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
             <p className="font-semibold text-yellow-900 mb-2">How to mark deception tokens:</p>
@@ -94,7 +94,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900">Lock/Unlock</h4>
-                <p className="text-sm">Lock confirmed OT↔ZT mappings to prevent analysis from overwriting them.</p>
+                <p className="text-sm">Lock confirmed PT↔CT mappings to prevent analysis from overwriting them.</p>
               </div>
             </div>
 
@@ -106,7 +106,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900">Drag & Drop</h4>
-                <p className="text-sm">Drag ZT tokens between OT cells to manually assign mappings.</p>
+                <p className="text-sm">Drag CT tokens between PT cells to manually assign mappings.</p>
               </div>
             </div>
 
@@ -116,7 +116,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900">Split/Merge</h4>
-                <p className="text-sm">Split grouped OT characters or merge them together to adjust alignment.</p>
+                <p className="text-sm">Split grouped PT characters or merge them together to adjust alignment.</p>
               </div>
             </div>
 
@@ -146,11 +146,11 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold">•</span>
-              <span>Use "single key per OT" mode for simpler ciphers, "multiple keys" for more complex nomenclators</span>
+              <span>Use "single key per PT" mode for simpler ciphers, "multiple keys" for more complex nomenclators</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold">•</span>
-              <span>The Key Table shows all OT→ZT mappings at a glance</span>
+              <span>The Key Table shows all PT→CT mappings at a glance</span>
             </li>
           </ul>
         </section>

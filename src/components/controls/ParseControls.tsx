@@ -1,26 +1,26 @@
-/**
- * ParseControls: Configuration panel for ZT parsing and analysis options.
+﻿/**
+ * ParseControls: Configuration panel for CT parsing and analysis options.
  * 
  * Allows users to:
  * - Choose between separator and fixed-length parsing
  * - Configure separator character or fixed length
- * - Select single/multiple keys per OT mode
+ * - Select single/multiple keys per PT mode
  * - Trigger frequency analysis
  */
 
 import React from 'react';
-import type { KeysPerOTMode } from '../types';
+import type { KeysPerPTMode } from '../types';
 import HelpModal from '../common/HelpModal';
 
 interface ParseControlsProps {
-  ztParseMode: 'separator' | 'fixedLength';
+  ctParseMode: 'separator' | 'fixedLength';
   onChangeMode: (mode: 'separator' | 'fixedLength') => void;
   separator: string;
   onSeparatorChange: (sep: string) => void;
   fixedLength: number;
   onFixedLengthChange: (len: number) => void;
-  keysPerOTMode: KeysPerOTMode;
-  onKeysPerOTModeChange: (mode: KeysPerOTMode) => void;
+  keysPerPTMode: KeysPerPTMode;
+  onKeysPerPTModeChange: (mode: KeysPerPTMode) => void;
   canRunAnalysis: boolean;
   onRunAnalysis: () => void;
   onClear: () => void;
@@ -31,14 +31,14 @@ interface ParseControlsProps {
  * Control panel for parsing mode and analysis settings.
  */
 const ParseControls: React.FC<ParseControlsProps> = ({
-  ztParseMode,
+  ctParseMode,
   onChangeMode,
   separator,
   onSeparatorChange,
   fixedLength,
   onFixedLengthChange,
-  keysPerOTMode,
-  onKeysPerOTModeChange,
+  keysPerPTMode,
+  onKeysPerPTModeChange,
   canRunAnalysis,
   onRunAnalysis,
   onClear,
@@ -61,11 +61,11 @@ const ParseControls: React.FC<ParseControlsProps> = ({
 
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <div className="flex items-center gap-2">
-            <label htmlFor="ztParseMode" className="whitespace-nowrap text-gray-600 font-medium">ZT format:</label>
+            <label htmlFor="ctParseMode" className="whitespace-nowrap text-gray-600 font-medium">CT format:</label>
             <select
-              id="ztParseMode"
+              id="ctParseMode"
               className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-              value={ztParseMode}
+              value={ctParseMode}
               onChange={(e) => onChangeMode(e.target.value as 'separator' | 'fixedLength')}
             >
               <option value="separator">Separated by character</option>
@@ -73,7 +73,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
             </select>
           </div>
 
-          {ztParseMode === 'separator' && (
+          {ctParseMode === 'separator' && (
             <div className="flex items-center gap-2">
               <label htmlFor="separator" className="whitespace-nowrap text-gray-600">Separator:</label>
               <input
@@ -86,7 +86,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
               />
             </div>
           )}
-          {ztParseMode === 'fixedLength' && (
+          {ctParseMode === 'fixedLength' && (
             <div className="flex items-center gap-2">
               <label htmlFor="fixedLength" className="whitespace-nowrap text-gray-600">Token length:</label>
               <input
@@ -101,13 +101,13 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           )}
 
           <div className="flex items-center gap-2">
-            <label htmlFor="keysPerOT" className="whitespace-nowrap text-gray-600 font-medium">Keys per OT char:</label>
+            <label htmlFor="keysPerOT" className="whitespace-nowrap text-gray-600 font-medium">Keys per PT char:</label>
             <select
               id="keysPerOT"
               className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-              value={keysPerOTMode}
+              value={keysPerPTMode}
               onChange={(e) => {
-                onKeysPerOTModeChange(e.target.value as KeysPerOTMode);
+                onKeysPerPTModeChange(e.target.value as KeysPerPTMode);
               }}
             >
               <option value="single">Single (1:1)</option>
@@ -127,7 +127,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
             className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-sm"
             onClick={onRunAnalysis}
             disabled={!canRunAnalysis || isAnalyzing}
-            title={isAnalyzing ? "Analysis in progress..." : !canRunAnalysis ? "Enter OT and ZT text first" : "Run frequency analysis"}
+            title={isAnalyzing ? "Analysis in progress..." : !canRunAnalysis ? "Enter PT and CT text first" : "Run frequency analysis"}
           >
             {isAnalyzing && (
               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -138,7 +138,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
             {isAnalyzing ? 'Analyzing...' : 'Run analysis'}
           </button>
           {!canRunAnalysis && (
-            <span className="text-xs text-gray-400 italic">Enter OT and ZT text above first</span>
+            <span className="text-xs text-gray-400 italic">Enter PT and CT text above first</span>
           )}
         </div>
       </div>

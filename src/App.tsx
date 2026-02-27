@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Root component for the Nomenclator Key Reconstructor application.
  * 
  * This is a single-page app that provides a workspace for

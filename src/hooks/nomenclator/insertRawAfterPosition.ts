@@ -1,6 +1,6 @@
-import { buildEffectiveToOriginalIndexMap } from './ztIndexMaps';
+﻿import { buildEffectiveToOriginalIndexMap } from './ctIndexMaps';
 
-type Columns = { ot: { ch: string } | null; zt: number[] }[][];
+type Columns = { pt: { ch: string } | null; ct: number[] }[][];
 
 type ParseMode = 'separator' | 'fixedLength';
 
@@ -8,32 +8,32 @@ export function computeInsertRawCharsAfterPosition(args: {
   positionIndex: number;
   text: string;
   replace?: boolean;
-  ztParseMode: ParseMode;
+  ctParseMode: ParseMode;
   separator: string;
-  ztTokens: { text: string }[];
+  ctTokens: { text: string }[];
   bracketedIndices: number[];
   columns: Columns;
 }): { nextRaw: string; nextParseMode: ParseMode; nextBracketedIndices: number[] } | null {
-  const { positionIndex, text, replace = false, ztParseMode, separator, ztTokens, bracketedIndices, columns } = args;
+  const { positionIndex, text, replace = false, ctParseMode, separator, ctTokens, bracketedIndices, columns } = args;
 
   const trimmed = text.trim();
   if (!trimmed) return null;
 
-  const isFixed = ztParseMode === 'fixedLength';
+  const isFixed = ctParseMode === 'fixedLength';
   const items = isFixed ? Array.from(trimmed).filter(ch => ch.trim() !== '') : [trimmed];
   if (!items.length) return null;
 
   // Work against the original token list so deception/bracketed tokens keep their
   // identity and indices even when inserting/replacing visible tokens.
-  const originalTokens = ztTokens.map(t => t.text);
+  const originalTokens = ctTokens.map(t => t.text);
   const bracketedSet = new Set(bracketedIndices);
-  const effToOrig = buildEffectiveToOriginalIndexMap(ztTokens.length, bracketedIndices);
+  const effToOrig = buildEffectiveToOriginalIndexMap(ctTokens.length, bracketedIndices);
 
-  // Build flat mapping of OT positions to last raw token index used
-  const flatColumns: { otCh: string | null; indices: number[] }[] = [];
-  for (const row of columns) for (const col of row) flatColumns.push({ otCh: col.ot ? col.ot.ch : null, indices: col.zt });
+  // Build flat mapping of PT positions to last raw token index used
+  const flatColumns: { ptCh: string | null; indices: number[] }[] = [];
+  for (const row of columns) for (const col of row) flatColumns.push({ ptCh: col.pt ? col.pt.ch : null, indices: col.ct });
 
-  const visible = flatColumns.filter(f => f.otCh != null);
+  const visible = flatColumns.filter(f => f.ptCh != null);
   const target = visible[positionIndex];
 
   // Helper: apply "remove these original indices" and "insert items at original index".
@@ -70,14 +70,14 @@ export function computeInsertRawCharsAfterPosition(args: {
       const insertAtOrig = Math.min(...Array.from(removeOrig));
       const { nextTokens, nextBracketed } = applyRemoveAndInsert(removeOrig, insertAtOrig);
       const nextRaw = isFixed ? nextTokens.join('') : nextTokens.join(separator);
-      return { nextRaw, nextParseMode: ztParseMode, nextBracketedIndices: nextBracketed };
+      return { nextRaw, nextParseMode: ctParseMode, nextBracketedIndices: nextBracketed };
     }
   }
 
   // Otherwise, compute insertion point in effective-index space and translate to original.
   // If the target cell has indices: insert after its max.
   // If empty:
-  //  - separator: insert at the OT cell position (flat OT index)
+  //  - separator: insert at the PT cell position (flat PT index)
   //  - fixedLength: insert before next assigned, else after prev assigned, else at start
   let insertionEffIndex: number;
   if (target && target.indices.length) {
@@ -111,5 +111,5 @@ export function computeInsertRawCharsAfterPosition(args: {
   const { nextTokens, nextBracketed } = applyRemoveAndInsert(new Set(), insertAtOrig);
   const nextRaw = isFixed ? nextTokens.join('') : nextTokens.join(separator);
 
-  return { nextRaw, nextParseMode: ztParseMode, nextBracketedIndices: nextBracketed };
+  return { nextRaw, nextParseMode: ctParseMode, nextBracketedIndices: nextBracketed };
 }

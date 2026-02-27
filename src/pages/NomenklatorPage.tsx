@@ -1,7 +1,8 @@
-import React from 'react';
+﻿import React from 'react';
 import type { Active, DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
 import { DndContext, DragOverlay, useSensors, useSensor, MouseSensor, TouchSensor, KeyboardSensor, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import AppLayout from '../components/layout/AppLayout';
+import FrequencyModal from '../components/common/FrequencyModal';
 import MappingTable from '../components/table/MappingTable';
 import KeyTable from '../components/table/KeyTable';
 import BracketEditor from '../components/controls/BracketEditor';
@@ -15,8 +16,8 @@ import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap } from '../utils/analyzer';
 
 /**
- * Main interactive page for reconstructing a nomenclator key from OT (plain text)
- * and ZT (cipher text tokens).
+ * Main interactive page for reconstructing a nomenclator key from PT (plain text)
+ * and CT (cipher text tokens).
  *
  * The UI is intentionally split into three vertical concerns:
  * - Inputs + parsing controls
@@ -27,20 +28,21 @@ const NomenklatorPage: React.FC = () => {
 
   const { inputs, state, derived, actions } = useNomenklator();
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
+  const [isFrequencyOpen, setIsFrequencyOpen] = React.useState(false);
 
   const {
-    otRaw,
-    setOtRaw,
-    ztRaw,
-    setZtRaw,
-    ztParseMode,
-    setZtParseMode,
+    ptRaw,
+    setPtRaw,
+    ctRaw,
+    setCtRaw,
+    ctParseMode,
+    setCtParseMode,
     separator,
     setSeparator,
     fixedLength,
     setFixedLength,
-    keysPerOTMode,
-    setKeysPerOTMode,
+    keysPerPTMode,
+    setKeysPerPTMode,
   } = inputs;
 
   const {
@@ -58,16 +60,16 @@ const NomenklatorPage: React.FC = () => {
     isAnalyzing,
     selectionError,
     mergeAllPrompt,
-    highlightedOTChar,
+    highlightedPTChar,
   } = state;
 
   const {
-    otChars,
-    ztTokens,
-    effectiveZtTokens,
-    otRows,
+    ptChars,
+    ctTokens,
+    effectiveCtTokens,
+    ptRows,
     columns,
-    uniqueZTTokenTexts,
+    uniqueCTTokenTexts,
     reservedTokens,
     shiftMeta,
   } = derived;
@@ -82,9 +84,9 @@ const NomenklatorPage: React.FC = () => {
     toggleBracketGroupByText,
     chooseScoreOneSuggestions,
     applySelection,
-    editZtToken,
+    editCtToken,
     insertRawCharsAfterPosition,
-    splitOTAt,
+    splitPTAt,
     shiftGroupRight,
     shiftGroupLeft,
     mergeAllOccurrences,
@@ -95,24 +97,24 @@ const NomenklatorPage: React.FC = () => {
     resetToPreAnalysis,
   } = actions;
 
-  const otTextareaId = 'ot-raw';
-  const ztTextareaId = 'zt-raw';
+  const ptTextareaId = 'pt-raw';
+  const ctTextareaId = 'ct-raw';
 
-  const onOtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setOtRaw(e.target.value.toUpperCase());
-  }, [setOtRaw]);
+  const onPtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setPtRaw(e.target.value.toUpperCase());
+  }, [setPtRaw]);
 
-  const onZtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setZtRaw(e.target.value);
-  }, [setZtRaw]);
+  const onCtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setCtRaw(e.target.value);
+  }, [setCtRaw]);
 
-  const onOtFileLoad = React.useCallback((content: string) => {
-    setOtRaw(content.toUpperCase());
-  }, [setOtRaw]);
+  const onPtFileLoad = React.useCallback((content: string) => {
+    setPtRaw(content.toUpperCase());
+  }, [setPtRaw]);
 
-  const onZtFileLoad = React.useCallback((content: string) => {
-    setZtRaw(content);
-  }, [setZtRaw]);
+  const onCtFileLoad = React.useCallback((content: string) => {
+    setCtRaw(content);
+  }, [setCtRaw]);
 
   const onFixedLengthChange = React.useCallback((v: number) => {
     setFixedLength(Math.max(1, v));
@@ -151,19 +153,19 @@ const NomenklatorPage: React.FC = () => {
   }, [insertRawCharsAfterPosition]);
 
   const onSplitGroup = React.useCallback((fi: number) => {
-    splitOTAt(fi);
-  }, [splitOTAt]);
+    splitPTAt(fi);
+  }, [splitPTAt]);
 
   const [activeDrag, setActiveDrag] = React.useState<Active | null>(null);
 
   const activeDragInfo = React.useMemo(() => {
     const data = (activeDrag?.data?.current ?? {}) as any;
-    const type = data?.type === 'zt' || data?.type === 'ot' ? (data.type as 'zt' | 'ot') : undefined;
+    const type = data?.type === 'ct' || data?.type === 'pt' ? (data.type as 'ct' | 'pt') : undefined;
     return {
       type,
-      otSourceRow: typeof data?.sourceRow === 'number' ? (data.sourceRow as number) : undefined,
-      otSourceCol: typeof data?.sourceCol === 'number' ? (data.sourceCol as number) : undefined,
-      ztTokenIndex: typeof data?.tokenIndex === 'number' ? (data.tokenIndex as number) : null,
+      ptSourceRow: typeof data?.sourceRow === 'number' ? (data.sourceRow as number) : undefined,
+      ptSourceCol: typeof data?.sourceCol === 'number' ? (data.sourceCol as number) : undefined,
+      ctTokenIndex: typeof data?.tokenIndex === 'number' ? (data.tokenIndex as number) : null,
     };
   }, [activeDrag]);
 
@@ -193,8 +195,15 @@ const NomenklatorPage: React.FC = () => {
   );
 
   return (
-    <AppLayout onHelpClick={() => setIsHelpOpen(true)}>
+    <AppLayout onHelpClick={() => setIsHelpOpen(true)} onFrequencyClick={() => setIsFrequencyOpen(true)}>
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <FrequencyModal
+        isOpen={isFrequencyOpen}
+        onClose={() => setIsFrequencyOpen(false)}
+        ptChars={ptChars}
+        ctTokens={effectiveCtTokens}
+        groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
+      />
       <DndContext
         sensors={sensors}
         measuring={{
@@ -210,7 +219,7 @@ const NomenklatorPage: React.FC = () => {
       <div className="container mx-auto px-4 py-6">
         {/* Step progress indicator */}
         {(() => {
-          const hasInputs = otChars.length > 0 && ztTokens.length > 0;
+          const hasInputs = ptChars.length > 0 && ctTokens.length > 0;
           const hasAnalysis = analysisDone;
           const hasKeys = Object.keys(lockedKeys).length > 0;
           const step = hasKeys ? 4 : hasAnalysis ? 3 : hasInputs ? 2 : 1;
@@ -248,34 +257,34 @@ const NomenklatorPage: React.FC = () => {
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="block text-sm font-semibold text-gray-700" htmlFor={otTextareaId}>Plain text (PT)</label>
+                <label className="block text-sm font-semibold text-gray-700" htmlFor={ptTextareaId}>Plain text (PT)</label>
                 <p className="text-xs text-gray-400"> Use <span className="font-mono">[brackets]</span> for multi-char tokens, e.g. <span className="font-mono">[HELLO]WORLD</span></p>
               </div>
-              <FileImport label="Import PT" onFileLoad={onOtFileLoad} />
+              <FileImport label="Import PT" onFileLoad={onPtFileLoad} />
             </div>
             <textarea
-              id={otTextareaId}
+              id={ptTextareaId}
               rows={3}
               className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
               placeholder="[HELLO]WORLD"
-              value={otRaw}
-              onChange={onOtChange}
+              value={ptRaw}
+              onChange={onPtChange}
             />
 
             <div className="flex items-center justify-between mt-1">
               <div>
-                <label className="block text-sm font-semibold text-gray-700" htmlFor={ztTextareaId}>Cipher text (CT)</label>
+                <label className="block text-sm font-semibold text-gray-700" htmlFor={ctTextareaId}>Cipher text (CT)</label>
                 <p className="text-xs text-gray-400">Tokens separated by space, or a single continuous string, e.g. <span className="font-mono">11:22:33:33:44</span></p>
               </div>
-              <FileImport label="Import CT" onFileLoad={onZtFileLoad} />
+              <FileImport label="Import CT" onFileLoad={onCtFileLoad} />
             </div>
             <textarea
-              id={ztTextareaId}
+              id={ctTextareaId}
               rows={3}
               className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
               placeholder="11 34 12 12 56"
-              value={ztRaw}
-              onChange={onZtChange}
+              value={ctRaw}
+              onChange={onCtChange}
             />
 
             {statusMessage && (
@@ -300,24 +309,24 @@ const NomenklatorPage: React.FC = () => {
             )}
 
             <BracketEditor
-              ztTokens={ztTokens}
+              ctTokens={ctTokens}
               analysisDone={analysisDone}
               bracketWarning={bracketWarning}
-              uniqueZTTokenTexts={uniqueZTTokenTexts}
+              uniqueCTTokenTexts={uniqueCTTokenTexts}
               onToggleText={toggleBracketGroupByText}
               onClear={() => setBracketedIndices([])}
             />
 
             <ParseControls
-              ztParseMode={ztParseMode}
-              onChangeMode={setZtParseMode}
+              ctParseMode={ctParseMode}
+              onChangeMode={setCtParseMode}
               separator={separator}
               onSeparatorChange={setSeparator}
               fixedLength={fixedLength}
               onFixedLengthChange={onFixedLengthChange}
-              keysPerOTMode={keysPerOTMode}
-              onKeysPerOTModeChange={setKeysPerOTMode}
-              canRunAnalysis={!(otChars.length === 0 || ztTokens.length === 0)}
+              keysPerPTMode={keysPerPTMode}
+              onKeysPerPTModeChange={setKeysPerPTMode}
+              canRunAnalysis={!(ptChars.length === 0 || ctTokens.length === 0)}
               onRunAnalysis={runAnalysis}
               onClear={resetToPreAnalysis}
               isAnalyzing={isAnalyzing}
@@ -357,28 +366,28 @@ const NomenklatorPage: React.FC = () => {
                 )}
                 
                 <div className="text-xs text-gray-500 mb-2">
-                  Mode: {keysPerOTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
+                  Mode: {keysPerPTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
                 </div>
                 
-                {keysPerOTMode === 'multiple' ? (
+                {keysPerPTMode === 'multiple' ? (
                   <CandidateSelectorMulti
                     candidatesByChar={candidatesByChar}
                     lockedKeys={lockedKeys}
                     selections={selections}
                     setSelections={setSelections}
-                    otRows={otRows}
-                    effectiveZtTokens={effectiveZtTokens}
+                    ptRows={ptRows}
+                    effectiveCtTokens={effectiveCtTokens}
                     reservedTokens={reservedTokens}
                     sharedColumns={columns}
                   />
-                ) : ztParseMode === 'fixedLength' ? (
+                ) : ctParseMode === 'fixedLength' ? (
                   <CandidateSelectorFixed
                     candidatesByChar={candidatesByChar}
                     lockedKeys={lockedKeys as Record<string, string>}
                     selections={selections}
                     setSelections={setSelections}
-                    otRows={otRows}
-                    effectiveZtTokens={effectiveZtTokens}
+                    ptRows={ptRows}
+                    effectiveCtTokens={effectiveCtTokens}
                     fixedLength={fixedLength}
                     reservedTokens={reservedTokens}
                     sharedColumns={columns}
@@ -389,8 +398,8 @@ const NomenklatorPage: React.FC = () => {
                     lockedKeys={lockedKeys as Record<string, string>}
                     selections={selections}
                     setSelections={setSelections}
-                    otRows={otRows}
-                    effectiveZtTokens={effectiveZtTokens}
+                    ptRows={ptRows}
+                    effectiveCtTokens={effectiveCtTokens}
                     reservedTokens={reservedTokens}
                     sharedColumns={columns}
                   />
@@ -403,17 +412,17 @@ const NomenklatorPage: React.FC = () => {
           <div className="space-y-2 bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Key Table</h3>
             <KeyTable
-              otRows={otRows}
-              ztTokens={effectiveZtTokens}
-              keysPerOTMode={keysPerOTMode}
+              ptRows={ptRows}
+              ctTokens={effectiveCtTokens}
+              keysPerPTMode={keysPerPTMode}
               lockedKeys={lockedKeys}
               selections={selections}
               onLockOT={onLockOT}
               onUnlockOT={onUnlockOT}
-              ztParseMode={ztParseMode}
-              groupSize={ztParseMode === 'fixedLength' ? fixedLength : 1}
+              ctParseMode={ctParseMode}
+              groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
               columns={columns}
-              highlightedOTChar={highlightedOTChar}
+              highlightedPTChar={highlightedPTChar}
               onToggleHighlightOT={toggleHighlightForOT}
               onLockAll={onLockAll}
               onQuickAssign={quickAssign}
@@ -425,8 +434,8 @@ const NomenklatorPage: React.FC = () => {
 
                     <div>
               <div className="flex items-center gap-4 text-xs text-gray-500 mb-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                <span>OT characters: <strong>{otChars.length}</strong></span>
-                <span>ZT tokens: <strong>{ztParseMode === 'fixedLength' ? Math.floor(ztTokens.length / Math.max(1, fixedLength)) : ztTokens.length}</strong></span>
+                <span>PT characters: <strong>{ptChars.length}</strong></span>
+                <span>CT tokens: <strong>{ctParseMode === 'fixedLength' ? Math.floor(ctTokens.length / Math.max(1, fixedLength)) : ctTokens.length}</strong></span>
               </div>
 
               {mergeAllPrompt ? (
@@ -450,34 +459,34 @@ const NomenklatorPage: React.FC = () => {
 
               <div className="flex items-center justify-between mb-2 mt-1">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mapping Grid</h3>
-                <span className="text-xs text-gray-400 italic">Drag OT characters to merge , drag ZT tokens to swap</span>
+                <span className="text-xs text-gray-400 italic">Drag PT characters to merge , drag CT tokens to swap</span>
               </div>
 
               <MappingTable
-                otRows={otRows}
-                ztTokens={effectiveZtTokens}
+                ptRows={ptRows}
+                ctTokens={effectiveCtTokens}
                 onLockOT={onLockOT}
                 onUnlockOT={onUnlockOT}
                 lockedKeys={lockedKeys}
                 hasDeceptionWarning={klamacStatus === 'needsKlamac'}
-                onEditToken={editZtToken}
+                onEditToken={editCtToken}
                 selections={selections}
-                groupSize={ztParseMode === 'fixedLength' ? fixedLength : 1}
+                groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
                 onInsertRawCharsAfterPosition={onInsertRawCharsAfterPosition}
                 onSplitGroup={onSplitGroup}
                 canInsertRaw={true}
                 canSplitGroup={true}
-                highlightedOTChar={highlightedOTChar}
+                highlightedPTChar={highlightedPTChar}
                 columns={columns}
                 bracketedIndices={bracketedIndices}
                 shiftMeta={shiftMeta}
                 onShiftGroupRight={shiftGroupRight}
                 onShiftGroupLeft={shiftGroupLeft}
                 activeDragType={activeDragInfo.type}
-                activeOtSourceRow={activeDragInfo.otSourceRow}
-                activeOtSourceCol={activeDragInfo.otSourceCol}
-                activeZtTokenIndex={activeDragInfo.ztTokenIndex}
-                keysPerOTMode={keysPerOTMode}
+                activePtSourceRow={activeDragInfo.ptSourceRow}
+                activePtSourceCol={activeDragInfo.ptSourceCol}
+                activeCtTokenIndex={activeDragInfo.ctTokenIndex}
+                keysPerPTMode={keysPerPTMode}
               />
             </div>
       </div>
@@ -486,12 +495,12 @@ const NomenklatorPage: React.FC = () => {
         {activeDrag ? (
           (() => {
             interface DragData {
-              type?: 'zt' | 'ot';
+              type?: 'ct' | 'pt';
               token?: { id: string; text: string };
-              otChar?: string;
+              ptChar?: string;
             }
             const data = (activeDrag.data?.current ?? {}) as DragData;
-            if (data?.type === 'zt') {
+            if (data?.type === 'ct') {
               const text = String(data?.token?.text ?? '');
               return (
                 <span className="inline-block text-xs px-0.5 rounded font-mono border bg-white shadow-sm cursor-grabbing select-none">
@@ -499,8 +508,8 @@ const NomenklatorPage: React.FC = () => {
                 </span>
               );
             }
-            if (data?.type === 'ot') {
-              const ch = String(data?.otChar ?? '');
+            if (data?.type === 'pt') {
+              const ch = String(data?.ptChar ?? '');
               return (
                 <span className="inline-block px-1 rounded font-mono text-md font-bold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm cursor-grabbing select-none">
                   {ch}

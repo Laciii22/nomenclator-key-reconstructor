@@ -1,14 +1,14 @@
-import React from 'react';
+﻿import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
 import {
   extendCandidateListWithLocked,
   sortCandidatesByScore,
   getCurrentSelectorValue,
   isSelectorDisabled,
-  getOTCharBadgeClasses,
+  getPTCharBadgeClasses,
   getSelectorInputClasses
 } from './candidateSelectorCommon';
-import type { OTChar, ZTToken } from '../../types/domain';
+import type { PTChar, CTToken } from '../../types/domain';
 import type { Candidate, SelectionMap } from '../../utils/analyzer';
 import type { Column } from '../types';
 
@@ -17,14 +17,14 @@ type Props = {
   lockedKeys: Record<string, string>;
   selections: SelectionMap;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
-  otRows: OTChar[][];
-  effectiveZtTokens: ZTToken[];
+  ptRows: PTChar[][];
+  effectiveCtTokens: CTToken[];
   fixedLength: number;
   reservedTokens: Set<string>;
   sharedColumns: Column[][];
 };
 
-const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, otRows, effectiveZtTokens, fixedLength, reservedTokens, sharedColumns }) => {
+const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, ptRows, effectiveCtTokens, fixedLength, reservedTokens, sharedColumns }) => {
   const groupSize = Math.max(1, fixedLength || 1);
   const totalChars = Object.keys(candidatesByChar).length;
   const assignedChars = Object.entries(candidatesByChar).filter(([ch]) => lockedKeys[ch] || selections[ch]).length;
@@ -50,7 +50,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
         return (
           <div key={ch} className="flex items-center gap-3">
             <div className="w-10 font-mono text-center">
-              <span className={`inline-block px-2 py-0.5 rounded border ${getOTCharBadgeClasses(Boolean(lockedVal))}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
+              <span className={`inline-block px-2 py-0.5 rounded border ${getPTCharBadgeClasses(Boolean(lockedVal))}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
             </div>
             <select
               className={getSelectorInputClasses(disabledSelect)}
@@ -63,7 +63,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
             >
               <option value="">None</option>
               {sortedByScore.filter((c) => c.length === 1).map((c, idx) => {
-                const opt = buildCandidateOptions({ c, idx, ch, otRows, effectiveZtTokens, groupSize, reservedTokens, selectionVal: normalizedSelectionVal, lockedVal, sharedColumns });
+                const opt = buildCandidateOptions({ c, idx, ch, ptRows, effectiveCtTokens, groupSize, reservedTokens, selectionVal: normalizedSelectionVal, lockedVal, sharedColumns });
                 return (
                   <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>
                 );

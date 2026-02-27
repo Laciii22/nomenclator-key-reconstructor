@@ -1,11 +1,11 @@
-/**
+﻿/**
  * Utilities for working with multi-key (homophone) mode.
  * 
  * These functions help manage the transition between single-key and multi-key modes,
  * validate selections, and normalize data structures.
  */
 
-import type { LockedKeys, SelectionMap, KeysPerOTMode } from '../types/domain';
+import type { LockedKeys, SelectionMap, KeysPerPTMode } from '../types/domain';
 
 /**
  * Type guard: checks if a value is a multi-key array.
@@ -49,7 +49,7 @@ export function normalizeToString(value: string | string[] | null | undefined): 
  */
 export function convertToMode(
   data: LockedKeys | SelectionMap,
-  mode: KeysPerOTMode
+  mode: KeysPerPTMode
 ): LockedKeys | SelectionMap {
   const result: Record<string, string | string[] | null> = {};
   
@@ -68,8 +68,8 @@ export function convertToMode(
  * Check if a specific token is assigned to a character.
  * Works with both single-key and multi-key formats.
  * 
- * @param char - OT character to check
- * @param token - ZT token to look for
+ * @param char - PT character to check
+ * @param token - CT token to look for
  * @param data - Locked keys or selections
  * @returns true if token is assigned to the character
  */

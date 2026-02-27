@@ -1,5 +1,5 @@
-import { buildOccMap } from '../../utils/parseStrategies';
-import type { ZTToken, OTChar } from '../../types/domain';
+﻿import { buildOccMap } from '../../utils/parseStrategies';
+import type { CTToken, PTChar } from '../../types/domain';
 import type { Column } from '../types';
 
 export type CandidateOption = {
@@ -11,13 +11,13 @@ export type CandidateOption = {
 };
 
 /**
- * Find the flat index of the first occurrence of a character in OT rows.
+ * Find the flat index of the first occurrence of a character in PT rows.
  * Excludes empty cells from indexing.
  */
-export function computeFlatIndexForChar(otRows: OTChar[][], ch: string): number {
+export function computeFlatIndexForChar(ptRows: PTChar[][], ch: string): number {
   let idx = 0;
   
-  for (const row of otRows) {
+  for (const row of ptRows) {
     for (const cell of row) {
       if (cell.ch !== '') {
         if (cell.ch === ch) return idx;
@@ -35,20 +35,20 @@ export function computeFlatIndexForChar(otRows: OTChar[][], ch: string): number 
 function countTotalDeceptionTokens(
   sharedColumns: Column[][]
 ): number {
-  const flatColumns: { otCh: string | null; indices: number[] }[] = [];
+  const flatColumns: { ptCh: string | null; indices: number[] }[] = [];
   
   for (const row of sharedColumns) {
     for (const col of row) {
       flatColumns.push({
-        otCh: col.ot ? col.ot.ch : null,
-        indices: (col.zt || []) as number[]
+        ptCh: col.pt ? col.pt.ch : null,
+        indices: (col.ct || []) as number[]
       });
     }
   }
   
   let deceptionTotal = 0;
   for (let i = 0; i < flatColumns.length; i++) {
-    if (flatColumns[i].otCh == null) {
+    if (flatColumns[i].ptCh == null) {
       deceptionTotal += (flatColumns[i].indices || []).length;
     }
   }
@@ -57,7 +57,7 @@ function countTotalDeceptionTokens(
 }
 
 /**
- * Check if token position is valid based on expected OT character position.
+ * Check if token position is valid based on expected PT character position.
  * Accounts for deception tokens which can shift expected positions.
  */
 function isTokenPositionValid(
@@ -67,7 +67,7 @@ function isTokenPositionValid(
   deceptionCount: number
 ): boolean {
   if (tokenOccurrences.length === 0) {
-    // Token does not exist in ZT stream - allow as manual override
+    // Token does not exist in CT stream - allow as manual override
     return true;
   }
   
@@ -92,8 +92,8 @@ export function buildCandidateOptions(params: {
   c: { token: string; score: number; length?: number };
   idx: number;
   ch: string;
-  otRows: OTChar[][];
-  effectiveZtTokens: ZTToken[];
+  ptRows: PTChar[][];
+  effectiveCtTokens: CTToken[];
   groupSize: number;
   reservedTokens: Set<string>;
   selectionVal: string | string[] | null | undefined;
@@ -105,8 +105,8 @@ export function buildCandidateOptions(params: {
   const {
     c,
     ch,
-    otRows,
-    effectiveZtTokens,
+    ptRows,
+    effectiveCtTokens,
     groupSize,
     reservedTokens,
     selectionVal,
@@ -123,8 +123,8 @@ export function buildCandidateOptions(params: {
     !selectionArr.includes(c.token) && 
     !lockedArr.includes(c.token);
   
-  const cellFlatIndex = computeFlatIndexForChar(otRows, ch);
-  const occMap = params._occMap ?? buildOccMap(effectiveZtTokens, groupSize);
+  const cellFlatIndex = computeFlatIndexForChar(ptRows, ch);
+  const occMap = params._occMap ?? buildOccMap(effectiveCtTokens, groupSize);
   const tokenOccurrences = occMap[c.token] || [];
   
   const deceptionCount = countTotalDeceptionTokens(sharedColumns);
@@ -143,7 +143,7 @@ export function buildCandidateOptions(params: {
     title = 'This token is already used for another character';
   } else if (hasInvalidPosition) {
     if (groupSize === 1) {
-      title = 'Token must start at index 0 for the first OT character';
+      title = 'Token must start at index 0 for the first PT character';
     } else {
       title = `Token must start at index ${cellFlatIndex * groupSize} for position ${cellFlatIndex}`;
     }

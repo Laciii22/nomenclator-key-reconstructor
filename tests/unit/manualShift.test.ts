@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import { canShiftLeft, canShiftRight, shiftLeft, shiftRight } from '../../src/mapping/manualShift';
 
 describe('manualShift', () => {

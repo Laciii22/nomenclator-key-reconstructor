@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+﻿import React, { useEffect, useMemo } from 'react';
 import type { KeyTableProps } from '../types';
 import { buildShiftOnlyColumns as buildColumns } from '../../utils/shiftMapping';
 import { computePairsFromColumns, aggregatePairsByOT } from '../../utils/columns';
@@ -11,26 +11,26 @@ import Modal from '../common/Modal';
 
 
 
-type SharedColumns = Array<Array<{ ot: { ch: string } | null; zt: number[] }>>;
+type SharedColumns = Array<Array<{ pt: { ch: string } | null; ct: number[] }>>;
 
 /**
- * KeyTable displays the reconstructed nomenclator key pairs OT → ZT.
+ * KeyTable displays the reconstructed nomenclator key pairs PT → CT.
  *
  * - Computes pairs by walking the same allocation that MappingTable uses (rowGroups or proportional fallback).
- * - Aggregates by OT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
+ * - Aggregates by PT character; in 'single' mode it displays only the first key but still detects violations if multiple unique keys exist.
  * - In 'multiple' mode, it displays all homophone tokens for each character.
- * - Supports locking (ot -> zt) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
+ * - Supports locking (pt -> ct) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
 const KeyTable: React.FC<KeyTableProps & { 
-  columns?: Array<Array<{ ot: { ch: string } | null; zt: number[] }>>; 
-  onQuickAssign?: (otPattern: string, ztToken: string) => { error?: string; warning?: { otCount: number; ztCount: number } } | null;
-  onExecuteQuickAssign?: (otPattern: string, ztToken: string) => string | null;
+  columns?: Array<Array<{ pt: { ch: string } | null; ct: number[] }>>; 
+  onQuickAssign?: (ptPattern: string, ctToken: string) => { error?: string; warning?: { ptCount: number; ctCount: number } } | null;
+  onExecuteQuickAssign?: (ptPattern: string, ctToken: string) => string | null;
   bracketedIndices?: number[];
-}> = ({ otRows, ztTokens, keysPerOTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ztParseMode = 'separator', groupSize = 1, columns, highlightedOTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [] }) => {
+}> = ({ ptRows, ctTokens, keysPerPTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ctParseMode = 'separator', groupSize = 1, columns, highlightedPTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [] }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
-    const gs = getGroupSize(ztParseMode, groupSize);
+    const gs = getGroupSize(ctParseMode, groupSize);
     
     // Normalize to single-key format for buildColumns
     const normalizedLocks: Record<string, string> = {};
@@ -47,50 +47,50 @@ const KeyTable: React.FC<KeyTableProps & {
       }
     }
     
-    return buildColumns(otRows, ztTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
-  }, [columns, otRows, ztTokens, lockedKeys, selections, ztParseMode, groupSize]);
+    return buildColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
+  }, [columns, ptRows, ctTokens, lockedKeys, selections, ctParseMode, groupSize]);
 
-  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ztTokens, getGroupSize(ztParseMode, groupSize), keysPerOTMode), [colsForMode, ztTokens, ztParseMode, groupSize, keysPerOTMode]);
+  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ctTokens, getGroupSize(ctParseMode, groupSize), keysPerPTMode), [colsForMode, ctTokens, ctParseMode, groupSize, keysPerPTMode]);
 
-  // Track OT chars that have at least one empty mapped cell.
+  // Track PT chars that have at least one empty mapped cell.
   // This is separate from the aggregated display (which can omit empty entries
   // when a non-empty key exists) but still represents an error state in the grid.
   const hasEmptyCellByOT = useMemo(() => {
     const map: Record<string, boolean> = {};
     for (const p of pairs) {
-      if (p.zt === '') map[p.ot] = true;
+      if (p.ct === '') map[p.pt] = true;
     }
     return map;
   }, [pairs]);
 
-  // Aggregate by OT character: collect ZT groups
-  const aggregated = useMemo(() => aggregatePairsByOT(pairs, keysPerOTMode), [pairs, keysPerOTMode]);
+  // Aggregate by PT character: collect CT groups
+  const aggregated = useMemo(() => aggregatePairsByOT(pairs, keysPerPTMode), [pairs, keysPerPTMode]);
 
-  // Abecedné zoradenie podľa OT znaku
+  // Abecedné zoradenie podľa PT znaku
   const sortedAggregated = useMemo(() => {
-    return [...aggregated].sort((a, b) => a.ot.localeCompare(b.ot));
+    return [...aggregated].sort((a, b) => a.pt.localeCompare(b.pt));
   }, [aggregated]);
 
   // Quick Assign state
-  const [quickOtPattern, setQuickOtPattern] = React.useState('');
-  const [quickZtToken, setQuickZtToken] = React.useState('');
+  const [quickPtPattern, setQuickPtPattern] = React.useState('');
+  const [quickCtToken, setQuickCtToken] = React.useState('');
   const [quickAssignError, setQuickAssignError] = React.useState<string | null>(null);
-  const [showFrequencyWarning, setShowFrequencyWarning] = React.useState<{ otCount: number; ztCount: number } | null>(null);
+  const [showFrequencyWarning, setShowFrequencyWarning] = React.useState<{ ptCount: number; ctCount: number } | null>(null);
 
   const handleQuickAssign = React.useCallback(() => {
     if (!onQuickAssign) return;
     
-    const result = onQuickAssign(quickOtPattern, quickZtToken);
+    const result = onQuickAssign(quickPtPattern, quickCtToken);
     if (!result) {
       // Success with no warnings
       if (onExecuteQuickAssign) {
-        const execError = onExecuteQuickAssign(quickOtPattern, quickZtToken);
+        const execError = onExecuteQuickAssign(quickPtPattern, quickCtToken);
         if (execError) {
           setQuickAssignError(execError);
         } else {
           // Clear fields on success
-          setQuickOtPattern('');
-          setQuickZtToken('');
+          setQuickPtPattern('');
+          setQuickCtToken('');
           setQuickAssignError(null);
         }
       }
@@ -107,52 +107,52 @@ const KeyTable: React.FC<KeyTableProps & {
       setShowFrequencyWarning(result.warning);
       return;
     }
-  }, [onQuickAssign, onExecuteQuickAssign, quickOtPattern, quickZtToken]);
+  }, [onQuickAssign, onExecuteQuickAssign, quickPtPattern, quickCtToken]);
 
   const handleConfirmFrequencyWarning = React.useCallback(() => {
     if (!onExecuteQuickAssign) return;
     
-    const error = onExecuteQuickAssign(quickOtPattern, quickZtToken);
+    const error = onExecuteQuickAssign(quickPtPattern, quickCtToken);
     if (error) {
       setQuickAssignError(error);
     } else {
       // Success - clear fields and error
-      setQuickOtPattern('');
-      setQuickZtToken('');
+      setQuickPtPattern('');
+      setQuickCtToken('');
       setQuickAssignError(null);
     }
     setShowFrequencyWarning(null);
-  }, [onExecuteQuickAssign, quickOtPattern, quickZtToken]);
+  }, [onExecuteQuickAssign, quickPtPattern, quickCtToken]);
 
   const handleCancelFrequencyWarning = React.useCallback(() => {
     setShowFrequencyWarning(null);
   }, []);
 
-  const handleOtPatternChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuickOtPattern(e.target.value.toUpperCase());
+  const handlePtPatternChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuickPtPattern(e.target.value.toUpperCase());
     setQuickAssignError(null); // Clear error on input change
   }, []);
 
-  const handleZtTokenChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuickZtToken(e.target.value);
+  const handleCtTokenChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuickCtToken(e.target.value);
     setQuickAssignError(null); // Clear error on input change
   }, []);
 
-  // Duplicate displayed ZT keys across different OT characters.
+  // Duplicate displayed CT keys across different PT characters.
   // This matches what the KeyTable shows (and what users reason about).
   const duplicateKeyByOT = useMemo(() => {
     const tokenToOTs: Record<string, Set<string>> = {};
     for (const row of sortedAggregated) {
-      const primary = row.ztList?.[0] ?? '';
+      const primary = row.ctList?.[0] ?? '';
       const token = typeof primary === 'string' ? primary.trim() : '';
       if (!token) continue;
-      (tokenToOTs[token] ||= new Set()).add(row.ot);
+      (tokenToOTs[token] ||= new Set()).add(row.pt);
     }
 
     const dupTokenByOT: Record<string, string> = {};
     for (const [token, ots] of Object.entries(tokenToOTs)) {
       if (ots.size <= 1) continue;
-      for (const ot of ots) dupTokenByOT[ot] = token;
+      for (const pt of ots) dupTokenByOT[pt] = token;
     }
     return dupTokenByOT;
   }, [sortedAggregated]);
@@ -160,46 +160,46 @@ const KeyTable: React.FC<KeyTableProps & {
   const errorByOT = useMemo(() => {
     const out: Record<string, boolean> = {};
     for (const row of sortedAggregated) {
-      const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
-      const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
-      const lockedTokens = normalizeToArray(lockedKeys?.[row.ot]);
+      const uniqueCount = (row as { uniqueCount?: number; ctList: string[] }).uniqueCount ?? row.ctList.length;
+      const isViolationSingle = keysPerPTMode === 'single' && uniqueCount > 1;
+      const lockedTokens = normalizeToArray(lockedKeys?.[row.pt]);
       const isLocked = lockedTokens.length > 0;
       
       let lockedMismatch = false;
-      if (isLocked && row.ztList.length > 0) {
-        if (keysPerOTMode === 'multiple') {
-          // In multi-key mode, check if all locked tokens are in the ztList
-          lockedMismatch = !lockedTokens.every(lt => row.ztList.includes(lt));
+      if (isLocked && row.ctList.length > 0) {
+        if (keysPerPTMode === 'multiple') {
+          // In multi-key mode, check if all locked tokens are in the ctList
+          lockedMismatch = !lockedTokens.every(lt => row.ctList.includes(lt));
         } else {
           // In single-key mode, check if the first token matches
-          lockedMismatch = lockedTokens[0] !== row.ztList[0];
+          lockedMismatch = lockedTokens[0] !== row.ctList[0];
         }
       }
       
-      const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
-      const hasDuplicateChosenKey = keysPerOTMode === 'single' && typeof duplicateKeyByOT[row.ot] === 'string';
+      const hasEmptyCell = Boolean(hasEmptyCellByOT[row.pt]);
+      const hasDuplicateChosenKey = keysPerPTMode === 'single' && typeof duplicateKeyByOT[row.pt] === 'string';
       
       // Check for invalid token length in fixed-length mode
       let hasInvalidLength = false;
-      if (ztParseMode === 'fixedLength' && groupSize > 1) {
-        hasInvalidLength = row.ztList.some(token => token.length !== groupSize);
+      if (ctParseMode === 'fixedLength' && groupSize > 1) {
+        hasInvalidLength = row.ctList.some(token => token.length !== groupSize);
       }
       
-      out[row.ot] = Boolean(isViolationSingle || lockedMismatch || row.ztList.length === 0 || hasEmptyCell || hasDuplicateChosenKey || hasInvalidLength);
+      out[row.pt] = Boolean(isViolationSingle || lockedMismatch || row.ctList.length === 0 || hasEmptyCell || hasDuplicateChosenKey || hasInvalidLength);
     }
     return out;
-  }, [duplicateKeyByOT, hasEmptyCellByOT, keysPerOTMode, lockedKeys, sortedAggregated, ztParseMode, groupSize]);
+  }, [duplicateKeyByOT, hasEmptyCellByOT, keysPerPTMode, lockedKeys, sortedAggregated, ctParseMode, groupSize]);
 
-  // If a previously-highlighted OT is no longer eligible for the highlight icon,
+  // If a previously-highlighted PT is no longer eligible for the highlight icon,
   // automatically turn off the highlight so cells don't stay highlighted.
   useEffect(() => {
-    if (!highlightedOTChar) return;
+    if (!highlightedPTChar) return;
     if (!onToggleHighlightOT) return;
-    if (errorByOT[highlightedOTChar]) return;
+    if (errorByOT[highlightedPTChar]) return;
     // The highlighter is an "error navigation" affordance; once the error condition
     // is gone, keeping the highlight on becomes distracting.
-    onToggleHighlightOT(highlightedOTChar);
-  }, [errorByOT, highlightedOTChar, onToggleHighlightOT]);
+    onToggleHighlightOT(highlightedPTChar);
+  }, [errorByOT, highlightedPTChar, onToggleHighlightOT]);
 
   if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(no pairs)</div>;
 
@@ -207,14 +207,14 @@ const KeyTable: React.FC<KeyTableProps & {
   let hasError = false;
   const bulkLocks: Record<string, string | string[]> = {};
   for (const row of sortedAggregated) {
-    if (errorByOT[row.ot]) {
+    if (errorByOT[row.pt]) {
       hasError = true;
     }
-    if (row.ztList.length > 0) {
-      if (keysPerOTMode === 'multiple') {
-        bulkLocks[row.ot] = row.ztList; // All tokens
+    if (row.ctList.length > 0) {
+      if (keysPerPTMode === 'multiple') {
+        bulkLocks[row.pt] = row.ctList; // All tokens
       } else {
-        bulkLocks[row.ot] = row.ztList[0]; // First token only
+        bulkLocks[row.pt] = row.ctList[0]; // First token only
       }
     }
   }
@@ -229,26 +229,26 @@ const KeyTable: React.FC<KeyTableProps & {
             <div className="flex-1">
               <input
                 type="text"
-                placeholder="OT pattern (e.g. PES)"
-                value={quickOtPattern}
-                onChange={handleOtPatternChange}
+                placeholder="PT pattern (e.g. PES)"
+                value={quickPtPattern}
+                onChange={handlePtPatternChange}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="flex-1">
               <input
                 type="text"
-                placeholder="ZT token (e.g. 66)"
-                value={quickZtToken}
-                onChange={handleZtTokenChange}
+                placeholder="CT token (e.g. 66)"
+                value={quickCtToken}
+                onChange={handleCtTokenChange}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button
               onClick={handleQuickAssign}
-              disabled={!quickOtPattern || !quickZtToken}
+              disabled={!quickPtPattern || !quickCtToken}
               className="px-3 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              title="Merge and assign OT pattern to ZT token"
+              title="Merge and assign PT pattern to CT token"
             >
               Assign
             </button>
@@ -268,7 +268,7 @@ const KeyTable: React.FC<KeyTableProps & {
             className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
             onClick={() => onLockAll && onLockAll(bulkLocks)}
             disabled={hasError}
-            title={hasError ? 'Fix errors first (multiple keys / lock mismatch / empty ZT)' : 'Lock all OT → ZT according to table'}
+            title={hasError ? 'Fix errors first (multiple keys / lock mismatch / empty CT)' : 'Lock all PT characters → CT according to table'}
           >
             Lock all
           </button>
@@ -277,48 +277,48 @@ const KeyTable: React.FC<KeyTableProps & {
       <table className="w-full text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="text-left px-3 py-2 w-16">OT</th>
-            <th className="text-left px-3 py-2">ZT</th>
+            <th className="text-left px-3 py-2 w-16">PT</th>
+            <th className="text-left px-3 py-2">CT</th>
             <th className="text-left px-3 py-2 w-24">&nbsp;</th>
           </tr>
         </thead>
         <tbody>
           {sortedAggregated.map((row) => {
-            // violation rules for keysPerOTMode='single': more than one unique or lock mismatch
-            const uniqueCount = (row as { uniqueCount?: number; ztList: string[] }).uniqueCount ?? row.ztList.length;
-            const isViolationSingle = keysPerOTMode === 'single' && uniqueCount > 1;
-            const lockedTokens = normalizeToArray(lockedKeys?.[row.ot]);
+            // violation rules for keysPerPTMode='single': more than one unique or lock mismatch
+            const uniqueCount = (row as { uniqueCount?: number; ctList: string[] }).uniqueCount ?? row.ctList.length;
+            const isViolationSingle = keysPerPTMode === 'single' && uniqueCount > 1;
+            const lockedTokens = normalizeToArray(lockedKeys?.[row.pt]);
             const isLocked = lockedTokens.length > 0;
             
             let lockedMismatch = false;
-            if (isLocked && row.ztList.length > 0) {
-              if (keysPerOTMode === 'multiple') {
-                lockedMismatch = !lockedTokens.every(lt => row.ztList.includes(lt));
+            if (isLocked && row.ctList.length > 0) {
+              if (keysPerPTMode === 'multiple') {
+                lockedMismatch = !lockedTokens.every(lt => row.ctList.includes(lt));
               } else {
-                lockedMismatch = lockedTokens[0] !== row.ztList[0];
+                lockedMismatch = lockedTokens[0] !== row.ctList[0];
               }
             }
             
-            const hasEmptyCell = Boolean(hasEmptyCellByOT[row.ot]);
-            const hasDuplicateChosenKey = keysPerOTMode === 'single' && typeof duplicateKeyByOT[row.ot] === 'string';
+            const hasEmptyCell = Boolean(hasEmptyCellByOT[row.pt]);
+            const hasDuplicateChosenKey = keysPerPTMode === 'single' && typeof duplicateKeyByOT[row.pt] === 'string';
             
             // Check for invalid token length in fixed-length mode
             let hasInvalidLength = false;
-            if (ztParseMode === 'fixedLength' && groupSize > 1) {
-              hasInvalidLength = row.ztList.some(token => token.length !== groupSize);
+            if (ctParseMode === 'fixedLength' && groupSize > 1) {
+              hasInvalidLength = row.ctList.some(token => token.length !== groupSize);
             }
             
-            const isRowError = Boolean(errorByOT[row.ot]);
+            const isRowError = Boolean(errorByOT[row.pt]);
             const trClass = isRowError ? 'bg-red-50' : '';
             return (
-              <tr key={row.ot} className={`border-t border-gray-100 ${trClass}`}>
-                <td className="px-3 py-2 font-mono whitespace-nowrap">{row.ot}</td>
+              <tr key={row.pt} className={`border-t border-gray-100 ${trClass}`}>
+                <td className="px-3 py-2 font-mono whitespace-nowrap">{row.pt}</td>
                 <td className="px-3 py-2 font-mono">
-                  {keysPerOTMode === 'multiple' && row.ztList.length > 0 ? (
+                  {keysPerPTMode === 'multiple' && row.ctList.length > 0 ? (
                     <div>
                       <div className="flex flex-wrap gap-1">
-                        {row.ztList.map((zt, idx) => {
-                          const isLockedToken = lockedTokens.includes(zt);
+                        {row.ctList.map((ct, idx) => {
+                          const isLockedToken = lockedTokens.includes(ct);
                           return (
                             <span
                               key={idx}
@@ -329,14 +329,14 @@ const KeyTable: React.FC<KeyTableProps & {
                               }`}
                               title={isLockedToken ? 'Locked' : undefined}
                             >
-                              {zt}
+                              {ct}
                               {isLockedToken && <img src={padlock} alt="Locked" className="w-2 h-2" />}
                             </span>
                           );
                         })}
-                        {row.ztList.length > 1 && (
+                        {row.ctList.length > 1 && (
                           <span className="text-xs text-gray-500 self-center">
-                            ({row.ztList.length} homophones)
+                            ({row.ctList.length} homophones)
                           </span>
                         )}
                       </div>
@@ -351,7 +351,7 @@ const KeyTable: React.FC<KeyTableProps & {
                     </div>
                   ) : (
                     <>
-                      <span className="whitespace-nowrap">{(row.ztList.length ? row.ztList.join(' ') : '—') || '—'}</span>
+                      <span className="whitespace-nowrap">{(row.ctList.length ? row.ctList.join(' ') : '—') || '—'}</span>
                       {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
                       {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
                       {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
@@ -366,9 +366,9 @@ const KeyTable: React.FC<KeyTableProps & {
                       {isLocked ? (
                         <button
                           className={`text-xs px-2 py-1 rounded ${colors.lockedBtn}`}
-                          onClick={() => onUnlockOT && onUnlockOT(row.ot)}
-                          title={`Unlock ${row.ot}`}
-                          aria-label={`Unlock ${row.ot}`}
+                          onClick={() => onUnlockOT && onUnlockOT(row.pt)}
+                          title={`Unlock ${row.pt}`}
+                          aria-label={`Unlock ${row.pt}`}
                           aria-pressed={true}
                         >
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
@@ -377,18 +377,18 @@ const KeyTable: React.FC<KeyTableProps & {
                         <button
                           className={`text-xs px-2 py-1 rounded ${colors.unlockedBtn}`}
                           onClick={() => {
-                            if (!onLockOT || row.ztList.length === 0) return;
-                            if (keysPerOTMode === 'multiple') {
+                            if (!onLockOT || row.ctList.length === 0) return;
+                            if (keysPerPTMode === 'multiple') {
                               // Lock all tokens for this character
-                              row.ztList.forEach(zt => onLockOT(row.ot, zt));
+                              row.ctList.forEach(ct => onLockOT(row.pt, ct));
                             } else {
                               // Lock first token only
-                              onLockOT(row.ot, row.ztList[0]);
+                              onLockOT(row.pt, row.ctList[0]);
                             }
                           }}
-                          disabled={isRowError || row.ztList.length === 0}
-                          title={isRowError ? 'Fix the red error state first' : (row.ztList.length ? `Lock ${row.ot}` : 'Nothing to lock')}
-                          aria-label={isRowError ? `Cannot lock ${row.ot} while errors exist` : (row.ztList.length ? `Lock ${row.ot}` : `Nothing to lock for ${row.ot}`)}
+                          disabled={isRowError || row.ctList.length === 0}
+                          title={isRowError ? 'Fix the red error state first' : (row.ctList.length ? `Lock ${row.pt}` : 'Nothing to lock')}
+                          aria-label={isRowError ? `Cannot lock ${row.pt} while errors exist` : (row.ctList.length ? `Lock ${row.pt}` : `Nothing to lock for ${row.pt}`)}
                           aria-pressed={false}
                         >
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
@@ -397,11 +397,11 @@ const KeyTable: React.FC<KeyTableProps & {
                         {/* Highlighter icon shown for error rows */}
                         { isRowError && onToggleHighlightOT ? (
                           <button
-                            className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedOTChar === row.ot ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
-                            onClick={() => onToggleHighlightOT(row.ot)}
-                            title={`Highlight OT ${row.ot}`}
-                            aria-label={`Highlight OT ${row.ot}`}
-                            aria-pressed={highlightedOTChar === row.ot}
+                            className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
+                            onClick={() => onToggleHighlightOT(row.pt)}
+                            title={`Highlight PT ${row.pt}`}
+                            aria-label={`Highlight PT ${row.pt}`}
+                            aria-pressed={highlightedPTChar === row.pt}
                           >
                             <img src={highlighter} alt="highlight" aria-hidden="true" className="w-4 h-4" />
                           </button>
@@ -424,8 +424,8 @@ const KeyTable: React.FC<KeyTableProps & {
         >
           <div className="space-y-4">
             <p className="text-gray-700">
-              The pattern <strong>{quickOtPattern}</strong> appears <strong>{showFrequencyWarning.otCount}x</strong> in OT, 
-              but token <strong>{quickZtToken}</strong> appears <strong>{showFrequencyWarning.ztCount}x</strong> in ZT.
+              The pattern <strong>{quickPtPattern}</strong> appears <strong>{showFrequencyWarning.ptCount}x</strong> in PT, 
+              but token <strong>{quickCtToken}</strong> appears <strong>{showFrequencyWarning.ctCount}x</strong> in CT.
             </p>
             <p className="text-gray-700">
               This frequency mismatch may indicate an incorrect assignment. Do you want to proceed anyway?

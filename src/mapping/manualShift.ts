@@ -1,7 +1,7 @@
-/**
+﻿/**
  * Manual token shifting utilities for fixed-length mode.
  * 
- * Allows users to manually adjust how many tokens are allocated to each OT cell
+ * Allows users to manually adjust how many tokens are allocated to each PT cell
  * by shifting tokens left or right between adjacent cells.
  * 
  * Shifting respects a maximum group size and cascades overflows.
@@ -10,16 +10,16 @@
 import type { Column } from '../components/types';
 
 /**
- * Extract per-OT-cell token counts from columns.
- * Includes deception cells (ot: null) for complete grid representation.
+ * Extract per-PT-cell token counts from columns.
+ * Includes deception cells (pt: null) for complete grid representation.
  * Clamps each cell's count to maxLen.
  */
 export function deriveCountsFromColumns(baseColumns: Column[][], maxLen: number): number[] {
   const out: number[] = [];
   for (const row of baseColumns) {
     for (const col of row) {
-      // Include both OT cells and deception cells
-      out.push(Array.isArray(col.zt) ? Math.min(col.zt.length, maxLen) : 0);
+      // Include both PT cells and deception cells
+      out.push(Array.isArray(col.ct) ? Math.min(col.ct.length, maxLen) : 0);
     }
   }
   return out;

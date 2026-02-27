@@ -1,67 +1,67 @@
-import * as React from 'react';
-import type { KeysPerOTMode } from '../components/types';
+﻿import * as React from 'react';
+import type { KeysPerPTMode } from '../components/types';
 import type { LocalSettings } from './useLocalSettings';
-import type { OTChar } from '../types/domain';
+import type { PTChar } from '../types/domain';
 
 export function useNomenklatorPersistence(params: {
   settings: LocalSettings;
   setSettings: React.Dispatch<React.SetStateAction<LocalSettings>>;
   hydratedRef: React.RefObject<boolean>;
 
-  otRaw: string;
-  setOtRaw: React.Dispatch<React.SetStateAction<string>>;
+  ptRaw: string;
+  setPtRaw: React.Dispatch<React.SetStateAction<string>>;
 
-  ztRaw: string;
-  setZtRawSeparator: (raw: string) => void;
-  setZtRawFixed: (raw: string) => void;
+  ctRaw: string;
+  setCtRawSeparator: (raw: string) => void;
+  setCtRawFixed: (raw: string) => void;
 
-  keysPerOTMode: KeysPerOTMode;
-  setKeysPerOTMode: React.Dispatch<React.SetStateAction<KeysPerOTMode>>;
+  keysPerPTMode: KeysPerPTMode;
+  setKeysPerPTMode: React.Dispatch<React.SetStateAction<KeysPerPTMode>>;
 
   setLockedKeys: React.Dispatch<React.SetStateAction<Record<string, string | string[]>>>;
   setBracketedIndices: React.Dispatch<React.SetStateAction<number[]>>;
-  setCustomOtGroups: React.Dispatch<React.SetStateAction<OTChar[] | null>>;
+  setCustomPtGroups: React.Dispatch<React.SetStateAction<PTChar[] | null>>;
 }) {
   const {
     settings,
     setSettings,
     hydratedRef,
-    otRaw,
-    setOtRaw,
-    ztRaw,
-    setZtRawSeparator,
-    setZtRawFixed,
-    keysPerOTMode,
-    setKeysPerOTMode,
+    ptRaw,
+    setPtRaw,
+    ctRaw,
+    setCtRawSeparator,
+    setCtRawFixed,
+    keysPerPTMode,
+    setKeysPerPTMode,
     setLockedKeys,
     setBracketedIndices,
-    setCustomOtGroups,
+    setCustomPtGroups,
   } = params;
 
   // Hydration (avoid stale locks + brackets)
   React.useEffect(() => {
     if (hydratedRef.current) return;
-    setOtRaw(settings.otRaw ?? '');
+    setPtRaw(settings.ptRaw ?? '');
     // Initialize both mode-specific raws from saved value to avoid surprising empty fields
-    setZtRawSeparator(settings.ztRaw ?? '');
-    setZtRawFixed(settings.ztRaw ?? '');
-    setKeysPerOTMode((settings.keysPerOTMode as KeysPerOTMode) ?? 'single');
+    setCtRawSeparator(settings.ctRaw ?? '');
+    setCtRawFixed(settings.ctRaw ?? '');
+    setKeysPerPTMode((settings.keysPerPTMode as KeysPerPTMode) ?? 'single');
     setLockedKeys({});
     setBracketedIndices([]);
-    setCustomOtGroups(null);
+    setCustomPtGroups(null);
     hydratedRef.current = true;
-  }, [hydratedRef, setBracketedIndices, setCustomOtGroups, setKeysPerOTMode, setLockedKeys, setOtRaw, setZtRawFixed, setZtRawSeparator, settings]);
+  }, [hydratedRef, setBracketedIndices, setCustomPtGroups, setKeysPerPTMode, setLockedKeys, setPtRaw, setCtRawFixed, setCtRawSeparator, settings]);
 
   // Minimal persistence
   React.useEffect(() => {
-    setSettings(p => (p.otRaw === otRaw ? p : { ...p, otRaw }));
-  }, [otRaw, setSettings]);
+    setSettings(p => (p.ptRaw === ptRaw ? p : { ...p, ptRaw }));
+  }, [ptRaw, setSettings]);
 
   React.useEffect(() => {
-    setSettings(p => (p.ztRaw === ztRaw ? p : { ...p, ztRaw }));
-  }, [setSettings, ztRaw]);
+    setSettings(p => (p.ctRaw === ctRaw ? p : { ...p, ctRaw }));
+  }, [setSettings, ctRaw]);
 
   React.useEffect(() => {
-    setSettings(p => (p.keysPerOTMode === keysPerOTMode ? p : { ...p, keysPerOTMode }));
-  }, [keysPerOTMode, setSettings]);
+    setSettings(p => (p.keysPerPTMode === keysPerPTMode ? p : { ...p, keysPerPTMode }));
+  }, [keysPerPTMode, setSettings]);
 }

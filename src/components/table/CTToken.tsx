@@ -1,49 +1,49 @@
-/**
- * ZTToken: A draggable cipher token component.
+﻿/**
+ * CTToken: A draggable cipher token component.
  * 
- * Represents a single ZT (cipher text) token in the grid.
+ * Represents a single CT (cipher text) token in the grid.
  * Supports drag-and-drop for manual token reordering.
  * Shows visual state for locked tokens and drag operations.
  */
 
 import React from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import type { ZTTokenProps } from '../types';
+import type { CTTokenProps } from '../types';
 import { colors } from '../../utils/colors';
 
 /**
- * A draggable ZT token component with lock state and swap affordances.
+ * A draggable CT token component with lock state and swap affordances.
  */
-const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked, activeDragType, activeZtTokenIndex }) => {
-  const isDraggingZT = activeDragType === 'zt';
-  const activeTokenIndex = typeof activeZtTokenIndex === 'number' ? activeZtTokenIndex : null;
+const CTTokenComp: React.FC<CTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked, activeDragType, activeCtTokenIndex }) => {
+  const isDraggingZT = activeDragType === 'ct';
+  const activeTokenIndex = typeof activeCtTokenIndex === 'number' ? activeCtTokenIndex : null;
 
   // Visual-only drop affordance for swapping tokens.
   // Real enforcement still happens in the drag-end handler.
   // Only adjacent swaps are valid, so keep droppable enabled only for those targets
   // to avoid registering/measuring thousands of droppables during drag.
   const isAdjacentSwapTarget = isDraggingZT && activeTokenIndex != null && Math.abs(activeTokenIndex - tokenIndex) === 1;
-  const canAcceptZtSwap = Boolean(isAdjacentSwapTarget && !isLocked);
+  const canAcceptCtSwap = Boolean(isAdjacentSwapTarget && !isLocked);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `zt-${token.id}`,
-    data: { type: 'zt', token, tokenIndex, row, col },
+    id: `ct-${token.id}`,
+    data: { type: 'ct', token, tokenIndex, row, col },
     disabled: Boolean(isLocked),
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `zt-drop-${tokenIndex}`,
-    data: { type: 'zt', tokenIndex, row, col },
-    disabled: !canAcceptZtSwap,
+    id: `ct-drop-${tokenIndex}`,
+    data: { type: 'ct', tokenIndex, row, col },
+    disabled: !canAcceptCtSwap,
   });
-  const isValidZtHover = isOver && canAcceptZtSwap;
-  const isInvalidZtHover = isOver && isDraggingZT && !canAcceptZtSwap;
+  const isValidCtHover = isOver && canAcceptCtSwap;
+  const isInvalidCtHover = isOver && isDraggingZT && !canAcceptCtSwap;
 
   return (
     <span
       ref={setDropRef}
       style={{ display: 'inline-block' }}
-      className={`${isAdjacentSwapTarget ? 'ring-1 ring-green-200 rounded' : ''} ${isValidZtHover ? 'ring-2 ring-green-300 rounded bg-green-50' : ''} ${isInvalidZtHover ? 'ring-2 ring-red-300 rounded bg-red-50' : ''}`}
+      className={`${isAdjacentSwapTarget ? 'ring-1 ring-green-200 rounded' : ''} ${isValidCtHover ? 'ring-2 ring-green-300 rounded bg-green-50' : ''} ${isInvalidCtHover ? 'ring-2 ring-red-300 rounded bg-red-50' : ''}`}
     >
       <span ref={setNodeRef} style={{ touchAction: 'none' }}>
         <span
@@ -59,4 +59,4 @@ const ZTTokenComp: React.FC<ZTTokenProps> = ({ token, tokenIndex, row, col, onEd
   );
 };
 
-export default React.memo(ZTTokenComp);
+export default React.memo(CTTokenComp);

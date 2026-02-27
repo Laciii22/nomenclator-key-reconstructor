@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach} from 'vitest';
+﻿import {describe, it, expect, beforeEach} from 'vitest';
 import {parseFixedRaw} from '../../src/utils/parse/fixed';
 import {resetIds} from '../helpers';
 
@@ -26,7 +26,7 @@ describe('parseFixedRaw', () => {
     // -----------------------------------------------------------------
     // Status: ok
     // -----------------------------------------------------------------
-    describe('status "ok" — token count === otCount', () => {
+    describe('status "ok" — token count === ptCount', () => {
         it('parses tokens correctly and reports ok', () => {
         const res = parseFixedRaw('112233', 2, 3);
         // Current parser returns per-character tokens; groupSize is used only for validation
@@ -37,7 +37,7 @@ describe('parseFixedRaw', () => {
         });
 
 
-        it('works with single token matching single OT char', () => {
+        it('works with single token matching single PT char', () => {
         const res = parseFixedRaw('42', 2, 1);
         expect(res.tokens).toHaveLength(2);
         expect(res.tokens[0].text).toBe('4');
@@ -49,15 +49,15 @@ describe('parseFixedRaw', () => {
     // -----------------------------------------------------------------
     // Status: needsKlamac
     // -----------------------------------------------------------------
-    describe('status "needsKlamac" — token count > otCount', () => {
+    describe('status "needsKlamac" — token count > ptCount', () => {
         it('sets needsKlamac and reports counts in message', () => {
         const res = parseFixedRaw('11223344', 2, 3);
         expect(res.klamacStatus).toBe('needsKlamac');
         expect(res.tokens).toHaveLength(8);
 
         // Avoid brittle exact-string check; verify the key numbers instead
-        expect(res.statusMessage).toContain('3');  // OT count
-        expect(res.statusMessage).toContain('4');  // ZT groups count (8 tokens / group size 2)
+        expect(res.statusMessage).toContain('3');  // PT count
+        expect(res.statusMessage).toContain('4');  // CT groups count (8 tokens / group size 2)
         });
 
     });
@@ -65,7 +65,7 @@ describe('parseFixedRaw', () => {
     // -----------------------------------------------------------------
     // Status: invalid
     // -----------------------------------------------------------------
-    describe('status "invalid" — leftover characters or OT > groups', () => {
+    describe('status "invalid" — leftover characters or PT > groups', () => {
         it('detects invalid when leftover characters exist', () => {
         const res = parseFixedRaw('11223', 2, 2);
         expect(res.klamacStatus).toBe('invalid');
@@ -97,8 +97,8 @@ describe('parseFixedRaw', () => {
         expect(res.klamacStatus).toBe('ok');
         });
 
-        it('reports invalid when OT count is greater than ZT groups', () => {
-        const res = parseFixedRaw('1122', 2, 3); // 4 tokens -> 2 groups, OT=3 > groups
+        it('reports invalid when PT count is greater than CT groups', () => {
+        const res = parseFixedRaw('1122', 2, 3); // 4 tokens -> 2 groups, PT=3 > groups
         expect(res.tokens).toHaveLength(4);
         expect(res.klamacStatus).toBe('invalid');
         expect(res.statusMessage).not.toBeNull();

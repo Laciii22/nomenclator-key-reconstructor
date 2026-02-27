@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Common utilities shared across all candidate selector components
  * (Fixed, Separator, Multi).
  * 
@@ -75,9 +75,9 @@ export function isSelectorDisabled(lockedValue: string | undefined): boolean {
 }
 
 /**
- * Get CSS classes for OT character badge based on lock status.
+ * Get CSS classes for PT character badge based on lock status.
  */
-export function getOTCharBadgeClasses(isLocked: boolean): string {
+export function getPTCharBadgeClasses(isLocked: boolean): string {
   return isLocked
     ? 'bg-green-100 text-green-800 border border-green-300'
     : 'bg-yellow-100 text-yellow-800 border border-yellow-300';

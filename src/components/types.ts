@@ -1,67 +1,67 @@
-/**
+﻿/**
  * Shared component prop types for the nomenclator reconstruction UI.
  */
 
-import type { OTChar, ZTToken, KeysPerOTMode } from '../types/domain';
+import type { PTChar, CTToken, KeysPerPTMode } from '../types/domain';
 
 // Re-export core domain types for backwards compatibility with imports
-export type { OTChar, ZTToken, KeysPerOTMode };
+export type { PTChar, CTToken, KeysPerPTMode };
 
 /**
  * Props for the KeyTable component, which displays the reconstructed
- * OT → ZT key mappings.
+ * PT → CT key mappings.
  */
 export type KeyTableProps = {
   /** Rows of plain text characters */
-  otRows: OTChar[][];
+  ptRows: PTChar[][];
   /** All cipher tokens */
-  ztTokens: ZTToken[];
-  /** Whether each OT char can map to one or multiple ZT tokens */
-  keysPerOTMode?: KeysPerOTMode;
+  ctTokens: CTToken[];
+  /** Whether each PT char can map to one or multiple CT tokens */
+  keysPerPTMode?: KeysPerPTMode;
   /** User-confirmed mappings that shouldn't change (single-key: string, multi-key: string[]) */
   lockedKeys?: Record<string, string | string[]>;
-  /** Callback when user locks an OT→ZT mapping */
-  onLockOT?: (ot: string, lockValue: string) => void;
-  /** Callback when user unlocks an OT character (specificToken for multi-key mode) */
-  onUnlockOT?: (ot: string, specificToken?: string) => void;
+  /** Callback when user locks an PT→CT mapping */
+  onLockOT?: (pt: string, lockValue: string) => void;
+  /** Callback when user unlocks an PT character (specificToken for multi-key mode) */
+  onUnlockOT?: (pt: string, specificToken?: string) => void;
   /** Callback to lock all valid pairs at once */
   onLockAll?: (locks: Record<string, string | string[]>) => void;
-  /** Current manual selections for each OT character */
+  /** Current manual selections for each PT character */
   selections?: Record<string, string | string[] | null>;
-  /** Parsing mode for ZT tokens */
-  ztParseMode?: 'separator' | 'fixedLength';
+  /** Parsing mode for CT tokens */
+  ctParseMode?: 'separator' | 'fixedLength';
   /** Size of token groups (relevant for fixedLength mode) */
   groupSize?: number;
-  /** Currently highlighted OT character for error navigation */
-  highlightedOTChar?: string | null;
-  /** Callback to toggle highlighting on an OT character */
+  /** Currently highlighted PT character for error navigation */
+  highlightedPTChar?: string | null;
+  /** Callback to toggle highlighting on an PT character */
   onToggleHighlightOT?: (ch: string) => void;
 };
 
 /**
- * Props for the MappingTable component, which shows the OT/ZT allocation grid.
+ * Props for the MappingTable component, which shows the PT/CT allocation grid.
  */
 export type MappingTableProps = {
   /** Rows of plain text characters */
-  otRows: OTChar[][];
+  ptRows: PTChar[][];
   /** All cipher tokens */
-  ztTokens: ZTToken[];
+  ctTokens: CTToken[];
   /** Callback for drag-and-drop token movement */
-  onMoveZTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
-  /** Callback when user locks an OT→ZT mapping */
-  onLockOT?: (ot: string, lockValue: string) => void;
-  /** Callback when user unlocks an OT character */
-  onUnlockOT?: (ot: string, specificToken?: string) => void;
+  onMoveCTToken?: (tokenIndex: number, toRow: number, toCol: number) => void;
+  /** Callback when user locks an PT→CT mapping */
+  onLockOT?: (pt: string, lockValue: string) => void;
+  /** Callback when user unlocks an PT character */
+  onUnlockOT?: (pt: string, specificToken?: string) => void;
   /** User-confirmed mappings (single-key: string, multi-key: string[]) */
   lockedKeys?: Record<string, string | string[]>;
   /** Shows warning icon if deception/null tokens are detected */
   hasDeceptionWarning?: boolean;
-  /** Callback when user edits a ZT token inline */
+  /** Callback when user edits a CT token inline */
   onEditToken?: (tokenIndex: number, newText: string) => void;
   /** Current manual selections */
   selections?: Record<string, string | string[] | null>;
-  /** Currently highlighted OT character */
-  highlightedOTChar?: string | null;
+  /** Currently highlighted PT character */
+  highlightedPTChar?: string | null;
   /** Precomputed allocation columns (optional, for performance) */
   columns?: Column[][];
   /** Metadata for shift controls in fixed-length mode */
@@ -72,36 +72,36 @@ export type MappingTableProps = {
   onShiftGroupRight?: (flatIndex: number) => void;
 
   /** Active drag type from the page (used to avoid per-cell useDndContext re-renders) */
-  activeDragType?: 'zt' | 'ot';
-  /** Source row when dragging an OT cell */
-  activeOtSourceRow?: number;
-  /** Source col when dragging an OT cell */
-  activeOtSourceCol?: number;
-  /** Active token index when dragging a ZT token */
-  activeZtTokenIndex?: number | null;
-  /** Keys per OT mode: 'single' or 'multiple' */
-  keysPerOTMode?: 'single' | 'multiple';
+  activeDragType?: 'ct' | 'pt';
+  /** Source row when dragging an PT cell */
+  activePtSourceRow?: number;
+  /** Source col when dragging an PT cell */
+  activePtSourceCol?: number;
+  /** Active token index when dragging a CT token */
+  activeCtTokenIndex?: number | null;
+  /** Keys per PT mode: 'single' or 'multiple' */
+  keysPerPTMode?: 'single' | 'multiple';
 };
 
 /**
- * Props for a single OT grid cell.
+ * Props for a single PT grid cell.
  */
-export type OTCellProps = {
-  /** The OT character (null for deception/null cells) */
-  ot: OTChar | null;
+export type PTCellProps = {
+  /** The PT character (null for deception/null cells) */
+  pt: PTChar | null;
   /** All cipher tokens (for lookup) */
-  tokens: ZTToken[];
-  /** Indices of ZT tokens allocated to this cell */
+  tokens: CTToken[];
+  /** Indices of CT tokens allocated to this cell */
   tokenIndices: number[];
   /** Grid row index */
   row: number;
   /** Grid column index */
   col: number;
-  /** Callback to lock this OT character */
-  onLockOT?: (otChar: string, lockValue: string) => void;
-  /** Callback to unlock this OT character */
-  onUnlockOT?: (otChar: string, specificToken?: string) => void;
-  /** The locked ZT value for this OT (if any), single-key: string, multi-key: string[] */
+  /** Callback to lock this PT character */
+  onLockOT?: (ptChar: string, lockValue: string) => void;
+  /** Callback to unlock this PT character */
+  onUnlockOT?: (ptChar: string, specificToken?: string) => void;
+  /** The locked CT value for this PT (if any), single-key: string, multi-key: string[] */
   lockedValue?: string | string[];
   /** Callback to edit a token inline */
   onEditToken?: (tokenIndex: number, newText: string) => void;
@@ -113,17 +113,17 @@ export type OTCellProps = {
   groupSize?: number;
   /** Flat index among all cells (including deception) for shift operations */
   flatIndex?: number;
-  /** Flat index among OT cells only (excludes deception) for split operations */
-  flatOtIndex?: number;
+  /** Flat index among PT cells only (excludes deception) for split operations */
+  flatPtIndex?: number;
   /** Callback to insert raw characters after this group */
   onInsertAfterGroup?: (flatIndex: number) => void;
-  /** Callback to split a merged OT group */
-  onSplitGroup?: (flatOtIndex: number) => void;
+  /** Callback to split a merged PT group */
+  onSplitGroup?: (flatPtIndex: number) => void;
   /** Whether to expand a single index to a full group */
   allowExpandFromStart?: boolean;
-  /** Currently highlighted OT character */
-  highlightedOTChar?: string | null;
-  /** True if this OT's key conflicts with another OT's key */
+  /** Currently highlighted PT character */
+  highlightedPTChar?: string | null;
+  /** True if this PT's key conflicts with another PT's key */
   hasDuplicateKey?: boolean;
   /** Callback to shift this group left */
   onShiftLeft?: (flatIndex: number) => void;
@@ -135,28 +135,28 @@ export type OTCellProps = {
   canShiftRight?: boolean;
 
   /** Active drag type from the page (avoids per-cell useDndContext re-renders) */
-  activeDragType?: 'zt' | 'ot';
-  /** Source row when dragging an OT cell */
-  activeOtSourceRow?: number;
-  /** Source col when dragging an OT cell */
-  activeOtSourceCol?: number;
-  /** Active token index when dragging a ZT token */
-  activeZtTokenIndex?: number | null;
-  /** Keys per OT mode: 'single' or 'multiple' */
-  keysPerOTMode?: 'single' | 'multiple';
-  /** Number of locked homophones for this OT character (multi-key mode badge) */
+  activeDragType?: 'ct' | 'pt';
+  /** Source row when dragging an PT cell */
+  activePtSourceRow?: number;
+  /** Source col when dragging an PT cell */
+  activePtSourceCol?: number;
+  /** Active token index when dragging a CT token */
+  activeCtTokenIndex?: number | null;
+  /** Keys per PT mode: 'single' or 'multiple' */
+  keysPerPTMode?: 'single' | 'multiple';
+  /** Number of locked homophones for this PT character (multi-key mode badge) */
   lockedHomophonesCount?: number;
   /** True when token is sequentially consumed but not yet confirmed as a homophone */
   isTentative?: boolean;
 };
 
 /**
- * Props for a single ZT token component.
+ * Props for a single CT token component.
  */
-export type ZTTokenProps = {
+export type CTTokenProps = {
   /** The cipher token data */
-  token: ZTToken;
-  /** Global index of this token in the ZT array */
+  token: CTToken;
+  /** Global index of this token in the CT array */
   tokenIndex: number;
   /** Grid row this token is displayed in */
   row: number;
@@ -164,24 +164,24 @@ export type ZTTokenProps = {
   col: number;
   /** Callback when user edits this token */
   onEdit?: (tokenIndex: number, newText: string) => void;
-  /** True if this token is locked to an OT character */
+  /** True if this token is locked to an PT character */
   isLocked?: boolean;
 
   /** Active drag type from the page (avoids per-token useDndContext re-renders) */
-  activeDragType?: 'zt' | 'ot';
-  /** Active token index when dragging a ZT token */
-  activeZtTokenIndex?: number | null;
+  activeDragType?: 'ct' | 'pt';
+  /** Active token index when dragging a CT token */
+  activeCtTokenIndex?: number | null;
 };
 
 /**
- * A column in the allocation grid, representing one OT position
- * and its allocated ZT token indices.
+ * A column in the allocation grid, representing one PT position
+ * and its allocated CT token indices.
  */
 export type Column = {
-  /** The OT character (null for deception) */
-  ot: OTChar | null;
-  /** Indices of ZT tokens allocated here */
-  zt: number[];
+  /** The PT character (null for deception) */
+  pt: PTChar | null;
+  /** Indices of CT tokens allocated here */
+  ct: number[];
   /** True if this is a deception/null cell */
   deception?: boolean;
   /** True if the token is consumed sequentially (no confirmed homophone lock yet) */

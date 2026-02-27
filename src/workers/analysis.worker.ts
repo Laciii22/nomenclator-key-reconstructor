@@ -1,18 +1,18 @@
-/**
+﻿/**
  * Web Worker for frequency analysis.
  * Offloads heavy computation from main thread to prevent UI blocking.
  */
 
-import type { OTChar, ZTToken } from '../types/domain';
+import type { PTChar, CTToken } from '../types/domain';
 import { analyze } from '../utils/analyzer';
 import type { Candidate } from '../utils/analyzer';
 
 export interface AnalysisWorkerRequest {
   type: 'analyze';
-  otRows: OTChar[][];
-  ztTokens: ZTToken[];
+  ptRows: PTChar[][];
+  ctTokens: CTToken[];
   rowGroups: number[][];
-  keysPerOTMode: 'single' | 'multiple';
+  keysPerPTMode: 'single' | 'multiple';
   groupSize: number;
   lockedKeys?: Record<string, string | string[]>;
 }
@@ -23,10 +23,10 @@ export interface AnalysisWorkerResponse {
 }
 
 self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
-  const { type, otRows, ztTokens, rowGroups, keysPerOTMode, groupSize, lockedKeys } = e.data;
+  const { type, ptRows, ctTokens, rowGroups, keysPerPTMode, groupSize, lockedKeys } = e.data;
   
   if (type === 'analyze') {
-    const result = analyze(otRows, ztTokens, rowGroups, { keysPerOTMode, groupSize }, lockedKeys);
+    const result = analyze(ptRows, ctTokens, rowGroups, { keysPerPTMode, groupSize }, lockedKeys);
     
     const response: AnalysisWorkerResponse = {
       type: 'analyze-result',

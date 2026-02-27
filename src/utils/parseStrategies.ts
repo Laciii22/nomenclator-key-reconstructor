@@ -1,11 +1,11 @@
-/**
- * Parse strategies for ZT token grouping.
+﻿/**
+ * Parse strategies for CT token grouping.
  * 
  * - separator: each token stands alone (delimiter-separated)
  * - fixedLength: tokens are grouped into fixed-size sequences
  */
 
-import type { ZTToken } from '../types/domain';
+import type { CTToken } from '../types/domain';
 
 export type ParseMode = 'separator' | 'fixedLength';
 
@@ -21,14 +21,14 @@ export function getGroupSize(mode: ParseMode, fixedLength?: number) {
  * Build a map of token text → array of starting indices.
  * For fixed-length mode, creates multi-token keys by concatenating sequences.
  */
-export function buildOccMap(effectiveZtTokens: ZTToken[], groupSize: number) {
+export function buildOccMap(effectiveCtTokens: CTToken[], groupSize: number) {
   const occMap: Record<string, number[]> = {};
   if (groupSize === 1) {
-    effectiveZtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
+    effectiveCtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
   } else {
     // Include final shorter group if tokens length is not divisible by groupSize
-    for (let i = 0; i < effectiveZtTokens.length; i += groupSize) {
-      const grp = effectiveZtTokens.slice(i, i + groupSize).map(x => x.text).join('');
+    for (let i = 0; i < effectiveCtTokens.length; i += groupSize) {
+      const grp = effectiveCtTokens.slice(i, i + groupSize).map(x => x.text).join('');
       (occMap[grp] ||= []).push(i);
     }
   }
