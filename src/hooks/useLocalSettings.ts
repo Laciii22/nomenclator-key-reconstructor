@@ -16,15 +16,8 @@ export type LocalSettings = {
 
 const KEY = 'nkr_settings';
 
-
-/**
- * This hooks saves and loads local settings from localStorage.
- * @param initial Initial settings to use if none are stored.
- * @return A tuple containing the current settings and a function to update them.
- **/
-
-export function useLocalSettings(initial?: Partial<LocalSettings>) {
-  const [settings, setSettings] = useState<LocalSettings>({
+function loadFromStorage(initial?: Partial<LocalSettings>): LocalSettings {
+  const defaults: LocalSettings = {
     fixedPerPTEnabled: false,
     fixedPerPTSize: 1,
     maxTokensCapEnabled: false,
@@ -35,17 +28,24 @@ export function useLocalSettings(initial?: Partial<LocalSettings>) {
     ctRaw: '',
     bracketedIndices: [],
     ...initial,
-  });
+  };
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) return { ...defaults, ...(JSON.parse(raw) as Partial<LocalSettings>) };
+  } catch { /* ignore */ }
+  return defaults;
+}
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<LocalSettings>;
-        setSettings(prev => ({ ...prev, ...parsed }));
-      }
-    } catch { /* ignore */ }
-  }, []);
+/**
+ * This hooks saves and loads local settings from localStorage.
+ * Uses lazy initialization to read persisted state synchronously on first render,
+ * which avoids the race where the write effect fires before the read effect applies.
+ * @param initial Initial settings to use if none are stored.
+ * @return A tuple containing the current settings and a function to update them.
+ **/
+
+export function useLocalSettings(initial?: Partial<LocalSettings>) {
+  const [settings, setSettings] = useState<LocalSettings>(() => loadFromStorage(initial));
 
   useEffect(() => {
     try {

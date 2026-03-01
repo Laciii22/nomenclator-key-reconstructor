@@ -19,12 +19,8 @@ import {
 // Re-export scoreRatio for any external consumer
 export { scoreRatio } from './frequency';
 
-/**
- * Maps each PT character to its selected CT token (or null if unselected).
- * - In 'single' mode: string | null (one token per character)
- * - In 'multiple' mode: string[] (multiple homophones per character)
- */
-export type SelectionMap = Record<string, string | string[] | null>;
+// SelectionMap is the canonical domain type; re-exported here for backward compatibility.
+export type { SelectionMap } from '../types/domain';
 
 /**
  * Options for the analysis algorithm.

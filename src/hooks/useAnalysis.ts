@@ -32,6 +32,11 @@ function getAnalysisWorker(): Worker {
   return analysisWorker;
 }
 
+// Module-level counter: each analysis request gets a unique ID.
+// The message handler checks this to discard stale responses when a newer
+// request was fired before the previous worker reply arrived.
+let latestRequestId = 0;
+
 function sortCandidates(map: Record<string, Candidate[]>): Record<string, Candidate[]> {
   const sorted: Record<string, Candidate[]> = {};
   for (const [ch, list] of Object.entries(map)) {
@@ -49,8 +54,18 @@ export function useAnalysis(params: {
   keysPerPTMode: KeysPerPTMode;
   lockedKeys: Record<string, string | string[]>;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
+  /** Optional worker factory — inject a fake Worker in tests to avoid real Web Worker loading. */
+  _workerFactory?: () => Worker;
 }) {
-  const { ptRows, ctParseMode, fixedLength, effectiveCtTokens, columns, keysPerPTMode, lockedKeys, setSelections } = params;
+  const { ptRows, ctParseMode, fixedLength, effectiveCtTokens, columns, keysPerPTMode, lockedKeys, setSelections, _workerFactory } = params;
+
+  /** Returns the singleton production worker, or a test-injected instance. */
+  const getWorker = React.useCallback(
+    () => (_workerFactory ? _workerFactory() : getAnalysisWorker()),
+    // _workerFactory is expected to be a stable reference from the caller
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [_workerFactory],
+  );
 
   const gridTokenSet = React.useMemo(() => {
     if (ctParseMode !== 'fixedLength') return new Set<string>();
@@ -152,10 +167,14 @@ export function useAnalysis(params: {
     const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-    const worker = getAnalysisWorker();
+    const worker = getWorker();
+    const requestId = ++latestRequestId;
     
     const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
       if (e.data.type === 'analyze-result') {
+        worker.removeEventListener('message', handleMessage);
+        // Discard result if a newer request has already been dispatched
+        if (requestId !== latestRequestId) return;
         const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
         const scored = applyScores(augmented);
         const filtered = filterCandidatesForShiftedGrid(scored);
@@ -163,7 +182,6 @@ export function useAnalysis(params: {
         setSelections({});
         setAnalysisDone(true);
         setIsAnalyzing(false);
-        worker.removeEventListener('message', handleMessage);
       }
     };
     
@@ -180,7 +198,7 @@ export function useAnalysis(params: {
     };
     
     worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode]);
+  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode, getWorker]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
     const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
@@ -188,10 +206,14 @@ export function useAnalysis(params: {
     const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
     const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-    const worker = getAnalysisWorker();
+    const worker = getWorker();
+    const requestId = ++latestRequestId;
     
     const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
       if (e.data.type === 'analyze-result') {
+        worker.removeEventListener('message', handleMessage);
+        // Discard result if a newer request has already been dispatched
+        if (requestId !== latestRequestId) return;
         const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
         const scored = applyScores(augmented);
         const filtered = filterCandidatesForShiftedGrid(scored);
@@ -213,7 +235,6 @@ export function useAnalysis(params: {
           }
           return next;
         });
-        worker.removeEventListener('message', handleMessage);
       }
     };
     
@@ -230,7 +251,7 @@ export function useAnalysis(params: {
     };
     
     worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode]);
+  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode, getWorker]);
 
   return {
     candidatesByChar,

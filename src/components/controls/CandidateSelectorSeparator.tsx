@@ -8,17 +8,19 @@ import {
   getPTCharBadgeClasses,
   getSelectorInputClasses
 } from './candidateSelectorCommon';
-import type { SelectionMap } from '../../utils/analyzer';
+import type { Candidate, SelectionMap } from '../../utils/analyzer';
+import type { PTChar, CTToken } from '../../types/domain';
+import type { Column } from '../types';
 
 type Props = {
-  candidatesByChar: Record<string, any[]>;
+  candidatesByChar: Record<string, Candidate[]>;
   lockedKeys: Record<string, string>;
   selections: SelectionMap;
   setSelections: React.Dispatch<React.SetStateAction<SelectionMap>>;
-  ptRows: any[];
-  effectiveCtTokens: any[];
+  ptRows: PTChar[][];
+  effectiveCtTokens: CTToken[];
   reservedTokens: Set<string>;
-  sharedColumns: any;
+  sharedColumns: Column[][];
 };
 
 const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, ptRows, effectiveCtTokens, reservedTokens, sharedColumns }) => {
@@ -53,11 +55,11 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
               disabled={disabledSelect}
               onChange={(e) => {
                 const val = e.target.value || '';
-                setSelections((prev: any) => ({ ...prev, [ch]: val === '' ? null : val }));
+                setSelections((prev) => ({ ...prev, [ch]: val === '' ? null : val }));
               }}
             >
               <option value="">None (do not lock)</option>
-              {sortedByScore.filter((c:any) => c.length === 1).map((c:any, idx:number) => {
+              {sortedByScore.filter((c) => c.length === 1).map((c, idx) => {
                 const opt = buildCandidateOptions({ c, idx, ch, ptRows, effectiveCtTokens, groupSize: 1, reservedTokens, selectionVal, lockedVal, sharedColumns });
                 return (
                   <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>

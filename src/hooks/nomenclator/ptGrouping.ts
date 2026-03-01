@@ -1,4 +1,4 @@
-﻿import type { PTChar } from '../../components/types';
+﻿import type { PTChar } from '../../types/domain';
 
 function isBlockedByLocks(
   groups: PTChar[],

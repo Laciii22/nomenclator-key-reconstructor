@@ -12,6 +12,7 @@
 
 import React from 'react';
 import { buildCandidateOptions } from './candidateHelpers';
+import { sortCandidatesByScore } from './candidateSelectorCommon';
 import type { SelectionMap, Candidate } from '../../utils/analyzer';
 import type { PTChar, CTToken } from '../../types/domain';
 import type { Column } from '../types';
@@ -62,16 +63,6 @@ function extendCandidateList(
   }
   
   return extended;
-}
-
-/**
- * Sort candidates by score (descending), then alphabetically.
- */
-function sortCandidatesByScore(candidates: Candidate[]): Candidate[] {
-  return [...candidates].sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.token.localeCompare(b.token);
-  });
 }
 
 interface CandidateSelectorMultiProps {

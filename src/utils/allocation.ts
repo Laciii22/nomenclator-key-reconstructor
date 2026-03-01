@@ -5,7 +5,7 @@
  * In fixed-length mode, allocates token groups instead of individual tokens.
  */
 
-import type { PTChar, CTToken } from '../components/types';
+import type { PTChar, CTToken } from '../types/domain';
 
 /**
  * Compute how many CT tokens/groups should be allocated to each PT cell.

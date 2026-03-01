@@ -19,43 +19,61 @@ import plusIcon from '../../assets/icons/plus.png';
 import minus from '../../assets/icons/minus.png';
 import leftIcon from '../../assets/icons/left-arrow.png';
 import rightIcon from '../../assets/icons/right-arrow.png';
+import { useMappingCellContext } from './MappingCellContext';
+import PromptModal from '../common/PromptModal';
 
 /**
  * A single PT grid cell with its allocated CT tokens.
  * Supports drag-and-drop, locking, and visual error states.
+ *
+ * Grid-level values (token array, lock state, callbacks, DnD active drag,
+ * shift metadata, etc.) are consumed from MappingCellContext — no prop
+ * threading required.
  */
-const PTCell: React.FC<PTCellProps> = ({ 
-  pt, 
-  tokens, 
-  tokenIndices, 
-  row, 
-  col, 
-  onLockOT, 
-  onUnlockOT, 
-  lockedValue, 
-  onEditToken, 
-  deception, 
-  isFixedLength, 
-  groupSize = 1, 
-  flatIndex, 
+const PTCell: React.FC<PTCellProps> = ({
+  pt,
+  tokenIndices,
+  row,
+  col,
+  deception,
+  flatIndex,
   flatPtIndex,
-  onInsertAfterGroup, 
-  onSplitGroup, 
-  allowExpandFromStart, 
-  highlightedPTChar, 
-  hasDuplicateKey, 
-  onShiftLeft, 
-  onShiftRight, 
-  canShiftLeft, 
-  canShiftRight,
-  activeDragType,
-  activePtSourceRow,
-  activePtSourceCol,
-  activeCtTokenIndex,
-  keysPerPTMode = 'single',
-  lockedHomophonesCount: _lockedHomophonesCount,
+  onInsertAfterGroup,
+  allowExpandFromStart,
+  hasDuplicateKey,
   isTentative = false,
 }) => {
+  // ── Grid-level values from context ────────────────────────────────────────
+  const {
+    ctTokens: tokens,
+    keysPerPTMode,
+    highlightedPTChar,
+    lockedKeys,
+    onLockOT,
+    onUnlockOT,
+    onEditToken,
+    groupSize = 1,
+    activeDragType,
+    activePtSourceRow,
+    activePtSourceCol,
+    activeCtTokenIndex,
+    onSplitGroup,
+    onShiftGroupLeft,
+    onShiftGroupRight,
+    shiftMeta,
+  } = useMappingCellContext();
+
+  const isFixedLength = groupSize > 1;
+
+  // Derive shift permissions for THIS cell from the shared shiftMeta array
+  const canShiftLeft = (shiftMeta && typeof flatIndex === 'number')
+    ? (shiftMeta[flatIndex]?.canShiftLeft ?? false) : false;
+  const canShiftRight = (shiftMeta && typeof flatIndex === 'number')
+    ? (shiftMeta[flatIndex]?.canShiftRight ?? false) : false;
+
+  // ── PromptModal state (replaces window.prompt for token editing) ──────────
+  const [editPromptOpen, setEditPromptOpen] = React.useState(false);
+  const [editPromptInitial, setEditPromptInitial] = React.useState('');
   // When we handle an action on pointer down, browsers may still fire a click
   // afterwards (or may cancel it). Use this flag to avoid double-triggering.
   const suppressNextClickRef = React.useRef(false);
@@ -135,6 +153,24 @@ const PTCell: React.FC<PTCellProps> = ({
     [displayedIndices, tokens]
   );
 
+  // Derive locked state from context lockedKeys instead of receiving it as a prop
+  const lockedValue = React.useMemo((): string | undefined => {
+    if (!pt) return undefined;
+    const lock = lockedKeys[pt.ch];
+    if (!lock) return undefined;
+    const currentText = displayedTokens.map(f => f.token.text).join('');
+    if (!currentText) return undefined;
+    if (Array.isArray(lock)) return lock.includes(currentText) ? currentText : undefined;
+    return lock === currentText ? lock : undefined;
+  }, [pt, lockedKeys, displayedTokens]);
+
+  // Count locked homophones for multi-key mode badge
+  const lockedHomophonesCount = React.useMemo((): number | undefined => {
+    if (keysPerPTMode !== 'multiple' || !pt) return undefined;
+    const v = lockedKeys[pt.ch];
+    return Array.isArray(v) ? v.length : v ? 1 : 0;
+  }, [keysPerPTMode, lockedKeys, pt]);
+
   const isEmptyRealPtCell = Boolean(pt) && !deception && displayedTokens.length === 0;
   const isDuplicateKey = Boolean(pt) && !deception && Boolean(hasDuplicateKey);
 
@@ -180,7 +216,8 @@ const PTCell: React.FC<PTCellProps> = ({
     if (groupText) onLockOT(pt.ch, groupText);
   }, [displayedTokens, isEmptyRealPtCell, lockedValue, onLockOT, onUnlockOT, pt, keysPerPTMode]);
 
-  // Handle edit or insert in separator mode
+  // Handle edit or insert in separator mode.
+  // Opens PromptModal instead of calling window.prompt().
   const editOrInsert = React.useCallback(() => {
     if (displayedTokens.length === 0) {
       if (typeof flatIndex === 'number' && flatIndex >= 0) {
@@ -192,11 +229,8 @@ const PTCell: React.FC<PTCellProps> = ({
     if (!onEditToken) return;
     
     const currentGroupText = displayedTokens.map(f => f.token.text).join('');
-    const userInput = window.prompt('Edit token for this PT (no spaces):', currentGroupText);
-    
-    if (userInput?.trim()) {
-      onEditToken(displayedTokens[0].tokenIndex, userInput.trim());
-    }
+    setEditPromptInitial(currentGroupText);
+    setEditPromptOpen(true);
   }, [displayedTokens, flatIndex, onEditToken, onInsertAfterGroup]);
 
   const splitGroup = React.useCallback(() => {
@@ -246,7 +280,6 @@ const PTCell: React.FC<PTCellProps> = ({
     );
   };
 
-  // Helper to get PT label className
   const getPtLabelClassName = (
     locked: string | string[] | null | undefined, 
     dragging: boolean, 
@@ -290,10 +323,11 @@ const PTCell: React.FC<PTCellProps> = ({
   const cellClassName = `${cellBaseClasses} ${cellColorClasses} ${cellDropHintClasses} ${cellHoverClasses} ${cellDragClasses} ${cellHighlightClasses}`;
 
   return (
-    <div ref={setNodeRef} className={cellClassName}>
+    <>
+      <div ref={setNodeRef} className={cellClassName}>
       {/* Render PT label with optional left/right shift buttons */}
       <div className="text-center font-mono text-xs mt-1 mb-0.5 flex items-center justify-center gap-0.5">
-        {renderShiftButton('left', canShiftLeft, onShiftLeft)}
+        {renderShiftButton('left', canShiftLeft, onShiftGroupLeft)}
         {pt ? (
           <span
             ref={setDragRef}
@@ -312,7 +346,7 @@ const PTCell: React.FC<PTCellProps> = ({
             null
           </span>
         )}
-        {renderShiftButton('right', canShiftRight, onShiftRight)}
+        {renderShiftButton('right', canShiftRight, onShiftGroupRight)}
       </div>
       {/* Render assigned CT tokens or empty state */}
       <div className="flex flex-wrap gap-0.5 justify-center">
@@ -440,6 +474,21 @@ const PTCell: React.FC<PTCellProps> = ({
         </button>
       )}
     </div>
+    {/* Non-blocking modal replacement for window.prompt() */}
+    <PromptModal
+      isOpen={editPromptOpen}
+      title="Edit CT Token"
+      label="Edit token for this PT (no spaces):"
+      initialValue={editPromptInitial}
+      onConfirm={(value) => {
+        if (value.trim() && onEditToken && displayedTokens.length > 0) {
+          onEditToken(displayedTokens[0].tokenIndex, value.trim());
+        }
+        setEditPromptOpen(false);
+      }}
+      onCancel={() => setEditPromptOpen(false)}
+    />
+    </>
   );
 };
 

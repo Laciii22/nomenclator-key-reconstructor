@@ -85,68 +85,41 @@ export type MappingTableProps = {
 
 /**
  * Props for a single PT grid cell.
+ *
+ * Grid-level values (tokens, lockedKeys, keysPerPTMode, onLockOT, onUnlockOT,
+ * onEditToken, highlightedPTChar, groupSize, DnD active-drag state, shift
+ * callbacks/metadata, and onSplitGroup) are provided via MappingCellContext
+ * and no longer need to be threaded explicitly through the component tree.
  */
 export type PTCellProps = {
-  /** The PT character (null for deception/null cells) */
+  /** The PT character for this cell (null for deception / null cells) */
   pt: PTChar | null;
-  /** All cipher tokens (for lookup) */
-  tokens: CTToken[];
   /** Indices of CT tokens allocated to this cell */
   tokenIndices: number[];
   /** Grid row index */
   row: number;
   /** Grid column index */
   col: number;
-  /** Callback to lock this PT character */
-  onLockOT?: (ptChar: string, lockValue: string) => void;
-  /** Callback to unlock this PT character */
-  onUnlockOT?: (ptChar: string, specificToken?: string) => void;
-  /** The locked CT value for this PT (if any), single-key: string, multi-key: string[] */
-  lockedValue?: string | string[];
-  /** Callback to edit a token inline */
-  onEditToken?: (tokenIndex: number, newText: string) => void;
-  /** True if this is a deception/null cell */
+  /** True if this is a deception / null cell */
   deception?: boolean;
-  /** True if using fixed-length parsing */
-  isFixedLength?: boolean;
-  /** Size of fixed-length groups */
-  groupSize?: number;
-  /** Flat index among all cells (including deception) for shift operations */
+  /** Flat index among all cells (including deception) — used by shift operations */
   flatIndex?: number;
-  /** Flat index among PT cells only (excludes deception) for split operations */
+  /** Flat index among PT-only cells (excludes deception) — used by split operations */
   flatPtIndex?: number;
-  /** Callback to insert raw characters after this group */
+  /**
+   * Per-cell callback that fires when the user clicks the "+" button to
+   * insert / edit raw CT characters for this group.
+   *
+   * Kept as an explicit prop (rather than in context) because it is a unique
+   * closure per cell: MappingTable builds it with the cell's flat index and
+   * the current row layout baked in.
+   */
   onInsertAfterGroup?: (flatIndex: number) => void;
-  /** Callback to split a merged PT group */
-  onSplitGroup?: (flatPtIndex: number) => void;
-  /** Whether to expand a single index to a full group */
+  /** Whether a short single-index group is allowed to expand to `groupSize` from its start */
   allowExpandFromStart?: boolean;
-  /** Currently highlighted PT character */
-  highlightedPTChar?: string | null;
-  /** True if this PT's key conflicts with another PT's key */
+  /** True if this PT character's assigned CT token conflicts with another PT character */
   hasDuplicateKey?: boolean;
-  /** Callback to shift this group left */
-  onShiftLeft?: (flatIndex: number) => void;
-  /** Callback to shift this group right */
-  onShiftRight?: (flatIndex: number) => void;
-  /** Whether shifting left is allowed */
-  canShiftLeft?: boolean;
-  /** Whether shifting right is allowed */
-  canShiftRight?: boolean;
-
-  /** Active drag type from the page (avoids per-cell useDndContext re-renders) */
-  activeDragType?: 'ct' | 'pt';
-  /** Source row when dragging an PT cell */
-  activePtSourceRow?: number;
-  /** Source col when dragging an PT cell */
-  activePtSourceCol?: number;
-  /** Active token index when dragging a CT token */
-  activeCtTokenIndex?: number | null;
-  /** Keys per PT mode: 'single' or 'multiple' */
-  keysPerPTMode?: 'single' | 'multiple';
-  /** Number of locked homophones for this PT character (multi-key mode badge) */
-  lockedHomophonesCount?: number;
-  /** True when token is sequentially consumed but not yet confirmed as a homophone */
+  /** True when the token is consumed sequentially but not yet confirmed as a homophone lock */
   isTentative?: boolean;
 };
 

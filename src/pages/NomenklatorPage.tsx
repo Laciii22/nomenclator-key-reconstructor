@@ -13,7 +13,7 @@ import CandidateSelectorMulti from '../components/controls/CandidateSelectorMult
 import HelpModal from '../components/common/HelpModal';
 import FileImport from '../components/controls/FileImport';
 import { useNomenklator } from '../hooks/useNomenklator';
-import type { SelectionMap } from '../utils/analyzer';
+import type { SelectionMap, DragData } from '../types/domain';
 
 /**
  * Main interactive page for reconstructing a nomenclator key from PT (plain text)
@@ -126,14 +126,6 @@ const NomenklatorPage: React.FC = () => {
     setLockedKeys({});
   }, [setLockedKeys, setSelections]);
 
-  const onPreviewSelection = React.useCallback(() => {
-    chooseScoreOneSuggestions();
-  }, [chooseScoreOneSuggestions]);
-
-  const onApplySelection = React.useCallback(() => {
-    applySelection();
-  }, [applySelection]);
-
   const onLockAll = React.useCallback((locks: Record<string, string | string[]>) => {
     setLockedKeys(prev => ({ ...prev, ...locks }));
     setSelections(prev => {
@@ -148,18 +140,10 @@ const NomenklatorPage: React.FC = () => {
     queueMicrotask(() => runAnalysis());
   }, [runAnalysis, setLockedKeys, setSelections]);
 
-  const onInsertRawCharsAfterPosition = React.useCallback((pos: number, text: string, replace?: boolean) => {
-    insertRawCharsAfterPosition(pos, text, replace);
-  }, [insertRawCharsAfterPosition]);
-
-  const onSplitGroup = React.useCallback((fi: number) => {
-    splitPTAt(fi);
-  }, [splitPTAt]);
-
   const [activeDrag, setActiveDrag] = React.useState<Active | null>(null);
 
   const activeDragInfo = React.useMemo(() => {
-    const data = (activeDrag?.data?.current ?? {}) as any;
+    const data = (activeDrag?.data?.current ?? {}) as DragData;
     const type = data?.type === 'ct' || data?.type === 'pt' ? (data.type as 'ct' | 'pt') : undefined;
     return {
       type,
@@ -348,11 +332,11 @@ const NomenklatorPage: React.FC = () => {
 
                       <button
                         className="text-xs px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
-                        onClick={onPreviewSelection}
+                        onClick={chooseScoreOneSuggestions}
                       >Preview</button>
                     <button
                       className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
-                      onClick={onApplySelection}
+                      onClick={applySelection}
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                       Apply
@@ -472,8 +456,8 @@ const NomenklatorPage: React.FC = () => {
                 onEditToken={editCtToken}
                 selections={selections}
                 groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
-                onInsertRawCharsAfterPosition={onInsertRawCharsAfterPosition}
-                onSplitGroup={onSplitGroup}
+                onInsertRawCharsAfterPosition={insertRawCharsAfterPosition}
+                onSplitGroup={splitPTAt}
                 canInsertRaw={true}
                 canSplitGroup={true}
                 highlightedPTChar={highlightedPTChar}
@@ -494,11 +478,6 @@ const NomenklatorPage: React.FC = () => {
       <DragOverlay>
         {activeDrag ? (
           (() => {
-            interface DragData {
-              type?: 'ct' | 'pt';
-              token?: { id: string; text: string };
-              ptChar?: string;
-            }
             const data = (activeDrag.data?.current ?? {}) as DragData;
             if (data?.type === 'ct') {
               const text = String(data?.token?.text ?? '');

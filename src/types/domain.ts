@@ -50,3 +50,31 @@ export type LockedKeys = Record<string, string | string[]>;
  * - In 'multiple' mode: string[] (multiple homophones per character)
  */
 export type SelectionMap = Record<string, string | string[] | null>;
+
+/**
+ * Data attached to a drag-and-drop event via @dnd-kit's `data.current`.
+ * Shared across all DnD sources (PT cells, CT tokens, drop targets).
+ * All fields are optional — only the relevant subset is populated per source.
+ */
+export type DragData = {
+  /** Drag origin: 'ct' for cipher token, 'pt' for plain-text cell */
+  type?: 'ct' | 'pt';
+  /** Flat index of the CT token being dragged */
+  tokenIndex?: number;
+  /** Row of the source PT cell */
+  sourceRow?: number;
+  /** Column of the source PT cell */
+  sourceCol?: number;
+  /** Row of the drop target cell */
+  row?: number;
+  /** Column of the drop target cell */
+  col?: number;
+  /** True if the drop target is a deception (klamac) cell */
+  isKlamac?: boolean;
+  /** CT token object when dragging a cipher token */
+  token?: { id: string; text: string };
+  /** PT character string when dragging a plain-text cell */
+  ptChar?: string;
+  /** Flat all-cell index (used for shift/split actions) */
+  flatIndex?: number;
+};

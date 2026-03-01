@@ -1,4 +1,4 @@
-﻿import type { PTChar } from '../../components/types';
+﻿import type { PTChar } from '../../types/domain';
 
 // Kept in a small helper file so the main hook stays readable.
 // This is a pure predicate: no React, no state updates.

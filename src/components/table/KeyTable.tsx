@@ -7,6 +7,7 @@ import padlock from '../../assets/icons/padlock.png';
 import highlighter from '../../assets/icons/highlighter.png';
 import { colors } from '../../utils/colors';
 import { normalizeToArray } from '../../utils/multiKeyHelpers';
+import { normalizeLocks } from '../../utils/frequency';
 import Modal from '../common/Modal';
 
 
@@ -33,12 +34,7 @@ const KeyTable: React.FC<KeyTableProps & {
     const gs = getGroupSize(ctParseMode, groupSize);
     
     // Normalize to single-key format for buildColumns
-    const normalizedLocks: Record<string, string> = {};
-    if (lockedKeys) {
-      for (const [ch, val] of Object.entries(lockedKeys)) {
-        normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-      }
-    }
+    const normalizedLocks = normalizeLocks(lockedKeys);
     
     const normalizedSelections: Record<string, string | null> = {};
     if (selections) {

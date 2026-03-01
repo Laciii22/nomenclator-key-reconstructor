@@ -1,5 +1,5 @@
 ﻿import * as React from 'react';
-import type { KeysPerPTMode } from '../components/types';
+import type { KeysPerPTMode } from '../types/domain';
 import type { LocalSettings } from './useLocalSettings';
 import type { PTChar } from '../types/domain';
 

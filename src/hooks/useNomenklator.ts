@@ -1,7 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeysPerPTMode, PTChar } from '../components/types';
+import type { KeysPerPTMode, PTChar, SelectionMap, DragData } from '../types/domain';
 import { useLocalSettings } from './useLocalSettings';
-import type { SelectionMap } from '../utils/analyzer';
 import { resolveMergeFromEvent } from '../utils/dnd';
 import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import { buildOccMap } from '../utils/parseStrategies';
@@ -14,6 +13,7 @@ import { useNomenklatorPersistence } from './useNomenklatorPersistence';
 import { useNomenklatorStatus } from './useNomenklatorStatus';
 import { useAutoPickScoreOneSequential } from './useAutoPickScoreOneSequential';
 import { useDebouncedCallback } from './useDebouncedCallback';
+import { useViewportWidth } from './useViewportWidth';
 import { buildEffectiveToOriginalIndexMap } from './nomenclator/ctIndexMaps';
 import { tokenIndexIsLockedInColumns } from './nomenclator/dndRules';
 import {
@@ -23,6 +23,7 @@ import {
   tryJoinAdjacentPtGroups,
 } from './nomenclator/ptGrouping';
 import { computeInsertRawCharsAfterPosition } from './nomenclator/insertRawAfterPosition';
+import { normalizeLocks } from '../utils/frequency';
 
 /**
  * Responsive breakpoints for PT grid layout.
@@ -75,11 +76,7 @@ export function useNomenklator() {
   const isDraggingRef = useRef(false);
 
   // Status / warnings
-  const [klamacStatus, setKlamacStatus] = useState<'none' | 'needsKlamac' | 'ok' | 'invalid'>('none');
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
-  // parsing hook owns bracket state, but we keep warning/error state in return
-  const [bracketWarning, setBracketWarning] = useState<string | null>(null);
 
   // Highlighting: single PT character to visually emphasize across the grid
   const [highlightedPTChar, setHighlightedPTChar] = useState<string | null>(null);
@@ -137,20 +134,14 @@ export function useNomenklator() {
 
   const countMergeableOccurrences = useCallback((groups: PTChar[], pattern: string) => {
     // Normalize to single-key format for this helper
-    const normalizedLocks: Record<string, string> = {};
-    for (const [ch, val] of Object.entries(lockedKeys)) {
-      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-    }
+    const normalizedLocks = normalizeLocks(lockedKeys);
     return countMergeableOccurrencesHelper(groups, pattern, normalizedLocks);
   }, [lockedKeys]);
 
   const mergeAllOccurrences = useCallback((pattern: string) => {
     const flat = getFlatPTGroups();
     // Normalize to single-key format for this helper
-    const normalizedLocks: Record<string, string> = {};
-    for (const [ch, val] of Object.entries(lockedKeys)) {
-      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-    }
+    const normalizedLocks = normalizeLocks(lockedKeys);
     const res = mergeAllOccurrencesHelper(flat, pattern, normalizedLocks);
     if (!res) return;
     setCustomPtGroups(res.nextGroups);
@@ -250,10 +241,7 @@ export function useNomenklator() {
 
     // Merge all occurrences first
     const flat = getFlatPTGroups();
-    const normalizedLocks: Record<string, string> = {};
-    for (const [ch, val] of Object.entries(lockedKeys)) {
-      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-    }
+    const normalizedLocks = normalizeLocks(lockedKeys);
 
     const mergeResult = mergeAllOccurrencesHelper(flat, pattern, normalizedLocks);
     if (!mergeResult) {
@@ -280,32 +268,17 @@ export function useNomenklator() {
       return next;
     });
 
-    // Trigger analysis after a microtask to ensure state is updated
-    queueMicrotask(() => {
-      setPendingAutoRefresh(true);
-    });
+    // React 18 batches all setState calls within event handlers, so a direct
+    // call is sufficient — no microtask indirection needed.
+    setPendingAutoRefresh(true);
 
     return null; // Success
   }, [getFlatPTGroups, lockedKeys, keysPerPTMode, setCustomPtGroups, setMergeAllPrompt, setSelections, setPendingAutoRefresh]);
 
   // Responsive PT grid width.
   // This intentionally affects only layout (row wrapping), not mapping/analysis rules.
-  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    let timeoutId: number | null = null;
-    const onResize = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        setViewportWidth(window.innerWidth);
-      }, 150) as unknown as number;
-    };
-    window.addEventListener('resize', onResize, { passive: true } as any);
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      window.removeEventListener('resize', onResize);
-    };
-  }, []);
+  // Debounced resize listener is encapsulated in useViewportWidth.
+  const viewportWidth = useViewportWidth(150);
 
   const OT_COLUMNS_PER_ROW = useMemo(() => {
     for (const breakpoint of RESPONSIVE_BREAKPOINTS) {
@@ -531,20 +504,16 @@ export function useNomenklator() {
     
     // Clear status messages
     setSelectionError(null);
-    setBracketWarning(null);
     
     // Reset manual shifting state for fixed-length mode
     mapping.setManualPtCounts(null);
-  }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, setBracketWarning, mapping]);
+  }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
-  // Now that analysisDone is known, let status hook compute the derived post-analysis status as well.
-  useNomenklatorStatus({
+  // Derived status: pure computation, no effect-based state sync.
+  const { klamacStatus, statusMessage, bracketWarning } = useNomenklatorStatus({
     klamacStatusFromParse,
     statusMessageFromParse,
     bracketWarningFromParse,
-    setKlamacStatus,
-    setStatusMessage,
-    setBracketWarning,
     analysisDone,
     ptChars,
     ctTokens,
@@ -794,10 +763,7 @@ export function useNomenklator() {
   const joinPTAt = useCallback((fromIndex: number, toIndex: number) => {
     const flat: PTChar[] = getFlatPTGroups();
     // Normalize to single-key format for this helper
-    const normalizedLocks: Record<string, string> = {};
-    for (const [ch, val] of Object.entries(lockedKeys)) {
-      normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-    }
+    const normalizedLocks = normalizeLocks(lockedKeys);
     const res = tryJoinAdjacentPtGroups(flat, fromIndex, toIndex, normalizedLocks);
     if (!res) return;
     setCustomPtGroups(res.nextGroups);
@@ -828,15 +794,6 @@ export function useNomenklator() {
     cancelRefreshDebounce();
   }, [cancelRefreshDebounce]);
 
-  interface DragData {
-    type?: 'ct' | 'pt';
-    tokenIndex?: number;
-    sourceRow?: number;
-    sourceCol?: number;
-    row?: number;
-    col?: number;
-  }
-
   const onDragEnd = useCallback((evt: DragEndEvent) => {
     const wasDragging = isDraggingRef.current;
     isDraggingRef.current = false;
@@ -856,10 +813,7 @@ export function useNomenklator() {
           // Prevent swaps when either token sits inside a locked PT cell.
           // Locks are a user assertion; swapping tokens under a lock would be surprising.
           // Normalize to single-key format for this helper
-          const normalizedLocks: Record<string, string> = {};
-          for (const [ch, val] of Object.entries(lockedKeys)) {
-            normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-          }
+          const normalizedLocks = normalizeLocks(lockedKeys);
           if (tokenIndexIsLockedInColumns(columns, normalizedLocks, srcIndex)) return;
           if (tokenIndexIsLockedInColumns(columns, normalizedLocks, dstIndex)) return;
 
@@ -906,39 +860,40 @@ export function useNomenklator() {
     if (analysisDone) setPendingAutoRefresh(true);
   }, [analysisDone, bracketedIndices, columns, separator, setBracketedIndices, setPendingAutoRefresh, setCtRawForMode, ctParseMode, ctTokens]);
 
-  // Auto refresh analysis after raw edits/insertions when analysis already computed
+  // Combined effect for: raw-edit insertions (pendingAutoRefresh), manual shifts,
+  // lock/bracket/mode/length changes. All trigger the same debounced refresh once
+  // analysis exists. Merged from the original four separate effects to reduce
+  // scheduling overhead and make dep tracking explicit in one place.
   React.useEffect(() => {
-    if (pendingAutoRefresh && analysisDone) {
+    if (!analysisDone) return;
+
+    if (pendingAutoRefresh) {
       refreshAnalysisPreserveDebounced();
       setPendingAutoRefresh(false);
+      return;
     }
-  }, [pendingAutoRefresh, analysisDone, ctTokens, fixedLength, ctParseMode, refreshAnalysisPreserveDebounced]);
 
-  // When manual shift counts change in fixed-length mode and analysis has been
-  // run at least once, automatically refresh suggestions so the dropdowns
-  // When manual shifts occur, refresh analysis to update candidate scores based on new column positions.
-  // This ensures suggestions reflect the current grid layout (e.g., after shifting O from pos 4 to 5,
-  // candidates for O should match tokens at the new position).
-  // Watch manualPtCounts instead of columns to avoid triggering on selection changes.
-  React.useEffect(() => {
-    if (ctParseMode !== 'fixedLength') return;
-    if (!analysisDone) return;
-    if (!manualPtCounts) return;
+    // manualPtCounts, lockedKeys, bracketedIndices, ctParseMode, fixedLength changes
+    // all warrant a refresh — no further gating needed (debouncer absorbs rapid calls).
     refreshAnalysisPreserveDebounced();
-  }, [manualPtCounts, analysisDone, ctParseMode, refreshAnalysisPreserveDebounced]);
-
-  // Keep candidates in sync with lock/bracket changes once analysis exists.
-  React.useEffect(() => {
-    if (!analysisDone) return;
-    refreshAnalysisPreserveDebounced();
-  }, [analysisDone, lockedKeys, bracketedIndices, ctParseMode, fixedLength, refreshAnalysisPreserveDebounced]);
+  }, [
+    analysisDone,
+    pendingAutoRefresh,
+    manualPtCounts,
+    lockedKeys,
+    bracketedIndices,
+    ctParseMode,
+    fixedLength,
+    refreshAnalysisPreserveDebounced,
+  ]);
 
   // Refresh suggestions when the user makes manual selections (preview stage).
   // This ensures choosing a suggestion for one PT (e.g., `A -> 11`) immediately
   // updates candidate lists for other PT chars (e.g., `H`). Debounced to avoid
   // excessive work while the user changes selections rapidly.
-  // Skipped in multi-key mode: selections there are not a scoring input, so
-  // refreshing on every checkbox click would cause a ping-pong with setSelections.
+  // Kept separate from the combined effect above because in multi-key mode,
+  // refreshAnalysisPreserve itself calls setSelections, which would cause a
+  // ping-pong cycle if selections were included in the same effect.
   React.useEffect(() => {
     if (!analysisDone) return;
     if (keysPerPTMode === 'multiple') return;
@@ -949,8 +904,8 @@ export function useNomenklator() {
 
   const { shiftRight, shiftLeft } = mapping;
 
-  /** User-editable inputs and their setters. */
-  const inputsRef = useRef({
+  /** User-editable inputs and their setters. Stable reference: only recreated when values change. */
+  const inputs = useMemo(() => ({
     ptRaw,
     setPtRaw,
     ctRaw,
@@ -963,20 +918,7 @@ export function useNomenklator() {
     setFixedLength,
     keysPerPTMode,
     setKeysPerPTMode,
-  });
-  inputsRef.current.ptRaw = ptRaw;
-  inputsRef.current.setPtRaw = setPtRaw;
-  inputsRef.current.ctRaw = ctRaw;
-  inputsRef.current.setCtRaw = setCtRaw;
-  inputsRef.current.ctParseMode = ctParseMode;
-  inputsRef.current.setCtParseMode = setCtParseMode;
-  inputsRef.current.separator = separator;
-  inputsRef.current.setSeparator = setSeparator;
-  inputsRef.current.fixedLength = fixedLength;
-  inputsRef.current.setFixedLength = setFixedLength;
-  inputsRef.current.keysPerPTMode = keysPerPTMode;
-  inputsRef.current.setKeysPerPTMode = setKeysPerPTMode;
-  const inputs = inputsRef.current;
+  }), [ptRaw, setPtRaw, ctRaw, setCtRaw, ctParseMode, setCtParseMode, separator, setSeparator, fixedLength, setFixedLength, keysPerPTMode, setKeysPerPTMode]);
 
   /** Mutable UI state (locks, selections, warnings, prompts). */
   const state = useMemo(() => ({

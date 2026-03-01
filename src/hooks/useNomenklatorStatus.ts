@@ -1,16 +1,11 @@
-﻿import * as React from 'react';
+﻿import { useMemo } from 'react';
 import type { CTToken } from '../types/domain';
-import type { PTChar } from '../components/types';
+import type { PTChar } from '../types/domain';
 
-export function useNomenklatorStatus(params: {
+interface UseNomenklatorStatusParams {
   klamacStatusFromParse: 'none' | 'needsKlamac' | 'ok' | 'invalid';
   statusMessageFromParse: string | null;
   bracketWarningFromParse: string | null;
-
-  setKlamacStatus: React.Dispatch<React.SetStateAction<'none' | 'needsKlamac' | 'ok' | 'invalid'>>;
-  setStatusMessage: React.Dispatch<React.SetStateAction<string | null>>;
-  setBracketWarning: React.Dispatch<React.SetStateAction<string | null>>;
-
   analysisDone: boolean;
   ptChars: PTChar[];
   ctTokens: CTToken[];
@@ -18,62 +13,88 @@ export function useNomenklatorStatus(params: {
   ctParseMode: 'separator' | 'fixedLength';
   fixedLength: number;
   bracketedIndices: number[];
-}) {
+}
+
+interface NomenklatorStatus {
+  klamacStatus: 'none' | 'needsKlamac' | 'ok' | 'invalid';
+  statusMessage: string | null;
+  bracketWarning: string | null;
+}
+
+/**
+ * Pure derived hook: computes klamacStatus, statusMessage, and bracketWarning
+ * from parse results and post-analysis data, with no side-effects.
+ * Superseded values from parse are overridden once analysis completes.
+ */
+export function useNomenklatorStatus(params: UseNomenklatorStatusParams): NomenklatorStatus {
   const {
     klamacStatusFromParse,
     statusMessageFromParse,
     bracketWarningFromParse,
-    setKlamacStatus,
-    setStatusMessage,
-    setBracketWarning,
     analysisDone,
     ptChars,
     ctTokens,
     effectiveCtTokens,
     ctParseMode,
     fixedLength,
-    bracketedIndices,
+    bracketedIndices: _bracketedIndices, // listed so callers remain stable; used implicitly via effectiveCtTokens
   } = params;
 
-  React.useEffect(() => {
-    setKlamacStatus(klamacStatusFromParse);
-    setStatusMessage(statusMessageFromParse);
-  }, [klamacStatusFromParse, setKlamacStatus, setStatusMessage, statusMessageFromParse]);
-
-  React.useEffect(() => {
-    setBracketWarning(bracketWarningFromParse);
-  }, [bracketWarningFromParse, setBracketWarning]);
-
-  // Status update after analysis w.r.t. brackets
-  React.useEffect(() => {
+  const klamacAndMessage = useMemo((): { klamacStatus: NomenklatorStatus['klamacStatus']; statusMessage: string | null } => {
     const PT = ptChars.length;
-    if (PT === 0 || ctTokens.length === 0) {
-      setKlamacStatus('none');
-      setStatusMessage(null);
-      return;
-    }
-    if (!analysisDone) return;
 
+    // No data yet — nothing to report
+    if (PT === 0 || ctTokens.length === 0) {
+      return { klamacStatus: 'none', statusMessage: null };
+    }
+
+    // Analysis not done yet — use parse-level status
+    if (!analysisDone) {
+      return { klamacStatus: klamacStatusFromParse, statusMessage: statusMessageFromParse };
+    }
+
+    // Analysis complete — compute from effective token counts
     const groupSize = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
     const effChars = effectiveCtTokens.length;
     const effGroups = Math.floor(effChars / groupSize);
     const leftover = effChars % groupSize;
 
     if (leftover !== 0) {
-      setKlamacStatus('invalid');
-      setStatusMessage(`Deception incorrectly selected: incomplete groups (missing ${groupSize - leftover} characters).`);
-      return;
+      return {
+        klamacStatus: 'invalid',
+        statusMessage: `Deception incorrectly selected: incomplete groups (missing ${groupSize - leftover} characters).`,
+      };
     }
 
     if (effGroups < PT) {
-      setKlamacStatus('invalid');
-      setStatusMessage(`Wrong deception selected: PT (${PT}) > CT (${effGroups}).`);
-    } else if (effGroups > PT) {
-      setKlamacStatus('needsKlamac');
-      setStatusMessage(`Excess groups: ${effGroups - PT}. Choose another deception token.`);
-    } else {
-      setKlamacStatus('ok');
-      setStatusMessage(null);
+      return {
+        klamacStatus: 'invalid',
+        statusMessage: `Wrong deception selected: PT (${PT}) > CT (${effGroups}).`,
+      };
     }
-  }, [analysisDone, bracketedIndices, effectiveCtTokens.length, fixedLength, ptChars.length, setKlamacStatus, setStatusMessage, ctParseMode, ctTokens.length]);
+
+    if (effGroups > PT) {
+      return {
+        klamacStatus: 'needsKlamac',
+        statusMessage: `Excess groups: ${effGroups - PT}. Choose another deception token.`,
+      };
+    }
+
+    return { klamacStatus: 'ok', statusMessage: null };
+  }, [
+    analysisDone,
+    ctParseMode,
+    ctTokens.length,
+    effectiveCtTokens.length,
+    fixedLength,
+    klamacStatusFromParse,
+    ptChars.length,
+    statusMessageFromParse,
+  ]);
+
+  return {
+    klamacStatus: klamacAndMessage.klamacStatus,
+    statusMessage: klamacAndMessage.statusMessage,
+    bracketWarning: bracketWarningFromParse,
+  };
 }

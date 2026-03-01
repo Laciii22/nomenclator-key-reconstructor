@@ -3,6 +3,10 @@ import { Grid } from 'react-window';
 import type { MappingTableProps } from '../types';
 import PTCell from './PTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
+import { normalizeLocks } from '../../utils/frequency';
+import { useViewportWidth } from '../../hooks/useViewportWidth';
+import { MappingCellContext, type MappingCellContextValue } from './MappingCellContext';
+import PromptModal from '../common/PromptModal';
 
 type MappingTableExtraProps = {
 	groupSize?: number;
@@ -27,11 +31,17 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
 
-		// Fallback: normalize multi-key to single-key for buildShiftOnlyColumns
-		const normalizedLocks: Record<string, string> = {};
-		for (const [ch, val] of Object.entries(lockedKeys || {})) {
-			normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
+		// Fallback: columns prop was not provided. Prefer passing precomputed
+		// `columns` from useMapping for accuracy and to avoid duplicate work.
+		if (import.meta.env.DEV) {
+			console.warn(
+				'[MappingTable] No precomputed columns provided; falling back to internal computation. '
+				+ 'Pass `columns` from useMapping for best performance and accuracy.'
+			);
 		}
+
+		// Fallback: normalize multi-key to single-key for buildShiftOnlyColumns
+		const normalizedLocks = normalizeLocks(lockedKeys);
 		const normalizedSelections: Record<string, string | null> = {};
 		for (const [ch, val] of Object.entries(selections || {})) {
 			normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
@@ -40,37 +50,34 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		return buildShiftOnlyColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, groupSize, bracketedIndices);
 	}, [columns, ptRows, ctTokens, lockedKeys, selections, groupSize, bracketedIndices]);
 
-	// Flat index of all cells (including deception) for shift operations in fixedLength mode
-	const flatIndices = useMemo(() => {
-		let counter = 0;
-		return rows.map(row => row.map(() => {
-			const idx = counter;
-			counter++;
-			return idx;
-		}));
-	}, [rows]);
+	// Flat index of all cells (including deception), flat PT-only index, and owned CT
+	// indices — all derived from `rows` — computed in a single traversal to avoid
+	// iterating the grid three separate times when rows change.
+	const { flatIndices, flatPtIndices, allOwnedIndices } = useMemo(() => {
+		let allCounter = 0;
+		let ptCounter = 0;
+		const fi: number[][] = [];
+		const fpi: number[][] = [];
+		const owned = new Set<number>();
 
-	// Flat PT index - counts only PT cells (excludes deception) - for split operations
-	const flatPtIndices = useMemo(() => {
-		let counter = 0;
-		return rows.map(row => row.map(col => {
-			if (!col.pt || col.deception) return -1;
-			const idx = counter;
-			counter++;
-			return idx;
-		}));
-	}, [rows]);
-
-	// Owned raw CT indices across the whole grid (used to decide whether a short group
-	// can safely expand from its start without overlapping another cell).
-	const allOwnedIndices = React.useMemo(() => {
-		const allOwned = new Set<number>();
-		for (let rr = 0; rr < rows.length; rr++) {
-			for (let cc = 0; cc < rows[rr].length; cc++) {
-				for (const idx of rows[rr][cc].ct) allOwned.add(idx);
+		for (let r = 0; r < rows.length; r++) {
+			const fiRow: number[] = [];
+			const fpiRow: number[] = [];
+			for (let c = 0; c < rows[r].length; c++) {
+				const col = rows[r][c];
+				fiRow.push(allCounter++);
+				if (col.pt && !col.deception) {
+					fpiRow.push(ptCounter++);
+				} else {
+					fpiRow.push(-1);
+				}
+				for (const idx of col.ct) owned.add(idx);
 			}
+			fi.push(fiRow);
+			fpi.push(fpiRow);
 		}
-		return allOwned;
+
+		return { flatIndices: fi, flatPtIndices: fpi, allOwnedIndices: owned };
 	}, [rows]);
 
 	// Pre-compute allowExpandFromStart for all cells to avoid O(n²) in render
@@ -160,25 +167,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	}, [ptRows]);
 
 	// Responsive column count based on viewport width
-	const [viewportWidth, setViewportWidth] = React.useState(() =>
-		typeof window === 'undefined' ? 1200 : window.innerWidth
-	);
-
-	React.useEffect(() => {
-		if (typeof window === 'undefined') return;
-		let timeoutId: number | null = null;
-		const onResize = () => {
-			if (timeoutId) clearTimeout(timeoutId);
-			timeoutId = setTimeout(() => {
-				setViewportWidth(window.innerWidth);
-			}, 150) as unknown as number;
-		};
-		window.addEventListener('resize', onResize, { passive: true } as any);
-		return () => {
-			if (timeoutId) clearTimeout(timeoutId);
-			window.removeEventListener('resize', onResize);
-		};
-	}, []);
+	const viewportWidth = useViewportWidth(150);
 
 	// Calculate how many columns can fit without horizontal scroll
 	const MIN_CELL_WIDTH = 75; // minimum cell width in pixels
@@ -230,7 +219,51 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	const columnCount = effectiveColumnCount;
 	const rowCount = Math.ceil(flatCells.length / columnCount);
 
-	// Cell renderer for react-window
+	// State for the non-blocking insert/edit modal (replaces window.prompt in the Cell callback)
+	const [insertPrompt, setInsertPrompt] = React.useState<{
+		current: string;
+		label: string;
+		ptOnlyIndex: number;
+	} | null>(null);
+
+	// Stable context value shared across all PTCell instances rendered by this grid.
+	// Placing these in context eliminates the need to pass them as per-cell props.
+	const ctxValue = useMemo((): MappingCellContextValue => ({
+		ctTokens,
+		lockedKeys: lockedKeys ?? {},
+		groupSize,
+		keysPerPTMode: keysPerPTMode ?? 'single',
+		highlightedPTChar: props.highlightedPTChar,
+		onLockOT,
+		onUnlockOT,
+		onEditToken,
+		onSplitGroup: canSplitGroup ? onSplitGroup : undefined,
+		onShiftGroupLeft,
+		onShiftGroupRight,
+		activeDragType,
+		activePtSourceRow,
+		activePtSourceCol,
+		activeCtTokenIndex,
+		shiftMeta,
+	}), [
+		ctTokens,
+		lockedKeys,
+		groupSize,
+		keysPerPTMode,
+		props.highlightedPTChar,
+		onLockOT,
+		onUnlockOT,
+		onEditToken,
+		canSplitGroup,
+		onSplitGroup,
+		onShiftGroupLeft,
+		onShiftGroupRight,
+		activeDragType,
+		activePtSourceRow,
+		activePtSourceCol,
+		activeCtTokenIndex,
+		shiftMeta,
+	]);
 	const Cell = React.useCallback(({ columnIndex, rowIndex, style, ariaAttributes }: {
 		columnIndex: number;
 		rowIndex: number;
@@ -242,69 +275,20 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 		const { rIdx, cIdx, col } = flatCells[flatIdx];
 
-		// Get displayed token indices/text for this cell.
-		// Must match PTCell display rules, otherwise locks/shifts look like they require double-click.
-		const displayedIndices = (() => {
-			if (!col.ct || col.ct.length === 0) return [] as number[];
-			if (groupSize <= 1) return col.ct.slice();
-			if (col.ct.length >= groupSize) return col.ct.slice(0, groupSize);
-			if (col.ct.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
-				const start = col.ct[0];
-				const expanded: number[] = [];
-				for (let k = 0; k < groupSize; k++) {
-					const idx = start + k;
-					if (idx < ctTokens.length) expanded.push(idx);
-				}
-				return expanded;
-			}
-			return col.ct.slice();
-		})();
-
-		const currentTokenText = displayedIndices.length
-			? displayedIndices.map(i => ctTokens[i]?.text || '').join('')
-			: '';
-
-		// Check if this specific token is in the locked homophones
-		const lockedHomophones = col.pt ? lockedKeys?.[col.pt.ch] : undefined;
-		const isThisTokenLocked = (() => {
-			if (!col.pt || !lockedHomophones || !currentTokenText) return false;
-			if (Array.isArray(lockedHomophones)) {
-				return lockedHomophones.includes(currentTokenText);
-			}
-			return lockedHomophones === currentTokenText;
-		})();
-
+		// Per-cell props only; grid-level values are provided via MappingCellContext.
 		return (
 			<div style={{ ...style, padding: '2px' }} {...ariaAttributes}>
 				<PTCell
-					highlightedPTChar={props.highlightedPTChar}
 					key={`${rIdx}-${cIdx}`}
 					pt={col.pt ?? null}
-					tokens={ctTokens}
 					tokenIndices={col.ct}
 					row={rIdx}
 					col={cIdx}
-					onLockOT={onLockOT}
-					onUnlockOT={onUnlockOT}
-					lockedValue={isThisTokenLocked ? currentTokenText : undefined}
 					deception={Boolean(col.deception || col.pt == null)}
 					hasDuplicateKey={Boolean(col.pt && duplicatePTChars.has(col.pt.ch))}
-					onEditToken={onEditToken}
-					isFixedLength={groupSize > 1}
-					groupSize={groupSize}
 					flatIndex={flatIndices[rIdx][cIdx]}
 					flatPtIndex={flatPtIndices[rIdx][cIdx]}
-					activeDragType={activeDragType}
-					activePtSourceRow={activePtSourceRow}
-					activePtSourceCol={activePtSourceCol}
-					activeCtTokenIndex={activeCtTokenIndex}
-					keysPerPTMode={keysPerPTMode}
 					isTentative={Boolean(col.tentative)}
-					lockedHomophonesCount={
-						keysPerPTMode === 'multiple' && col.pt
-							? (() => { const v = lockedKeys?.[col.pt!.ch]; return Array.isArray(v) ? v.length : v ? 1 : 0; })()
-							: undefined
-					}
 					allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;
@@ -312,29 +296,15 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 						for (const row of rows) for (const col of row) flatColumns.push({ ptCh: col.pt ? col.pt.ch : null, indices: col.ct });
 						const target = flatColumns[fi];
 						if (!target || !target.ptCh) return;
-						const current = target && target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
+						const current = target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
 						const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this PT (no spaces):';
-						const input = window.prompt(label, current);
 						const ptOnlyIndex = flatColumns.slice(0, fi).filter(f => f.ptCh != null).length;
-						if (input != null && onInsertRawCharsAfterPosition) onInsertRawCharsAfterPosition(ptOnlyIndex, input, true);
+						setInsertPrompt({ current, label, ptOnlyIndex });
 					}}
-					onSplitGroup={canSplitGroup ? onSplitGroup : undefined}
-					onShiftLeft={onShiftGroupLeft}
-					onShiftRight={onShiftGroupRight}
-					canShiftLeft={(() => {
-						const fi = flatIndices[rIdx][cIdx];
-						if (!shiftMeta || fi < 0) return false;
-						return !!shiftMeta[fi]?.canShiftLeft;
-					})()}
-					canShiftRight={(() => {
-						const fi = flatIndices[rIdx][cIdx];
-						if (!shiftMeta || fi < 0) return false;
-						return !!shiftMeta[fi]?.canShiftRight;
-					})()}
 				/>
 			</div>
 		);
-	}, [flatCells, columnCount, groupSize, ctTokens, lockedKeys, props.highlightedPTChar, onLockOT, onUnlockOT, onEditToken, duplicatePTChars, flatIndices, flatPtIndices, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, allowExpandMap, canInsertRaw, rows, onInsertRawCharsAfterPosition, canSplitGroup, onSplitGroup, onShiftGroupLeft, onShiftGroupRight, shiftMeta]);
+	}, [flatCells, columnCount, duplicatePTChars, flatIndices, flatPtIndices, allowExpandMap, canInsertRaw, rows, ctTokens, groupSize]);
 
 	if (rows.length === 0) {
 		return (
@@ -344,9 +314,9 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		);
 	}
 
-
 	return (
-		<div>
+		<MappingCellContext.Provider value={ctxValue}>
+			<div>
 			<div className="flex flex-wrap gap-3 mb-2 text-xs text-gray-500 select-none">
 				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200 border border-green-300"></span> Locked</span>
 				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-100 border border-yellow-300"></span> Unlocked</span>
@@ -377,7 +347,21 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					cellProps={{}}
 				/>
 			</div>
+			<PromptModal
+				isOpen={insertPrompt !== null}
+				title="Edit CT Token"
+				label={insertPrompt?.label ?? ''}
+				initialValue={insertPrompt?.current ?? ''}
+				onConfirm={(value) => {
+					if (insertPrompt && onInsertRawCharsAfterPosition) {
+						onInsertRawCharsAfterPosition(insertPrompt.ptOnlyIndex, value, true);
+					}
+					setInsertPrompt(null);
+				}}
+				onCancel={() => setInsertPrompt(null)}
+			/>
 		</div>
+		</MappingCellContext.Provider>
 	);
 }
 

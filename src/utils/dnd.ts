@@ -6,14 +6,7 @@
 
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { Column } from '../components/types';
-
-interface DragData {
-  sourceRow?: number;
-  sourceCol?: number;
-  row?: number;
-  col?: number;
-  isKlamac?: boolean;
-}
+import type { DragData } from '../types/domain';
 
 /**
  * Resolve a drag-end event into a valid merge operation.

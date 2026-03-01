@@ -2,16 +2,6 @@
 
 
 
-export function logicalGroups(tokens: CTToken[], groupSize: number): { text: string; start: number }[] {
-  const size = Math.max(1, groupSize);
-  const out: { text: string; start: number }[] = [];
-  for (let i = 0; i + size - 1 < tokens.length; i += size) {
-    const t = tokens.slice(i, i + size).map(x => x.text).join('');
-    out.push({ text: t, start: i });
-  }
-  return out;
-}
-
 export function uniqueGroupTexts(tokens: CTToken[], groupSize: number, bracketedIndices: number[]): { text: string; allBracketed: boolean }[] {
   const size = Math.max(1, groupSize);
   const br = new Set(bracketedIndices);

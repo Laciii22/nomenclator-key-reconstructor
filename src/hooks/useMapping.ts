@@ -13,6 +13,7 @@ import type { Column } from '../components/types';
 import type { PTChar, CTToken } from '../types/domain';
 import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 import { buildMultiKeyColumns } from '../utils/multiKeyMapping';
+import { normalizeLocks } from '../utils/frequency';
 import { canShiftLeft, canShiftRight, deriveCountsFromColumns, shiftLeft, shiftRight } from '../mapping/manualShift';
 
 /**
@@ -43,10 +44,7 @@ export function useMapping(params: {
       return buildMultiKeyColumns(ptRows, effectiveCtTokens, lockedKeys, selections, groupSize);
     } else {
       // Single-key mode: normalize to single-key and use shift-based mapping
-      const normalizedLocks: Record<string, string> = {};
-      for (const [ch, val] of Object.entries(lockedKeys)) {
-        normalizedLocks[ch] = Array.isArray(val) ? val[0] || '' : val;
-      }
+      const normalizedLocks = normalizeLocks(lockedKeys);
       const normalizedSelections: Record<string, string | null> = {};
       for (const [ch, val] of Object.entries(selections)) {
         normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
@@ -65,11 +63,8 @@ export function useMapping(params: {
     return `${ctParseMode}:${groupSize}:${totalPtCells}:${effectiveCtTokens.length}`;
   }, [effectiveCtTokens.length, groupSize, ptRows, ctParseMode]);
 
+  // Reset manual shifts when the layout signature changes or mode is not fixedLength
   React.useEffect(() => {
-    if (ctParseMode !== 'fixedLength') {
-      setManualPtCounts(null);
-      return;
-    }
     setManualPtCounts(null);
   }, [layoutSig, ctParseMode]);
 

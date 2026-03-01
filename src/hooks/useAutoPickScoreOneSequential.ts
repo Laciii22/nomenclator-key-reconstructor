@@ -18,18 +18,27 @@ export function useAutoPickScoreOneSequential(params: {
   React.useEffect(() => {
     if (keysPerPTMode === 'multiple') return;
     if (!Object.keys(candidatesByChar).length) return;
+
+    // Compute derived data outside the setter to avoid closing over potentially
+    // stale ctTokens inside the updater function.
     const expected = getExpectedCTIndicesForOT(ptRows, ctTokens, bracketedIndices);
+    const newPicks: Record<string, string> = {};
+    for (const [ch, list] of Object.entries(candidatesByChar)) {
+      // Consider a candidate "perfect" only if its support equals occurrences
+      const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
+      if (perfect.length !== 1) continue;
+      const token = perfect[0].token;
+      const indices = ctTokens.map((t, i) => (t.text === token ? i : -1)).filter(i => i >= 0);
+      const exp = expected[ch] || [];
+      if (indices.length === exp.length && indices.every((v, i) => v === exp[i])) {
+        newPicks[ch] = token;
+      }
+    }
+    if (Object.keys(newPicks).length === 0) return;
     setSelections(prev => {
       const next = { ...prev };
-      for (const [ch, list] of Object.entries(candidatesByChar)) {
-        if (next[ch]) continue;
-        // Consider a candidate "perfect" only if its support equals occurrences
-        const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
-        if (perfect.length !== 1) continue;
-        const token = perfect[0].token;
-        const indices = ctTokens.map((t, i) => (t.text === token ? i : -1)).filter(i => i >= 0);
-        const exp = expected[ch] || [];
-        if (indices.length === exp.length && indices.every((v, i) => v === exp[i])) next[ch] = token;
+      for (const [ch, token] of Object.entries(newPicks)) {
+        if (!next[ch]) next[ch] = token;
       }
       return next;
     });
