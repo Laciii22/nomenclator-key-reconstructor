@@ -225,7 +225,7 @@ const KeyTable: React.FC<KeyTableProps & {
             <div className="flex-1">
               <input
                 type="text"
-                placeholder="PT pattern (e.g. PES)"
+                placeholder="PT pattern (e.g. DOG)"
                 value={quickPtPattern}
                 onChange={handlePtPatternChange}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -234,7 +234,7 @@ const KeyTable: React.FC<KeyTableProps & {
             <div className="flex-1">
               <input
                 type="text"
-                placeholder="CT token (e.g. 66)"
+                placeholder="CT token (e.g. 111)"
                 value={quickCtToken}
                 onChange={handleCtTokenChange}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
