@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { KeysPerPTMode, PTChar, SelectionMap, DragData } from '../types/domain';
 import { useLocalSettings } from './useLocalSettings';
 import { resolveMergeFromEvent } from '../utils/dnd';
@@ -902,7 +902,7 @@ export function useNomenklator() {
     refreshAnalysisPreserveDebounced();
   }, [selections, analysisDone, keysPerPTMode, refreshAnalysisPreserveDebounced]);
 
-  const { shiftRight, shiftLeft } = mapping;
+  const { shiftRight, shiftLeft, extractEdgeToken, reabsorbNullToken, extractEdgeTokenByCtIndex, reabsorbNullByDirection } = mapping;
 
   /** User-editable inputs and their setters. Stable reference: only recreated when values change. */
   const inputs = useMemo(() => ({
@@ -967,6 +967,10 @@ export function useNomenklator() {
     insertRawCharsAfterPosition,
     shiftGroupRight: shiftRight,
     shiftGroupLeft: shiftLeft,
+    extractEdgeToken,
+    reabsorbNullToken,
+    extractEdgeTokenByCtIndex,
+    reabsorbNullByDirection,
     joinPTAt,
     splitPTAt,
     mergeAllOccurrences,
@@ -992,6 +996,10 @@ export function useNomenklator() {
     runAnalysis,
     shiftLeft,
     shiftRight,
+    extractEdgeToken,
+    reabsorbNullToken,
+    extractEdgeTokenByCtIndex,
+    reabsorbNullByDirection,
     splitPTAt,
     toggleBracketGroupByText,
     toggleHighlightForOT,

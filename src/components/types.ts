@@ -81,6 +81,12 @@ export type MappingTableProps = {
   activeCtTokenIndex?: number | null;
   /** Keys per PT mode: 'single' or 'multiple' */
   keysPerPTMode?: 'single' | 'multiple';
+  /** True when the active CT drag is from an injected null cell */
+  activeCtIsFromNull?: boolean;
+  /** Base flat index of the active null cell being dragged (null = none) */
+  activeNullInsertedAfterBaseFlatIndex?: number | null;
+  /** Number of tokens in the source cell of the active CT drag */
+  activeCtSourceCellCount?: number;
 };
 
 /**
@@ -121,6 +127,10 @@ export type PTCellProps = {
   hasDuplicateKey?: boolean;
   /** True when the token is consumed sequentially but not yet confirmed as a homophone lock */
   isTentative?: boolean;
+  /** Base flat index among base cells only (excludes injected null cells) — for retract logic */
+  baseFlatIndex?: number;
+  /** For injected deception cells: the base flat index after which this null was inserted */
+  nullInsertedAfterBaseFlatIdx?: number;
 };
 
 /**
@@ -144,6 +154,10 @@ export type CTTokenProps = {
   activeDragType?: 'ct' | 'pt';
   /** Active token index when dragging a CT token */
   activeCtTokenIndex?: number | null;
+  /** True when this token belongs to an injected null/deception cell */
+  isFromNull?: boolean;
+  /** When isFromNull: the base flat index after which the null cell was inserted */
+  nullInsertedAfterBaseFlatIndex?: number;
 };
 
 /**
@@ -159,4 +173,8 @@ export type Column = {
   deception?: boolean;
   /** True if the token is consumed sequentially (no confirmed homophone lock yet) */
   tentative?: boolean;
+  /** Base flat index (only base cells, not injected nulls) — used for shift/retract logic */
+  baseFlatIdx?: number;
+  /** Set only on injected null cells: the base flat index after which this null was inserted */
+  insertedAfterBaseFlatIndex?: number;
 };

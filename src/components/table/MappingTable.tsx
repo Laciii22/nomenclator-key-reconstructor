@@ -26,7 +26,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { ptRows, ctTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [] } = props;
+	const { ptRows, ctTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -245,6 +245,9 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		activePtSourceCol,
 		activeCtTokenIndex,
 		shiftMeta,
+		activeCtIsFromNull,
+		activeNullInsertedAfterBaseFlatIndex,
+		activeCtSourceCellCount,
 	}), [
 		ctTokens,
 		lockedKeys,
@@ -263,6 +266,9 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		activePtSourceCol,
 		activeCtTokenIndex,
 		shiftMeta,
+		activeCtIsFromNull,
+		activeNullInsertedAfterBaseFlatIndex,
+		activeCtSourceCellCount,
 	]);
 	const Cell = React.useCallback(({ columnIndex, rowIndex, style, ariaAttributes }: {
 		columnIndex: number;
@@ -290,6 +296,8 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					flatPtIndex={flatPtIndices[rIdx][cIdx]}
 					isTentative={Boolean(col.tentative)}
 					allowExpandFromStart={allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false}
+					baseFlatIndex={col.baseFlatIdx}
+					nullInsertedAfterBaseFlatIdx={col.insertedAfterBaseFlatIndex}
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;
 						const flatColumns: { ptCh: string | null; indices: number[] }[] = [];

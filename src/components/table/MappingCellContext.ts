@@ -52,6 +52,14 @@ export interface MappingCellContextValue {
   activePtSourceCol?: number;
   /** Index of the CT token currently being dragged (null = none) */
   activeCtTokenIndex?: number | null;
+  /** Number of tokens in the source cell of the active CT drag (used to gate extraction strips) */
+  activeCtSourceCellCount?: number;
+
+  // ── Null-cell retraction DnD state ────────────────────────────────────────
+  /** True when the active CT drag originates from an injected null/deception cell */
+  activeCtIsFromNull?: boolean;
+  /** Base flat index of the active null cell being dragged (null = none) */
+  activeNullInsertedAfterBaseFlatIndex?: number | null;
 
   // ── Shift metadata ────────────────────────────────────────────────────────
   /**

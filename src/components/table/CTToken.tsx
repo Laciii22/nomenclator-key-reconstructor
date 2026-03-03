@@ -14,7 +14,7 @@ import { colors } from '../../utils/colors';
 /**
  * A draggable CT token component with lock state and swap affordances.
  */
-const CTTokenComp: React.FC<CTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked, activeDragType, activeCtTokenIndex }) => {
+const CTTokenComp: React.FC<CTTokenProps> = ({ token, tokenIndex, row, col, onEdit: _onEdit, isLocked, activeDragType, activeCtTokenIndex, isFromNull = false, nullInsertedAfterBaseFlatIndex }) => {
   const isDraggingZT = activeDragType === 'ct';
   const activeTokenIndex = typeof activeCtTokenIndex === 'number' ? activeCtTokenIndex : null;
 
@@ -27,7 +27,7 @@ const CTTokenComp: React.FC<CTTokenProps> = ({ token, tokenIndex, row, col, onEd
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `ct-${token.id}`,
-    data: { type: 'ct', token, tokenIndex, row, col },
+    data: { type: 'ct', token, tokenIndex, row, col, isFromNull, nullInsertedAfterBaseFlatIndex },
     disabled: Boolean(isLocked),
   });
 

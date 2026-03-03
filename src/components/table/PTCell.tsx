@@ -38,6 +38,7 @@ const PTCell: React.FC<PTCellProps> = ({
   deception,
   flatIndex,
   flatPtIndex,
+  baseFlatIndex,
   onInsertAfterGroup,
   allowExpandFromStart,
   hasDuplicateKey,
@@ -61,6 +62,8 @@ const PTCell: React.FC<PTCellProps> = ({
     onShiftGroupLeft,
     onShiftGroupRight,
     shiftMeta,
+    activeCtIsFromNull,
+    activeCtSourceCellCount,
   } = useMappingCellContext();
 
   const isFixedLength = groupSize > 1;
@@ -104,7 +107,7 @@ const PTCell: React.FC<PTCellProps> = ({
     isDraggingOT
     && pt
     && !deception
-    && !lockedValue
+    && !lockedKeys[pt?.ch ?? '']
     && isAdjacentRightCell
   );
 
@@ -112,6 +115,42 @@ const PTCell: React.FC<PTCellProps> = ({
     id: `cell-${row}-${col}`, 
     data: { row, col, isKlamac: !pt, flatIndex },
     disabled: !isPotentialPtMergeTarget,
+  });
+
+  // ── Left / right edge CT-shift strips (fixed-length mode only) ───────────
+  // When a ZT token is dragged in fixed-length mode, each cell shows:
+  //   LEFT strip  - active when dragged token is exactly one BEFORE this cell's first token
+  //   RIGHT strip - active when dragged token is exactly one AFTER this cell's last token
+  // Dropping shifts the source cell's token one step toward the gap.
+  const isDraggingZT = activeDragType === 'ct';
+  const activeIdx = typeof activeCtTokenIndex === 'number' ? activeCtTokenIndex : null;
+
+  const firstTokenIdx = tokenIndices.length > 0 ? tokenIndices[0] : null;
+  const lastTokenIdx  = tokenIndices.length > 0 ? tokenIndices[tokenIndices.length - 1] : null;
+
+  // Always register droppables when dragging ZT in fixedLength so dnd-kit sees them immediately.
+  // Validity is signalled via the `active` flag in data so the handler can reject wrong drops.
+  // Injected null (deception) cells never act as edge-strip drop targets.
+  const showEdgeStrips = isDraggingZT && isFixedLength && !deception;
+  // For extraction: source must have >1 token (so original cell doesn't go empty).
+  // For reabsorption (dragging from a null cell): this DESTINATION cell must have room (< groupSize tokens).
+  const sourceCount = activeCtSourceCellCount ?? 0;
+  const isNullSource = activeCtIsFromNull ?? false;
+  const sourceCanInteract = isNullSource
+    ? tokenIndices.length < groupSize   // reabsorb: dest must have room, else token would overflow
+    : (sourceCount > 1);                // extract: source must not be left empty
+  const isActiveLeftStrip  = activeIdx !== null && firstTokenIdx !== null && activeIdx === firstTokenIdx - 1 && sourceCanInteract;
+  const isActiveRightStrip = activeIdx !== null && lastTokenIdx  !== null && activeIdx === lastTokenIdx  + 1 && sourceCanInteract;
+
+  const { setNodeRef: setLeftStripRef,  isOver: isOverLeftStrip  } = useDroppable({
+    id: `ct-edge-left-${row}-${col}`,
+    data: { type: 'ct-edge', direction: 'left', flatIndex, baseFlatIndex, active: isActiveLeftStrip },
+    disabled: !showEdgeStrips,
+  });
+  const { setNodeRef: setRightStripRef, isOver: isOverRightStrip } = useDroppable({
+    id: `ct-edge-right-${row}-${col}`,
+    data: { type: 'ct-edge', direction: 'right', flatIndex, baseFlatIndex, active: isActiveRightStrip },
+    disabled: !showEdgeStrips,
   });
 
   // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
@@ -163,13 +202,6 @@ const PTCell: React.FC<PTCellProps> = ({
     if (Array.isArray(lock)) return lock.includes(currentText) ? currentText : undefined;
     return lock === currentText ? lock : undefined;
   }, [pt, lockedKeys, displayedTokens]);
-
-  // Count locked homophones for multi-key mode badge
-  const lockedHomophonesCount = React.useMemo((): number | undefined => {
-    if (keysPerPTMode !== 'multiple' || !pt) return undefined;
-    const v = lockedKeys[pt.ch];
-    return Array.isArray(v) ? v.length : v ? 1 : 0;
-  }, [keysPerPTMode, lockedKeys, pt]);
 
   const isEmptyRealPtCell = Boolean(pt) && !deception && displayedTokens.length === 0;
   const isDuplicateKey = Boolean(pt) && !deception && Boolean(hasDuplicateKey);
@@ -325,6 +357,34 @@ const PTCell: React.FC<PTCellProps> = ({
   return (
     <>
       <div ref={setNodeRef} className={cellClassName}>
+      {/* LEFT edge strip — covers left 1/3 of cell; active when source token is immediately to the left */}
+      {showEdgeStrips && (
+        <div
+          ref={setLeftStripRef}
+          className={`absolute left-0 top-0 bottom-0 w-1/3 rounded-l z-20 transition-colors pointer-events-auto ${
+            isActiveLeftStrip
+              ? isOverLeftStrip
+                ? 'bg-orange-400 opacity-90'
+                : 'bg-orange-200 opacity-60'
+              : 'opacity-0'
+          }`}
+          title={isActiveLeftStrip ? 'Drop to shift token into this gap' : undefined}
+        />
+      )}
+      {/* RIGHT edge strip — covers right 1/3 of cell; active when source token is immediately to the right */}
+      {showEdgeStrips && (
+        <div
+          ref={setRightStripRef}
+          className={`absolute right-0 top-0 bottom-0 w-1/3 rounded-r z-20 transition-colors pointer-events-auto ${
+            isActiveRightStrip
+              ? isOverRightStrip
+                ? 'bg-orange-400 opacity-90'
+                : 'bg-orange-200 opacity-60'
+              : 'opacity-0'
+          }`}
+          title={isActiveRightStrip ? 'Drop to shift token into this gap' : undefined}
+        />
+      )}
       {/* Render PT label with optional left/right shift buttons */}
       <div className="text-center font-mono text-xs mt-1 mb-0.5 flex items-center justify-center gap-0.5">
         {renderShiftButton('left', canShiftLeft, onShiftGroupLeft)}

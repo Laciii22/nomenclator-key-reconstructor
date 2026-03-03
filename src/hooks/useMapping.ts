@@ -57,6 +57,10 @@ export function useMapping(params: {
   // Null means "use baseColumns as-is"; counts are lazily initialized on first shift.
   const [manualPtCounts, setManualPtCounts] = React.useState<number[] | null>(null);
 
+  // Tracks which base-cell flat-indices have an injected 1-token null cell AFTER them.
+  // Used by extractEdgeToken to split a cell's last/first token into a standalone null cell.
+  const [insertedNullAfter, setInsertedNullAfter] = React.useState<Set<number>>(new Set());
+
   // Reset manual shifts only when the layout signature changes (PT cell count / token count / groupSize / mode)
   const layoutSig = React.useMemo(() => {
     const totalPtCells = ptRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
@@ -66,6 +70,7 @@ export function useMapping(params: {
   // Reset manual shifts when the layout signature changes or mode is not fixedLength
   React.useEffect(() => {
     setManualPtCounts(null);
+    setInsertedNullAfter(new Set());
   }, [layoutSig, ctParseMode]);
 
   const initManualCountsIfNeeded = React.useCallback(() => {
@@ -108,8 +113,15 @@ export function useMapping(params: {
         rowCols.push({ 
           pt: baseCol.pt, 
           ct: indices,
-          deception: baseCol.deception 
+          deception: baseCol.deception,
+          baseFlatIdx: flatIndex,
         });
+
+        // If an injected null cell follows this base cell, emit it now
+        if (insertedNullAfter.has(flatIndex) && ptr < effectiveCtTokens.length) {
+          rowCols.push({ pt: null, ct: [ptr++], deception: true, insertedAfterBaseFlatIndex: flatIndex });
+        }
+
         flatIndex++;
       }
       result.push(rowCols);
@@ -124,7 +136,7 @@ export function useMapping(params: {
     }
 
     return result;
-  }, [baseColumns, effectiveCtTokens.length, manualPtCounts, ptRows, ctParseMode]);
+  }, [baseColumns, effectiveCtTokens.length, manualPtCounts, insertedNullAfter, ctParseMode]);
 
   const countsForUi = React.useMemo(() => {
     if (ctParseMode !== 'fixedLength') return [] as number[];
@@ -193,6 +205,94 @@ export function useMapping(params: {
     });
   }, [baseColumns, groupSize, ctParseMode]);
 
+  /**
+   * Extract the last (direction='right') or first (direction='left') token from the cell at
+   * baseFlatIndex into a brand-new standalone null cell placed in the gap beside it.
+   * This is triggered by drag-dropping a ZT token onto an edge strip in the mapping grid.
+   */
+  const extractEdgeToken = React.useCallback((baseFlatIndex: number, direction: 'left' | 'right') => {
+    if (ctParseMode !== 'fixedLength') return;
+    const maxLen = groupSize || 1;
+    setManualPtCounts(prev => {
+      const base = prev && prev.length ? prev : deriveCountsFromColumns(baseColumns, maxLen);
+      if (baseFlatIndex < 0 || baseFlatIndex >= base.length) return prev;
+      if (base[baseFlatIndex] <= 0) return prev; // nothing to extract
+      const next = [...base];
+      next[baseFlatIndex] = next[baseFlatIndex] - 1;
+      return next;
+    });
+    setInsertedNullAfter(prev => {
+      const next = new Set(prev);
+      // For 'right': inject null AFTER source cell (= at sourceFlatIndex)
+      // For 'left':  inject null AFTER the cell immediately to the LEFT of source (= sourceFlatIndex - 1)
+      const insertAfter = direction === 'right' ? baseFlatIndex : baseFlatIndex - 1;
+      if (insertAfter >= 0) next.add(insertAfter);
+      return next;
+    });
+  }, [baseColumns, groupSize, ctParseMode]);
+
+  /**
+   * Absorb an injected null cell's token back into an adjacent PT cell.
+   * Removes the null injection marker and increases the destination cell's token count.
+   */
+  const reabsorbNullToken = React.useCallback((insertedAfterBase: number, destBaseFlatIndex: number) => {
+    if (ctParseMode !== 'fixedLength') return;
+    const maxLen = groupSize || 1;
+    setInsertedNullAfter(prev => {
+      const next = new Set(prev);
+      next.delete(insertedAfterBase);
+      return next;
+    });
+    setManualPtCounts(prev => {
+      const base = prev && prev.length ? prev : deriveCountsFromColumns(baseColumns, maxLen);
+      if (destBaseFlatIndex < 0 || destBaseFlatIndex >= base.length) return prev;
+      const next = [...base];
+      next[destBaseFlatIndex] = next[destBaseFlatIndex] + 1;
+      return next;
+    });
+  }, [baseColumns, groupSize, ctParseMode]);
+
+  /**
+   * Higher-level helper: given the dragged CT token index and the strip direction,
+   * finds the owning base cell and calls extractEdgeToken.
+   * In fixed-length mode cells store only the group-start index so we do a range check.
+   */
+  const extractEdgeTokenByCtIndex = React.useCallback((ctTokenIndex: number, direction: 'left' | 'right') => {
+    const gs = groupSize || 1;
+    let sourceFlatIndex = -1;
+    let flatCounter = 0;
+    outer: for (const row of columns) {
+      for (const cell of row) {
+        if (typeof cell.insertedAfterBaseFlatIndex === 'number') continue; // skip injected nulls
+        if (cell.ct.length > 0) {
+          const base = cell.ct[0];
+          if (ctTokenIndex >= base && ctTokenIndex <= base + gs - 1) {
+            sourceFlatIndex = flatCounter;
+            break outer;
+          }
+        }
+        flatCounter++;
+      }
+    }
+    if (sourceFlatIndex >= 0) {
+      // RIGHT strip of dest → source is to its right → null between dest and source → 'left'
+      // LEFT  strip of dest → source is to its left  → null between source and dest → 'right'
+      extractEdgeToken(sourceFlatIndex, direction === 'right' ? 'left' : 'right');
+    }
+  }, [columns, groupSize, extractEdgeToken]);
+
+  /**
+   * Higher-level helper: given the strip direction and where the null was injected,
+   * computes the destination base flat index and calls reabsorbNullToken.
+   */
+  const reabsorbNullByDirection = React.useCallback((insertedAfterBase: number, direction: 'left' | 'right') => {
+    // Null was injected AFTER base cell N.
+    // RIGHT strip of dest → dest is to the LEFT  of null → destBase = N
+    // LEFT  strip of dest → dest is to the RIGHT of null → destBase = N + 1
+    const destBase = direction === 'right' ? insertedAfterBase : insertedAfterBase + 1;
+    reabsorbNullToken(insertedAfterBase, destBase);
+  }, [reabsorbNullToken]);
+
   const shiftMeta = React.useMemo(() => {
     // Shift controls only available for fixed-length mode
     if (ctParseMode !== 'fixedLength') {
@@ -217,5 +317,9 @@ export function useMapping(params: {
     canShiftRight: canShiftRightAt,
     shiftMeta,
     countsForUi,
+    extractEdgeToken,
+    reabsorbNullToken,
+    extractEdgeTokenByCtIndex,
+    reabsorbNullByDirection,
   } as const;
 }

@@ -57,8 +57,8 @@ export type SelectionMap = Record<string, string | string[] | null>;
  * All fields are optional — only the relevant subset is populated per source.
  */
 export type DragData = {
-  /** Drag origin: 'ct' for cipher token, 'pt' for plain-text cell */
-  type?: 'ct' | 'pt';
+  /** Drag origin: 'ct' for cipher token, 'pt' for plain-text cell, 'ct-edge' for left/right edge strips (fixed-length mode) */
+  type?: 'ct' | 'pt' | 'ct-edge';
   /** Flat index of the CT token being dragged */
   tokenIndex?: number;
   /** Row of the source PT cell */
@@ -77,4 +77,8 @@ export type DragData = {
   ptChar?: string;
   /** Flat all-cell index (used for shift/split actions) */
   flatIndex?: number;
+  /** Which edge the strip is on ('left' | 'right') — used by ct-edge drop strips */
+  direction?: 'left' | 'right';
+  /** True when this drop target is the correct active target for the current drag */
+  active?: boolean;
 };

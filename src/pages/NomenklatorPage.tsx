@@ -89,6 +89,8 @@ const NomenklatorPage: React.FC = () => {
     splitPTAt,
     shiftGroupRight,
     shiftGroupLeft,
+    extractEdgeTokenByCtIndex,
+    reabsorbNullByDirection,
     mergeAllOccurrences,
     dismissMergeAllPrompt,
     toggleHighlightForOT,
@@ -153,6 +155,34 @@ const NomenklatorPage: React.FC = () => {
     };
   }, [activeDrag]);
 
+  // Compute info about the cell that is currently being dragged from (CT drag only).
+  // This is used to gate strip activation (>1 token required for extraction)
+  // and to route reabsorb vs extract in the drop handler.
+  const { activeCtIsFromNull, activeNullInsertedAfterBaseFlatIndex, activeCtSourceCellCount } = React.useMemo(() => {
+    const idx = activeDragInfo.ctTokenIndex;
+    if (idx === null || idx === undefined) {
+      return { activeCtIsFromNull: false, activeNullInsertedAfterBaseFlatIndex: null, activeCtSourceCellCount: 0 };
+    }
+    for (const row of columns) {
+      for (const cell of row) {
+        if (!cell.ct.includes(idx)) continue;
+        if (cell.deception && typeof cell.insertedAfterBaseFlatIndex === 'number') {
+          return {
+            activeCtIsFromNull: true,
+            activeNullInsertedAfterBaseFlatIndex: cell.insertedAfterBaseFlatIndex,
+            activeCtSourceCellCount: cell.ct.length,
+          };
+        }
+        return {
+          activeCtIsFromNull: false,
+          activeNullInsertedAfterBaseFlatIndex: null,
+          activeCtSourceCellCount: cell.ct.length,
+        };
+      }
+    }
+    return { activeCtIsFromNull: false, activeNullInsertedAfterBaseFlatIndex: null, activeCtSourceCellCount: 0 };
+  }, [activeDragInfo.ctTokenIndex, columns]);
+
   const handleDragStart = React.useCallback((evt: DragStartEvent) => {
     setActiveDrag(evt.active);
     onDragStart();
@@ -163,9 +193,32 @@ const NomenklatorPage: React.FC = () => {
   }, []);
 
   const handleDragEnd = React.useCallback((evt: DragEndEvent) => {
+    const src = evt.active?.data?.current as DragData | undefined;
+    const dst = evt.over?.data?.current as DragData | undefined;
+
+    // CT token dropped on a left/right edge strip → extract or reabsorb null cell
+    if (src?.type === 'ct' && dst?.type === 'ct-edge') {
+      if (dst.active) {
+        if (activeCtIsFromNull && typeof activeNullInsertedAfterBaseFlatIndex === 'number') {
+          reabsorbNullByDirection(activeNullInsertedAfterBaseFlatIndex, dst.direction!);
+        } else if (typeof activeDragInfo.ctTokenIndex === 'number') {
+          extractEdgeTokenByCtIndex(activeDragInfo.ctTokenIndex, dst.direction!);
+        }
+      }
+      clearDragState();
+      return;
+    }
+
+    // If token from an injected null cell was dropped somewhere other than an active edge strip
+    // (e.g. mid-air, on a regular CT slot), ignore completely — the null cell must stay intact.
+    if (src?.type === 'ct' && activeCtIsFromNull) {
+      clearDragState();
+      return;
+    }
+
     onDragEnd(evt);
     clearDragState();
-  }, [clearDragState, onDragEnd]);
+  }, [clearDragState, onDragEnd, activeCtIsFromNull, activeNullInsertedAfterBaseFlatIndex, activeDragInfo.ctTokenIndex, reabsorbNullByDirection, extractEdgeTokenByCtIndex]);
 
   const handleDragCancel = React.useCallback((_evt: DragCancelEvent) => {
     onDragCancel();
@@ -471,6 +524,9 @@ const NomenklatorPage: React.FC = () => {
                 activePtSourceCol={activeDragInfo.ptSourceCol}
                 activeCtTokenIndex={activeDragInfo.ctTokenIndex}
                 keysPerPTMode={keysPerPTMode}
+                activeCtIsFromNull={activeCtIsFromNull}
+                activeNullInsertedAfterBaseFlatIndex={activeNullInsertedAfterBaseFlatIndex}
+                activeCtSourceCellCount={activeCtSourceCellCount}
               />
             </div>
       </div>
