@@ -383,10 +383,12 @@ const NomenklatorPage: React.FC = () => {
                         Clear all
                       </button>
 
-                      <button
-                        className="text-xs px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
-                        onClick={chooseScoreOneSuggestions}
-                      >Preview</button>
+                      {keysPerPTMode !== 'multiple' && (
+                        <button
+                          className="text-xs px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
+                          onClick={chooseScoreOneSuggestions}
+                        >Preview</button>
+                      )}
                     <button
                       className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
                       onClick={applySelection}
