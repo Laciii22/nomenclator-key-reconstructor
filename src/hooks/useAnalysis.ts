@@ -63,7 +63,6 @@ export function useAnalysis(params: {
   const getWorker = React.useCallback(
     () => (_workerFactory ? _workerFactory() : getAnalysisWorker()),
     // _workerFactory is expected to be a stable reference from the caller
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [_workerFactory],
   );
 

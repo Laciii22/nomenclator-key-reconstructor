@@ -159,7 +159,7 @@ export function useMapping(params: {
           if (ptCh && Object.prototype.hasOwnProperty.call(lockedKeys, ptCh)) return false;
         }
       }
-    } catch (e) {
+    } catch {
       // fall back to default behavior on error
     }
     return canShiftLeft(countsForUi, index, maxLen);
@@ -179,7 +179,7 @@ export function useMapping(params: {
           if (ptCh && Object.prototype.hasOwnProperty.call(lockedKeys, ptCh)) return false;
         }
       }
-    } catch (e) {
+    } catch {
       // fall back to default behavior on error
     }
     return canShiftRight(countsForUi, index, maxLen);

@@ -3,6 +3,19 @@ import type { PTChar, CTToken } from '../types/domain';
 import type { Candidate, SelectionMap } from '../utils/analyzer';
 import { getExpectedCTIndicesForOT } from '../utils/grouping';
 
+/**
+ * Returns the sorted flat array of CT indices occupied by a set of candidates.
+ */
+function collectIndices(candidates: Candidate[], ctTokens: CTToken[]): number[] {
+  const indices: number[] = [];
+  for (const c of candidates) {
+    for (let i = 0; i < ctTokens.length; i++) {
+      if (ctTokens[i].text === c.token) indices.push(i);
+    }
+  }
+  return indices.sort((a, b) => a - b);
+}
+
 export function useAutoPickScoreOneSequential(params: {
   candidatesByChar: Record<string, Candidate[]>;
   ptRows: PTChar[][];
@@ -13,18 +26,14 @@ export function useAutoPickScoreOneSequential(params: {
 }) {
   const { candidatesByChar, ptRows, ctTokens, bracketedIndices, setSelections, keysPerPTMode } = params;
 
-  // Auto-select candidates with score==1 matching sequential expected indices.
-  // Disabled in multi-key (homophones) mode — the user selects homophones manually.
+  // --- Single-key: auto-select when exactly one candidate perfectly covers all expected indices ---
   React.useEffect(() => {
-    if (keysPerPTMode === 'multiple') return;
+    if (keysPerPTMode !== 'single') return;
     if (!Object.keys(candidatesByChar).length) return;
 
-    // Compute derived data outside the setter to avoid closing over potentially
-    // stale ctTokens inside the updater function.
     const expected = getExpectedCTIndicesForOT(ptRows, ctTokens, bracketedIndices);
     const newPicks: Record<string, string> = {};
     for (const [ch, list] of Object.entries(candidatesByChar)) {
-      // Consider a candidate "perfect" only if its support equals occurrences
       const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
       if (perfect.length !== 1) continue;
       const token = perfect[0].token;
@@ -39,6 +48,43 @@ export function useAutoPickScoreOneSequential(params: {
       const next = { ...prev };
       for (const [ch, token] of Object.entries(newPicks)) {
         if (!next[ch]) next[ch] = token;
+      }
+      return next;
+    });
+  }, [bracketedIndices, candidatesByChar, keysPerPTMode, ptRows, setSelections, ctTokens]);
+
+  // --- Multiple-key: auto-select when a set of exclusively-aligned candidates
+  //     collectively covers all expected positions with no gaps and no conflicts. ---
+  React.useEffect(() => {
+    if (keysPerPTMode !== 'multiple') return;
+    if (!Object.keys(candidatesByChar).length) return;
+
+    const expected = getExpectedCTIndicesForOT(ptRows, ctTokens, bracketedIndices);
+    const newPicks: Record<string, string[]> = {};
+
+    for (const [ch, list] of Object.entries(candidatesByChar)) {
+      // "Perfect" homophone: this token appears *only* at positions assigned to this PT char
+      const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
+      if (perfect.length === 0) continue;
+
+      const exp = (expected[ch] || []).slice().sort((a, b) => a - b);
+      if (exp.length === 0) continue;
+
+      const allIndices = collectIndices(perfect, ctTokens);
+      // Only auto-pick if the perfect candidates collectively cover exactly the expected positions
+      if (allIndices.length === exp.length && allIndices.every((v, i) => v === exp[i])) {
+        newPicks[ch] = perfect.map(c => c.token);
+      }
+    }
+
+    if (Object.keys(newPicks).length === 0) return;
+    setSelections(prev => {
+      const next = { ...prev };
+      for (const [ch, tokens] of Object.entries(newPicks)) {
+        // Only fill in if not yet selected
+        if (!next[ch] || (Array.isArray(next[ch]) && (next[ch] as string[]).length === 0)) {
+          next[ch] = tokens;
+        }
       }
       return next;
     });

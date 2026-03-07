@@ -14,7 +14,8 @@ export type LocalSettings = {
   bracketedIndices: number[];
 };
 
-const KEY = 'nkr_settings';
+export const STORAGE_KEY = 'nkr_settings';
+const KEY = STORAGE_KEY;
 
 function loadFromStorage(initial?: Partial<LocalSettings>): LocalSettings {
   const defaults: LocalSettings = {

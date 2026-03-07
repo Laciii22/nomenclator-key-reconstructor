@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { KeysPerPTMode, PTChar, SelectionMap, DragData } from '../types/domain';
-import { useLocalSettings } from './useLocalSettings';
+import { useLocalSettings, STORAGE_KEY } from './useLocalSettings';
 import { resolveMergeFromEvent } from '../utils/dnd';
 import { buildCandidateOptions } from '../components/controls/candidateHelpers';
 import { buildOccMap } from '../utils/parseStrategies';
@@ -450,7 +450,7 @@ export function useNomenklator() {
       else unique.forEach(i => set.add(i));
       return Array.from(set).sort((a, b) => a - b);
     });
-  }, [analysisDone, columns, effToOrig, effectiveCtTokens, fixedLength, setBracketedIndices, toggleBracketGroupByTextParse, ctParseMode]);
+  }, [analysisDone, columns, effToOrig, effectiveCtTokens, fixedLength, setBracketedIndices, toggleBracketGroupByTextParse, ctParseMode, bracketedIndices, ctTokens]);
 
   // Wrap runAnalysis to capture pre-analysis state snapshot
   const runAnalysis = useCallback(() => {
@@ -508,6 +508,27 @@ export function useNomenklator() {
     // Reset manual shifting state for fixed-length mode
     mapping.setManualPtCounts(null);
   }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
+
+  /**
+   * Clear all persisted data and reset the entire application to defaults.
+   * Removes localStorage entry and resets all state.
+   */
+  const clearAll = useCallback(() => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    setPtRaw('');
+    parsing.setCtRawSeparator('');
+    parsing.setCtRawFixed('');
+    parsing.setBracketedIndices([]);
+    setKeysPerPTMode('single');
+    setCustomPtGroups(null);
+    setLockedKeys({});
+    setSelections({});
+    setMergeAllPrompt(null);
+    setHighlightedPTChar(null);
+    setSelectionError(null);
+    mapping.setManualPtCounts(null);
+    preAnalysisStateRef.current = null;
+  }, [parsing, setPtRaw, setKeysPerPTMode, setCustomPtGroups, setLockedKeys, setSelections, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
   // Derived status: pure computation, no effect-based state sync.
   const { klamacStatus, statusMessage, bracketWarning } = useNomenklatorStatus({
@@ -937,7 +958,7 @@ export function useNomenklator() {
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
-  }), [analysisDone, isAnalyzing, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage]);
+  }), [analysisDone, isAnalyzing, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices]);
 
   /** Derived data structures used to render tables/selectors. */
   const derived = useMemo(() => ({
@@ -979,9 +1000,11 @@ export function useNomenklator() {
     quickAssign,
     executeQuickAssign,
     resetToPreAnalysis,
+    clearAll,
   }), [
     applySelection,
     chooseScoreOneSuggestions,
+    clearAll,
     dismissMergeAllPrompt,
     editCtToken,
     insertRawCharsAfterPosition,

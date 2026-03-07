@@ -10,12 +10,13 @@ import info from '../../assets/icons/question.png';
 interface NavbarProps {
   onHelpClick?: () => void;
   onFrequencyClick?: () => void;
+  onClearPersistenceClick?: () => void;
 }
 
 /**
  * Top navigation bar with application title and help button.
  */
-const Navbar: React.FC<NavbarProps> = ({ onHelpClick, onFrequencyClick }) => {
+const Navbar: React.FC<NavbarProps> = ({ onHelpClick, onFrequencyClick, onClearPersistenceClick }) => {
     return (
         <nav className="bg-blue-700 sticky top-0 z-50 shadow-lg border-b border-blue-800">
             <div className="container mx-auto px-4 py-2.5 flex items-center justify-between">
@@ -28,6 +29,17 @@ const Navbar: React.FC<NavbarProps> = ({ onHelpClick, onFrequencyClick }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {onClearPersistenceClick && (
+                        <button
+                            onClick={onClearPersistenceClick}
+                            className="text-white hover:bg-red-600 px-3 py-1.5 rounded-md transition-colors flex items-center gap-2 border border-blue-500 hover:border-red-400"
+                            aria-label="Clear saved data"
+                            title="Vymazať uložené dáta"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <span className="text-sm font-medium">Clear data</span>
+                        </button>
+                    )}
                     {onFrequencyClick && (
                         <button
                             onClick={onFrequencyClick}

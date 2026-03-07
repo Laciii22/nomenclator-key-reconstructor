@@ -146,11 +146,15 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold">•</span>
-              <span>Use "single key per PT" mode for simpler ciphers, "multiple keys" for more complex nomenclators</span>
+              <span>Use "single key per PT" mode for simpler ciphers, "multiple keys" for more complex nomenclators with homophones — unambiguous homophones are auto-picked just like in single mode</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold">•</span>
               <span>The Key Table shows all PT→CT mappings at a glance</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-600 font-bold">•</span>
+              <span>Use <strong>Clear data</strong> (trash icon in the header) to wipe all saved inputs and start fresh — a confirmation dialog will appear first</span>
             </li>
           </ul>
         </section>

@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import type { Active, DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
+import type { Active, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import { DndContext, DragOverlay, useSensors, useSensor, MouseSensor, TouchSensor, KeyboardSensor, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import AppLayout from '../components/layout/AppLayout';
 import FrequencyModal from '../components/common/FrequencyModal';
@@ -97,6 +97,7 @@ const NomenklatorPage: React.FC = () => {
     quickAssign,
     executeQuickAssign,
     resetToPreAnalysis,
+    clearAll,
   } = actions;
 
   const ptTextareaId = 'pt-raw';
@@ -220,7 +221,7 @@ const NomenklatorPage: React.FC = () => {
     clearDragState();
   }, [clearDragState, onDragEnd, activeCtIsFromNull, activeNullInsertedAfterBaseFlatIndex, activeDragInfo.ctTokenIndex, reabsorbNullByDirection, extractEdgeTokenByCtIndex]);
 
-  const handleDragCancel = React.useCallback((_evt: DragCancelEvent) => {
+  const handleDragCancel = React.useCallback(() => {
     onDragCancel();
     clearDragState();
   }, [clearDragState, onDragCancel]);
@@ -231,8 +232,18 @@ const NomenklatorPage: React.FC = () => {
     useSensor(KeyboardSensor)
   );
 
+  const onClearPersistenceClick = React.useCallback(() => {
+    if (window.confirm('Naozaj chcete vymazať všetky uložené dáta? Táto akcia je nenávratná.')) {
+      clearAll();
+    }
+  }, [clearAll]);
+
   return (
-    <AppLayout onHelpClick={() => setIsHelpOpen(true)} onFrequencyClick={() => setIsFrequencyOpen(true)}>
+    <AppLayout
+      onHelpClick={() => setIsHelpOpen(true)}
+      onFrequencyClick={() => setIsFrequencyOpen(true)}
+      onClearPersistenceClick={onClearPersistenceClick}
+    >
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
       <FrequencyModal
         isOpen={isFrequencyOpen}

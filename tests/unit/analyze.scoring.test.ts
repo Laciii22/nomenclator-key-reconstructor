@@ -1,7 +1,7 @@
 ﻿import { describe, it, expect, beforeEach } from 'vitest';
 import { separatorModeScore, fixedModeScore } from '../../src/utils/analyzer';
 import { resetIds, ptRow, ctList } from '../helpers';
-import type { PTChar, CTToken } from '../../src/types/domain';
+import type { CTToken } from '../../src/types/domain';
 
 beforeEach(() => resetIds());
 

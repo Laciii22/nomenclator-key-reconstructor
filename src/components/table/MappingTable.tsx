@@ -197,13 +197,13 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	const CELL_HEIGHT = 65; // approximate height per cell in pixels
 
 	// Calculate cell width to fit all columns without horizontal scroll
-	const getCellWidth = () => {
+	const getCellWidth = React.useCallback(() => {
 		if (!containerRef.current) return 120;
 		const containerWidth = containerRef.current.clientWidth;
 		const padding = 8; // container padding
 		const availableWidth = containerWidth - padding;
 		return Math.max(50, Math.floor(availableWidth / effectiveColumnCount));
-	};
+	}, [effectiveColumnCount]);
 
 	const [cellWidth, setCellWidth] = React.useState(120);
 
@@ -214,7 +214,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		updateWidth();
 		const timer = setTimeout(updateWidth, 100); // delay for container mount
 		return () => clearTimeout(timer);
-	}, [effectiveColumnCount, viewportWidth]);
+	}, [getCellWidth, viewportWidth]);
 
 	const columnCount = effectiveColumnCount;
 	const rowCount = Math.ceil(flatCells.length / columnCount);

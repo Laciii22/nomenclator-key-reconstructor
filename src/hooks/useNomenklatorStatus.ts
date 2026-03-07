@@ -37,7 +37,6 @@ export function useNomenklatorStatus(params: UseNomenklatorStatusParams): Nomenk
     effectiveCtTokens,
     ctParseMode,
     fixedLength,
-    bracketedIndices: _bracketedIndices, // listed so callers remain stable; used implicitly via effectiveCtTokens
   } = params;
 
   const klamacAndMessage = useMemo((): { klamacStatus: NomenklatorStatus['klamacStatus']; statusMessage: string | null } => {

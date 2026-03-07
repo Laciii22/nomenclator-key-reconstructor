@@ -30,8 +30,8 @@ export function resolveMergeFromEvent(evt: DragEndEvent, columns: Column[][]) {
   // Reject drops onto special (klamac) targets
   if (dst && dst.isKlamac) return null;
 
-  let srcRow: number | undefined = src?.sourceRow;
-  let srcCol: number | undefined = src?.sourceCol;
+  const srcRow: number | undefined = src?.sourceRow;
+  const srcCol: number | undefined = src?.sourceCol;
   let dstRow: number | undefined = dst?.row;
   let dstCol: number | undefined = dst?.col;
 

@@ -44,7 +44,7 @@ const KeyTable: React.FC<KeyTableProps & {
     }
     
     return buildColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
-  }, [columns, ptRows, ctTokens, lockedKeys, selections, ctParseMode, groupSize]);
+  }, [columns, ptRows, ctTokens, lockedKeys, selections, ctParseMode, groupSize, bracketedIndices]);
 
   const pairs = useMemo(() => computePairsFromColumns(colsForMode, ctTokens, getGroupSize(ctParseMode, groupSize), keysPerPTMode), [colsForMode, ctTokens, ctParseMode, groupSize, keysPerPTMode]);
 

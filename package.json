@@ -9,6 +9,7 @@
     "dev:test": "concurrently \"npm:dev\" \"npm:test:watch\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "prune": "ts-prune",
     "test": "vitest",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",

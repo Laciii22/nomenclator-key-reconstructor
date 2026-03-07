@@ -1,7 +1,7 @@
 ﻿import { describe, it, expect, beforeEach } from 'vitest';
 import { analyze } from '../../src/utils/analyzer';
 import { resetIds, ptRow, ctList, OPTS_SINGLE, assertAnalysisInvariants } from '../helpers';
-import type { PTChar, CTToken } from '../../src/types/domain';
+import type { PTChar } from '../../src/types/domain';
 
 beforeEach(() => resetIds());
 

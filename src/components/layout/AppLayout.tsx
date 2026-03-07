@@ -15,15 +15,17 @@ type AppLayoutProps = {
     onHelpClick?: () => void;
     /** Handler for frequency button click in navbar */
     onFrequencyClick?: () => void;
+    /** Handler for clear persistence button click in navbar */
+    onClearPersistenceClick?: () => void;
 };
 
 /**
  * Layout wrapper with header, content, and footer.
  */
-const AppLayout: React.FC<AppLayoutProps> = ({ children, onHelpClick, onFrequencyClick }) => {
+const AppLayout: React.FC<AppLayoutProps> = ({ children, onHelpClick, onFrequencyClick, onClearPersistenceClick }) => {
     return (
         <div className="flex flex-col min-h-screen">
-            <Navbar onHelpClick={onHelpClick} onFrequencyClick={onFrequencyClick} />
+            <Navbar onHelpClick={onHelpClick} onFrequencyClick={onFrequencyClick} onClearPersistenceClick={onClearPersistenceClick} />
             <main className="flex-grow">{children}</main>
             <Footer />
         </div>
