@@ -19,24 +19,13 @@ export function extendCandidateListWithLocked(
   lockedToken: string | undefined
 ): Candidate[] {
   if (!lockedToken) return candidateList;
-  
-  if (candidateList.some(c => c.token === lockedToken)) {
-    return candidateList;
-  }
-  
-  // Add locked token at the beginning. If we already have stats for this token
-  // in the candidate list, reuse them; otherwise insert a neutral placeholder
-  // (score 0) so the UI doesn't falsely show perfect confidence.
-  const existing = candidateList.find(c => c.token === lockedToken);
+  if (candidateList.some(c => c.token === lockedToken)) return candidateList;
+
+  // Token not in analysis results (e.g. was bracketed later) — insert a score-0 placeholder
+  // so the UI doesn't lose the locked value from the dropdown.
   return [
-    {
-      token: lockedToken,
-      length: 1,
-      support: existing ? existing.support : 0,
-      occurrences: existing ? existing.occurrences : 0,
-      score: existing ? existing.score : 0,
-    },
-    ...candidateList
+    { token: lockedToken, length: 1, support: 0, occurrences: 0, score: 0 },
+    ...candidateList,
   ];
 }
 
@@ -46,7 +35,7 @@ export function extendCandidateListWithLocked(
 export function sortCandidatesByScore(candidates: Candidate[]): Candidate[] {
   return [...candidates].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return a.token.localeCompare(b.token);
+    return (a.token ?? '').localeCompare(b.token ?? '');
   });
 }
 
@@ -65,13 +54,6 @@ export function getCurrentSelectorValue(
   }
   
   return selectionValue ?? '';
-}
-
-/**
- * Check if selector should be disabled (when value is locked).
- */
-export function isSelectorDisabled(lockedValue: string | undefined): boolean {
-  return Boolean(lockedValue);
 }
 
 /**

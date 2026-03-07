@@ -162,14 +162,10 @@ function countTokenOccurrences(
 ): Map<string, number> {
   const counts = new Map<string, number>();
   
-  for (const token of lockedTokens) {
-    counts.set(token, 0);
-  }
-  
   for (let i = 0; i < ctTokens.length; i += groupSize) {
     const seq = buildTokenSequence(ctTokens, i, groupSize);
     if (seq && lockedTokens.includes(seq)) {
-      counts.set(seq, (counts.get(seq) || 0) + 1);
+      counts.set(seq, (counts.get(seq) ?? 0) + 1);
     }
   }
   

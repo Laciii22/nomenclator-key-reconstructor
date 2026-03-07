@@ -4,7 +4,6 @@ import {
   extendCandidateListWithLocked,
   sortCandidatesByScore,
   getCurrentSelectorValue,
-  isSelectorDisabled,
   getPTCharBadgeClasses,
   getSelectorInputClasses
 } from './candidateSelectorCommon';
@@ -43,7 +42,7 @@ const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys,
         const selectionVal = selections[ch];
         const normalizedSelectionVal = Array.isArray(selectionVal) ? selectionVal[0] : (selectionVal ?? null);
         const currentValue = getCurrentSelectorValue(lockedVal, normalizedSelectionVal);
-        const disabledSelect = isSelectorDisabled(lockedVal);
+        const disabledSelect = Boolean(lockedVal);
         const extendedList = extendCandidateListWithLocked(list, lockedVal);
         const sortedByScore = sortCandidatesByScore(extendedList);
 

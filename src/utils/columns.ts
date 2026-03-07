@@ -36,12 +36,7 @@ export function computePairsFromColumns(
       
       // In multi-key mode, each column represents one (PT, CT) pair
       // In single-key mode, join tokens according to groupSize
-      const text = (groupSize === 1)
-        ? (() => {
-            const idx = col.ct.length ? col.ct[0] : null;
-            return idx != null ? (ctTokens[idx]?.text || '') : '';
-          })()
-        : col.ct.map((i: number) => ctTokens[i]?.text || '').join('');
+      const text = col.ct.map((i: number) => ctTokens[i]?.text || '').join('');
       out.push({ pt: col.pt.ch, ct: text });
     }
   }

@@ -29,11 +29,9 @@ export function computeInsertRawCharsAfterPosition(args: {
   const bracketedSet = new Set(bracketedIndices);
   const effToOrig = buildEffectiveToOriginalIndexMap(ctTokens.length, bracketedIndices);
 
-  // Build flat mapping of PT positions to last raw token index used
-  const flatColumns: { ptCh: string | null; indices: number[] }[] = [];
-  for (const row of columns) for (const col of row) flatColumns.push({ ptCh: col.pt ? col.pt.ch : null, indices: col.ct });
-
-  const visible = flatColumns.filter(f => f.ptCh != null);
+  // Build flat list of PT-assigned cells (skip deception/null columns)
+  const visible: { indices: number[] }[] = [];
+  for (const row of columns) for (const col of row) if (col.pt) visible.push({ indices: col.ct });
   const target = visible[positionIndex];
 
   // Helper: apply "remove these original indices" and "insert items at original index".

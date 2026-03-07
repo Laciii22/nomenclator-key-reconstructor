@@ -4,7 +4,6 @@ import {
   extendCandidateListWithLocked,
   sortCandidatesByScore,
   getCurrentSelectorValue,
-  isSelectorDisabled,
   getPTCharBadgeClasses,
   getSelectorInputClasses
 } from './candidateSelectorCommon';
@@ -40,7 +39,7 @@ const CandidateSelectorSeparator: React.FC<Props> = ({ candidatesByChar, lockedK
         const lockedVal = lockedKeys[ch];
         const selectionVal = selections[ch];
         const currentValue = getCurrentSelectorValue(lockedVal, selectionVal);
-        const disabledSelect = isSelectorDisabled(lockedVal);
+        const disabledSelect = Boolean(lockedVal);
         const extendedList = extendCandidateListWithLocked(list, lockedVal);
         const sortedByScore = sortCandidatesByScore(extendedList);
 

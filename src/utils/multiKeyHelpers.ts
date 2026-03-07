@@ -39,14 +39,8 @@ export function getReservedTokens(
   selections: SelectionMap
 ): Set<string> {
   const reserved = new Set<string>();
-  
-  const addFromValue = (value: string | string[] | null | undefined) => {
-    const tokens = normalizeToArray(value);
-    tokens.forEach(t => { if (t) reserved.add(t); });
-  };
-  
-  Object.values(lockedKeys).forEach(addFromValue);
-  Object.values(selections).forEach(addFromValue);
-  
+  for (const v of [...Object.values(lockedKeys), ...Object.values(selections)]) {
+    for (const t of normalizeToArray(v)) if (t) reserved.add(t);
+  }
   return reserved;
 }

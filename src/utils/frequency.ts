@@ -99,11 +99,8 @@ export function normalizeLocks(
   const result: Record<string, string> = {};
   if (!lockedKeys) return result;
   for (const [ch, val] of Object.entries(lockedKeys)) {
-    if (Array.isArray(val)) {
-      if (val.length > 0) result[ch] = val[0];
-    } else if (val) {
-      result[ch] = val;
-    }
+    const first = Array.isArray(val) ? val[0] : val;
+    if (first) result[ch] = first;
   }
   return result;
 }

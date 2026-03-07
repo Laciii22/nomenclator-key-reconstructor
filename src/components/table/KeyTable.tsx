@@ -9,6 +9,7 @@ import { colors } from '../../utils/colors';
 import { normalizeToArray } from '../../utils/multiKeyHelpers';
 import { normalizeLocks } from '../../utils/frequency';
 import Modal from '../common/Modal';
+import { downloadKeyAsJson } from '../../utils/exportKey';
 
 
 
@@ -134,85 +135,80 @@ const KeyTable: React.FC<KeyTableProps & {
     setQuickAssignError(null); // Clear error on input change
   }, []);
 
-  // Duplicate displayed CT keys across different PT characters.
-  // This matches what the KeyTable shows (and what users reason about).
-  const duplicateKeyByOT = useMemo(() => {
+  type RowMeta = {
+    isError: boolean;
+    lockedTokens: string[];
+    isLocked: boolean;
+    lockedMismatch: boolean;
+    isViolationSingle: boolean;
+    hasEmptyCell: boolean;
+    hasDuplicateChosenKey: boolean;
+    hasInvalidLength: boolean;
+  };
+
+  // Compute per-row error details once — render loop reads from this map directly
+  // to avoid recomputing lockedTokens, mismatch etc. a second time.
+  const rowMetaByOT = useMemo(() => {
+    // Step 1: find duplicate first-tokens across PT chars (single mode only)
     const tokenToOTs: Record<string, Set<string>> = {};
     for (const row of sortedAggregated) {
-      const primary = row.ctList?.[0] ?? '';
-      const token = typeof primary === 'string' ? primary.trim() : '';
+      const token = (row.ctList[0] ?? '').trim();
       if (!token) continue;
       (tokenToOTs[token] ||= new Set()).add(row.pt);
     }
-
-    const dupTokenByOT: Record<string, string> = {};
-    for (const [token, ots] of Object.entries(tokenToOTs)) {
-      if (ots.size <= 1) continue;
-      for (const pt of ots) dupTokenByOT[pt] = token;
+    const dupPTs = new Set<string>();
+    for (const ots of Object.values(tokenToOTs)) {
+      if (ots.size > 1) for (const pt of ots) dupPTs.add(pt);
     }
-    return dupTokenByOT;
-  }, [sortedAggregated]);
 
-  const errorByOT = useMemo(() => {
-    const out: Record<string, boolean> = {};
+    // Step 2: build per-row meta
+    const out: Record<string, RowMeta> = {};
+    const isFixedLengthError = ctParseMode === 'fixedLength' && groupSize > 1;
     for (const row of sortedAggregated) {
       const uniqueCount = (row as { uniqueCount?: number; ctList: string[] }).uniqueCount ?? row.ctList.length;
-      const isViolationSingle = keysPerPTMode === 'single' && uniqueCount > 1;
       const lockedTokens = normalizeToArray(lockedKeys?.[row.pt]);
       const isLocked = lockedTokens.length > 0;
-      
+
       let lockedMismatch = false;
       if (isLocked && row.ctList.length > 0) {
-        if (keysPerPTMode === 'multiple') {
-          // In multi-key mode, check if all locked tokens are in the ctList
-          lockedMismatch = !lockedTokens.every(lt => row.ctList.includes(lt));
-        } else {
-          // In single-key mode, check if the first token matches
-          lockedMismatch = lockedTokens[0] !== row.ctList[0];
-        }
+        lockedMismatch = keysPerPTMode === 'multiple'
+          ? !lockedTokens.every(lt => row.ctList.includes(lt))
+          : lockedTokens[0] !== row.ctList[0];
       }
-      
+
+      const isViolationSingle = keysPerPTMode === 'single' && uniqueCount > 1;
       const hasEmptyCell = Boolean(hasEmptyCellByOT[row.pt]);
-      const hasDuplicateChosenKey = keysPerPTMode === 'single' && typeof duplicateKeyByOT[row.pt] === 'string';
-      
-      // Check for invalid token length in fixed-length mode
-      let hasInvalidLength = false;
-      if (ctParseMode === 'fixedLength' && groupSize > 1) {
-        hasInvalidLength = row.ctList.some(token => token.length !== groupSize);
-      }
-      
-      out[row.pt] = Boolean(isViolationSingle || lockedMismatch || row.ctList.length === 0 || hasEmptyCell || hasDuplicateChosenKey || hasInvalidLength);
+      const hasDuplicateChosenKey = keysPerPTMode === 'single' && dupPTs.has(row.pt);
+      const hasInvalidLength = isFixedLengthError && row.ctList.some(t => t.length !== groupSize);
+      const isError = Boolean(isViolationSingle || lockedMismatch || row.ctList.length === 0 || hasEmptyCell || hasDuplicateChosenKey || hasInvalidLength);
+
+      out[row.pt] = { isError, lockedTokens, isLocked, lockedMismatch, isViolationSingle, hasEmptyCell, hasDuplicateChosenKey, hasInvalidLength };
     }
     return out;
-  }, [duplicateKeyByOT, hasEmptyCellByOT, keysPerPTMode, lockedKeys, sortedAggregated, ctParseMode, groupSize]);
+  }, [hasEmptyCellByOT, keysPerPTMode, lockedKeys, sortedAggregated, ctParseMode, groupSize]);
 
   // If a previously-highlighted PT is no longer eligible for the highlight icon,
   // automatically turn off the highlight so cells don't stay highlighted.
   useEffect(() => {
     if (!highlightedPTChar) return;
     if (!onToggleHighlightOT) return;
-    if (errorByOT[highlightedPTChar]) return;
-    // The highlighter is an "error navigation" affordance; once the error condition
-    // is gone, keeping the highlight on becomes distracting.
+    if (rowMetaByOT[highlightedPTChar]?.isError) return;
     onToggleHighlightOT(highlightedPTChar);
-  }, [errorByOT, highlightedPTChar, onToggleHighlightOT]);
+  }, [rowMetaByOT, highlightedPTChar, onToggleHighlightOT]);
 
   if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(no pairs)</div>;
 
-  // Determine if there are any violations (errors) and compute bulk locks
-  let hasError = false;
+  // Bulk locks and error/allLocked flags derived from rowMetaByOT
   const bulkLocks: Record<string, string | string[]> = {};
+  let hasError = false;
+  let allLocked = sortedAggregated.length > 0;
   for (const row of sortedAggregated) {
-    if (errorByOT[row.pt]) {
-      hasError = true;
-    }
+    const meta = rowMetaByOT[row.pt];
+    if (meta?.isError) hasError = true;
     if (row.ctList.length > 0) {
-      if (keysPerPTMode === 'multiple') {
-        bulkLocks[row.pt] = row.ctList; // All tokens
-      } else {
-        bulkLocks[row.pt] = row.ctList[0]; // First token only
-      }
+      bulkLocks[row.pt] = keysPerPTMode === 'multiple' ? row.ctList : row.ctList[0];
     }
+    if (!(row.ctList.length > 0 && meta?.isLocked)) allLocked = false;
   }
 
   return (
@@ -259,16 +255,27 @@ const KeyTable: React.FC<KeyTableProps & {
 
       <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100">
         <div className="text-sm font-medium text-gray-700">Key pairs</div>
-        {onLockAll && (
-          <button
-            className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-            onClick={() => onLockAll && onLockAll(bulkLocks)}
-            disabled={hasError}
-            title={hasError ? 'Fix errors first (multiple keys / lock mismatch / empty CT)' : 'Lock all PT characters → CT according to table'}
-          >
-            Lock all
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {allLocked && (
+            <button
+              className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
+              onClick={() => downloadKeyAsJson(sortedAggregated, keysPerPTMode)}
+              title="Export reconstructed key as JSON file"
+            >
+              Export JSON
+            </button>
+          )}
+          {onLockAll && (
+            <button
+              className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              onClick={() => onLockAll && onLockAll(bulkLocks)}
+              disabled={hasError}
+              title={hasError ? 'Fix errors first (multiple keys / lock mismatch / empty CT)' : 'Lock all PT characters → CT according to table'}
+            >
+              Lock all
+            </button>
+          )}
+        </div>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-gray-50">
@@ -280,31 +287,10 @@ const KeyTable: React.FC<KeyTableProps & {
         </thead>
         <tbody>
           {sortedAggregated.map((row) => {
-            // violation rules for keysPerPTMode='single': more than one unique or lock mismatch
-            const uniqueCount = (row as { uniqueCount?: number; ctList: string[] }).uniqueCount ?? row.ctList.length;
-            const isViolationSingle = keysPerPTMode === 'single' && uniqueCount > 1;
-            const lockedTokens = normalizeToArray(lockedKeys?.[row.pt]);
-            const isLocked = lockedTokens.length > 0;
-            
-            let lockedMismatch = false;
-            if (isLocked && row.ctList.length > 0) {
-              if (keysPerPTMode === 'multiple') {
-                lockedMismatch = !lockedTokens.every(lt => row.ctList.includes(lt));
-              } else {
-                lockedMismatch = lockedTokens[0] !== row.ctList[0];
-              }
-            }
-            
-            const hasEmptyCell = Boolean(hasEmptyCellByOT[row.pt]);
-            const hasDuplicateChosenKey = keysPerPTMode === 'single' && typeof duplicateKeyByOT[row.pt] === 'string';
-            
-            // Check for invalid token length in fixed-length mode
-            let hasInvalidLength = false;
-            if (ctParseMode === 'fixedLength' && groupSize > 1) {
-              hasInvalidLength = row.ctList.some(token => token.length !== groupSize);
-            }
-            
-            const isRowError = Boolean(errorByOT[row.pt]);
+            const { isError: isRowError, lockedTokens, isLocked, lockedMismatch, isViolationSingle, hasEmptyCell, hasDuplicateChosenKey, hasInvalidLength } = rowMetaByOT[row.pt] ?? {
+              isError: false, lockedTokens: [], isLocked: false, lockedMismatch: false,
+              isViolationSingle: false, hasEmptyCell: false, hasDuplicateChosenKey: false, hasInvalidLength: false,
+            };
             const trClass = isRowError ? 'bg-red-50' : '';
             return (
               <tr key={row.pt} className={`border-t border-gray-100 ${trClass}`}>

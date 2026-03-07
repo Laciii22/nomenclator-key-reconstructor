@@ -32,28 +32,12 @@ export function computeFlatIndexForChar(ptRows: PTChar[][], ch: string): number 
 /**
  * Count total deception tokens in the entire grid.
  */
-function countTotalDeceptionTokens(
-  sharedColumns: Column[][]
-): number {
-  const flatColumns: { ptCh: string | null; indices: number[] }[] = [];
-  
-  for (const row of sharedColumns) {
-    for (const col of row) {
-      flatColumns.push({
-        ptCh: col.pt ? col.pt.ch : null,
-        indices: (col.ct || []) as number[]
-      });
-    }
-  }
-  
-  let deceptionTotal = 0;
-  for (let i = 0; i < flatColumns.length; i++) {
-    if (flatColumns[i].ptCh == null) {
-      deceptionTotal += (flatColumns[i].indices || []).length;
-    }
-  }
-  
-  return deceptionTotal;
+function countTotalDeceptionTokens(sharedColumns: Column[][]): number {
+  let total = 0;
+  for (const row of sharedColumns)
+    for (const col of row)
+      if (!col.pt) total += col.ct?.length ?? 0;
+  return total;
 }
 
 /**
