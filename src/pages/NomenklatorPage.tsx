@@ -233,10 +233,51 @@ const NomenklatorPage: React.FC = () => {
   );
 
   const onClearPersistenceClick = React.useCallback(() => {
-    if (window.confirm('Naozaj chcete vymazať všetky uložené dáta? Táto akcia je nenávratná.')) {
+    if (window.confirm('Are you sure you want to clear all saved data? This cannot be undone.')) {
       clearAll();
     }
   }, [clearAll]);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  // ESC  → clear saved data (with confirmation)
+  // Space → open Frequency modal
+  // H    → open Help modal
+  React.useEffect(() => {
+    const isInteractiveElement = (el: Element | null): boolean => {
+      if (!el) return false;
+      const tag = (el as HTMLElement).tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || (el as HTMLElement).isContentEditable;
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Never intercept when user is typing in a form element
+      if (isInteractiveElement(document.activeElement)) return;
+
+      if (e.key === 'Escape') {
+        // Don't steal Escape when a modal is open — modals handle their own close
+        if (isHelpOpen || isFrequencyOpen) return;
+        e.preventDefault();
+        onClearPersistenceClick();
+        return;
+      }
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setIsFrequencyOpen(true);
+        return;
+      }
+
+      if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        setIsHelpOpen(true);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHelpOpen, isFrequencyOpen, onClearPersistenceClick]);
 
   return (
     <AppLayout
