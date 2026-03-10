@@ -23,7 +23,6 @@ type ColumnLike = { pt: { ch: string } | null; ct: number[] };
 export function computePairsFromColumns(
   cols: ColumnLike[][],
   ctTokens: CTToken[],
-  groupSize: number = 1,
   keysPerPTMode: 'single' | 'multiple' = 'single'
 ): Pair[] {
   // Currently pairs are computed per cell regardless of mode.

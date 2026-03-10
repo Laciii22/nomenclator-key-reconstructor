@@ -323,64 +323,73 @@ export function useNomenklator() {
     return buildEffectiveToOriginalIndexMap(ctTokens.length, bracketedIndices);
   }, [ctTokens.length, bracketedIndices]);
 
-  // In fixed-length mode, manual shifting changes *group boundaries*.
-  // The bracket editor should reflect the current grid grouping (columns), not
-  // naive chunking by `fixedLength`. We also keep fully-bracketed groups from
-  // the parse-based list so users can un-bracket without relying on "Clear".
+  // Fixed-length: build unique CT groups ordered by original CT index.
+  // Includes current shifted groups and bracketed runs; computes `allBracketed`.
   const uniqueCTTokenTexts = useMemo(() => {
     if (ctParseMode !== 'fixedLength') return uniqueCTTokenTextsParse;
     const size = Math.max(1, fixedLength || 1);
     if (size <= 1) return uniqueCTTokenTextsParse;
     if (!analysisDone) return uniqueCTTokenTextsParse;
 
-    const meta = new Map<string, { allBracketed: boolean }>();
-    const order: string[] = [];
+    // Collect all groups — both non-bracketed (from columns) and bracketed (from
+    // bracketedIndices runs) — tagged with their first original-token index so we
+    // can sort them into a stable position-based order.
+    const entries: { startIdx: number; text: string; isBracketed: boolean }[] = [];
 
-    // 1) Current shifted groups (what the mapping table shows)
+    // 1) Non-bracketed groups from the current shifted mapping table.
     for (let r = 0; r < columns.length; r++) {
       for (let c = 0; c < columns[r].length; c++) {
         const col = columns[r][c];
         if (!col.ct || col.ct.length === 0) continue;
         let text = '';
-        for (const effIdx of col.ct) text += (effectiveCtTokens[effIdx]?.text ?? '');
-        if (!text) continue;
-        if (meta.has(text)) continue;
-        meta.set(text, { allBracketed: false });
-        order.push(text);
+        let minOrig = Infinity;
+        for (const effIdx of col.ct) {
+          text += (effectiveCtTokens[effIdx]?.text ?? '');
+          const orig = effToOrig[effIdx];
+          if (typeof orig === 'number' && orig >= 0 && orig < minOrig) minOrig = orig;
+        }
+        if (!text || minOrig === Infinity) continue;
+        entries.push({ startIdx: minOrig, text, isBracketed: false });
       }
     }
 
-    // 2) Fully-bracketed groups from parse-based list (so they remain toggleable)
-    for (const g of uniqueCTTokenTextsParse) {
-      if (!g.allBracketed) continue;
-      if (meta.has(g.text)) continue;
-      meta.set(g.text, { allBracketed: true });
-      order.push(g.text);
-    }
-
-    // 3) Bracketed runs (supports un-bracketing groups created via shifting)
+    // 2) Bracketed runs — scan ctTokens for contiguous bracketed-index spans.
+    //    These represent groups the user has already marked as deception.
     if (bracketedIndices.length) {
       const br = new Set(bracketedIndices);
       let i = 0;
       while (i < ctTokens.length) {
-        if (!br.has(i)) {
-          i++;
-          continue;
-        }
+        if (!br.has(i)) { i++; continue; }
+        const runStart = i;
         let text = '';
         while (i < ctTokens.length && br.has(i)) {
           text += ctTokens[i].text;
           i++;
         }
         if (!text) continue;
-        if (meta.has(text)) continue;
-        meta.set(text, { allBracketed: true });
-        order.push(text);
+        entries.push({ startIdx: runStart, text, isBracketed: true });
       }
     }
 
-    return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
-  }, [analysisDone, bracketedIndices, columns, effectiveCtTokens, fixedLength, uniqueCTTokenTextsParse, ctParseMode, ctTokens]);
+    // Sort all entries by their original start index to get a stable order.
+    entries.sort((a, b) => a.startIdx - b.startIdx);
+
+    // De-duplicate by text: first occurrence sets the order; allBracketed is true
+    // only when every group with that text is bracketed.
+    const textMeta = new Map<string, { allBracketed: boolean }>();
+    const order: string[] = [];
+    for (const { text, isBracketed } of entries) {
+      const prev = textMeta.get(text);
+      if (!prev) {
+        textMeta.set(text, { allBracketed: isBracketed });
+        order.push(text);
+      } else {
+        prev.allBracketed = prev.allBracketed && isBracketed;
+      }
+    }
+
+    return order.map(text => ({ text, allBracketed: textMeta.get(text)!.allBracketed }));
+  }, [analysisDone, bracketedIndices, columns, effectiveCtTokens, effToOrig, fixedLength, uniqueCTTokenTextsParse, ctParseMode, ctTokens]);
 
   const toggleBracketGroupByText = useCallback((text: string) => {
     if (!text) return;
