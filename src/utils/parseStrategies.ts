@@ -21,16 +21,18 @@ export function getGroupSize(mode: ParseMode, fixedLength?: number) {
  * Build a map of token text → array of starting indices.
  * For fixed-length mode, creates multi-token keys by concatenating sequences.
  */
-export function buildOccMap(effectiveCtTokens: CTToken[], groupSize: number) {
+export function buildOccMap(effectiveCtTokens: CTToken[], groupSize: number): Record<string, number[]> {
   const occMap: Record<string, number[]> = {};
-  if (groupSize === 1) {
-    effectiveCtTokens.forEach((t, i) => { (occMap[t.text] ||= []).push(i); });
-  } else {
-    // Include final shorter group if tokens length is not divisible by groupSize
-    for (let i = 0; i < effectiveCtTokens.length; i += groupSize) {
-      const grp = effectiveCtTokens.slice(i, i + groupSize).map(x => x.text).join('');
-      (occMap[grp] ||= []).push(i);
+  const step = groupSize > 1 ? groupSize : 1;
+
+  for (let i = 0; i < effectiveCtTokens.length; i += step) {
+    // Concatenate `groupSize` tokens into a single key (or just use one token for separator mode)
+    let key = '';
+    for (let g = 0; g < step && i + g < effectiveCtTokens.length; g++) {
+      key += effectiveCtTokens[i + g].text;
     }
+    (occMap[key] ||= []).push(i);
   }
+
   return occMap;
 }

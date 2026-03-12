@@ -16,37 +16,33 @@ import type { PTChar, CTToken } from '../types/domain';
  * @returns Row-wise allocation counts and per-cell group sizes
  */
 export function computeRowAlloc(rows: PTChar[][], tokens: CTToken[], groupSize: number = 1) {
-  const ptCellsPerRow = rows.map(r => r.filter(c => c.ch !== ''));
-  const flatCount = ptCellsPerRow.reduce((acc, r) => acc + r.length, 0);
-  const totalZT = tokens.length;
-  if (flatCount === 0) return { rowAlloc: rows.map(() => 0), groups: rows.map(() => [] as number[]) };
+  const nonEmptyCellsPerRow = rows.map(r => r.filter(c => c.ch !== ''));
+  const totalCells = nonEmptyCellsPerRow.reduce((acc, r) => acc + r.length, 0);
 
-  // number of "groups" to distribute: each group is groupSize tokens (for fixedLength),
-  // or each token is its own group when groupSize === 1
-  const totalGroups = groupSize > 1 ? Math.floor(totalZT / groupSize) : totalZT;
-  const cellCount = flatCount;
-  const assignCountsFlat = new Array<number>(cellCount).fill(0);
-
-  // distribute groups round-robin (simple, predictable)
-  let remaining = totalGroups;
-  let idx = 0;
-  while (remaining > 0) {
-    assignCountsFlat[idx] += groupSize > 1 ? groupSize : 1;
-    remaining--;
-    idx = (idx + 1) % cellCount;
+  if (totalCells === 0) {
+    return { rowAlloc: rows.map(() => 0), groups: rows.map(() => [] as number[]) };
   }
 
-  // build per-row groups and rowAlloc
-  const groups = [];
-  const rowAlloc = [];
+  const tokensPerGroup = groupSize > 1 ? groupSize : 1;
+  const totalGroups = groupSize > 1 ? Math.floor(tokens.length / groupSize) : tokens.length;
+
+  // Round-robin: distribute groups evenly across all PT cells
+  const assignCountsFlat = new Array<number>(totalCells).fill(0);
+  for (let g = 0; g < totalGroups; g++) {
+    assignCountsFlat[g % totalCells] += tokensPerGroup;
+  }
+
+  // Partition flat assignments back into per-row groups
+  const groups: number[][] = [];
+  const rowAlloc: number[] = [];
   let ptr = 0;
-  for (const rowCells of ptCellsPerRow) {
+  for (const rowCells of nonEmptyCellsPerRow) {
     const rowArr: number[] = [];
     for (let i = 0; i < rowCells.length; i++) {
       rowArr.push(assignCountsFlat[ptr++] || 0);
     }
     groups.push(rowArr);
-    rowAlloc.push(rowArr.reduce((s, v) => s + v, 0));
+    rowAlloc.push(rowArr.reduce((sum, v) => sum + v, 0));
   }
 
   return { rowAlloc, groups };

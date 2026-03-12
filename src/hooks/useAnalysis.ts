@@ -157,101 +157,80 @@ export function useAnalysis(params: {
     return out;
   }, [columns, effectiveCtTokens, fixedLength, ptRows, ctParseMode, keysPerPTMode]);
 
+  /**
+   * Shared worker dispatch: builds logical tokens, posts the analysis request,
+   * and calls `onResult` with the final sorted candidate map.
+   */
+  const dispatchAnalysisRequest = React.useCallback(
+    (onResult: (sorted: Record<string, Candidate[]>) => void) => {
+      const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+      const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
+      const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
+      const baseCounts = alloc.groups.map(r => r.map(v => v));
+
+      const worker = getWorker();
+      const requestId = ++latestRequestId;
+
+      const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
+        if (e.data.type === 'analyze-result') {
+          worker.removeEventListener('message', handleMessage);
+          if (requestId !== latestRequestId) return;
+
+          const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
+          const scored = applyScores(augmented);
+          const filtered = filterCandidatesForShiftedGrid(scored);
+          const sorted = sortCandidates(filtered);
+          onResult(sorted);
+        }
+      };
+
+      worker.addEventListener('message', handleMessage);
+
+      const request: AnalysisWorkerRequest = {
+        type: 'analyze',
+        ptRows: ptRows as PTChar[][],
+        ctTokens: logicalTokens,
+        rowGroups: baseCounts,
+        keysPerPTMode,
+        groupSize: gs,
+        lockedKeys,
+      };
+
+      worker.postMessage(request);
+    },
+    [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, ctParseMode, getWorker],
+  );
+
   const runAnalysis = React.useCallback(() => {
     setIsAnalyzing(true);
     
-    const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
-    const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
-
-    const worker = getWorker();
-    const requestId = ++latestRequestId;
-    
-    const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
-      if (e.data.type === 'analyze-result') {
-        worker.removeEventListener('message', handleMessage);
-        // Discard result if a newer request has already been dispatched
-        if (requestId !== latestRequestId) return;
-        const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
-        const scored = applyScores(augmented);
-        const filtered = filterCandidatesForShiftedGrid(scored);
-        const sorted = sortCandidates(filtered);
-
-        setCandidatesByChar(sorted);
-        setSelections({});
-        setAnalysisDone(true);
-        setIsAnalyzing(false);
-      }
-    };
-    
-    worker.addEventListener('message', handleMessage);
-    
-    const request: AnalysisWorkerRequest = {
-      type: 'analyze',
-      ptRows: ptRows as PTChar[][],
-      ctTokens: logicalTokens,
-      rowGroups: baseCounts,
-      keysPerPTMode,
-      groupSize: gs,
-      lockedKeys,
-    };
-    
-    worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode, getWorker]);
+    dispatchAnalysisRequest((sorted) => {
+      setCandidatesByChar(sorted);
+      setSelections({});
+      setAnalysisDone(true);
+      setIsAnalyzing(false);
+    });
+  }, [dispatchAnalysisRequest, setSelections]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
-    const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
-    const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
-    const baseCounts = alloc.groups.map(r => r.map(v => v));
-
-    const worker = getWorker();
-    const requestId = ++latestRequestId;
-    
-    const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
-      if (e.data.type === 'analyze-result') {
-        worker.removeEventListener('message', handleMessage);
-        // Discard result if a newer request has already been dispatched
-        if (requestId !== latestRequestId) return;
-        const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
-        const scored = applyScores(augmented);
-        const filtered = filterCandidatesForShiftedGrid(scored);
-        const sorted = sortCandidates(filtered);
-
-        setCandidatesByChar(sorted);
-        setSelections(prev => {
-          const next: SelectionMap = {};
-          for (const [ch, sel] of Object.entries(prev)) {
-            const list = sorted[ch];
-            if (!list) continue;
-            if (Array.isArray(sel)) {
-              // Multi-key mode: keep only tokens that still appear in the candidate list
-              const kept = sel.filter(t => list.some(c => c.token === t));
-              if (kept.length > 0) next[ch] = kept;
-            } else {
-              if (list.some(c => c.token === sel)) next[ch] = sel;
-            }
+    dispatchAnalysisRequest((sorted) => {
+      setCandidatesByChar(sorted);
+      setSelections(prev => {
+        const next: SelectionMap = {};
+        for (const [ch, sel] of Object.entries(prev)) {
+          const list = sorted[ch];
+          if (!list) continue;
+          if (Array.isArray(sel)) {
+            const kept = sel.filter(t => list.some(c => c.token === t));
+            if (kept.length > 0) next[ch] = kept;
+          } else {
+            if (list.some(c => c.token === sel)) next[ch] = sel;
           }
-          return next;
-        });
-      }
-    };
-    
-    worker.addEventListener('message', handleMessage);
-    
-    const request: AnalysisWorkerRequest = {
-      type: 'analyze',
-      ptRows: ptRows as PTChar[][],
-      ctTokens: logicalTokens,
-      rowGroups: baseCounts,
-      keysPerPTMode,
-      groupSize: gs,
-      lockedKeys,
-    };
-    
-    worker.postMessage(request);
-  }, [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, setSelections, ctParseMode, getWorker]);
+        }
+        return next;
+      });
+    });
+  }, [dispatchAnalysisRequest, setSelections]);
 
   return {
     candidatesByChar,

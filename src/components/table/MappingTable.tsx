@@ -4,6 +4,7 @@ import type { MappingTableProps } from '../types';
 import PTCell from './PTCell';
 import { buildShiftOnlyColumns } from '../../utils/shiftMapping';
 import { normalizeLocks } from '../../utils/frequency';
+import { expandDisplayedIndices } from '../../utils/tokenHelpers';
 import { useViewportWidth } from '../../hooks/useViewportWidth';
 import { MappingCellContext, type MappingCellContextValue } from './MappingCellContext';
 import PromptModal from '../common/PromptModal';
@@ -127,22 +128,9 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				if (!col.ct || col.ct.length === 0) continue;
 
 				// Match PTCell rendering rules: expand only when len==1 and allowExpandFromStart.
-				let displayedIndices: number[] = [];
-				if (groupSize > 1) {
-					if (col.ct.length >= groupSize) {
-						displayedIndices = col.ct.slice(0, groupSize);
-					} else if (col.ct.length === 1 && (allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false)) {
-						const start = col.ct[0];
-						for (let k = 0; k < groupSize; k++) {
-							const idx = start + k;
-							if (idx < ctTokens.length) displayedIndices.push(idx);
-						}
-					} else {
-						displayedIndices = col.ct.slice();
-					}
-				} else {
-					displayedIndices = col.ct.slice();
-				}
+				const displayedIndices = expandDisplayedIndices(
+					col.ct, groupSize, allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false, ctTokens.length
+				);
 
 				const groupText = displayedIndices.map(i => ctTokens[i]?.text ?? '').join('').trim();
 				if (!groupText) continue;

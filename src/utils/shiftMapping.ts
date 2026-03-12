@@ -24,6 +24,13 @@ function seqAt(start: number, ctTokens: readonly CTToken[], groupSize: number): 
   return s;
 }
 
+/** Build an array of consecutive indices [start, start+1, ..., start+count-1]. */
+function indicesFrom(start: number, count: number, max: number): number[] {
+  const indices: number[] = [];
+  for (let g = 0; g < count && start + g < max; g++) indices.push(start + g);
+  return indices;
+}
+
 /** Check if taking a single token here protects a forced group at the next position. */
 function shouldProtectNextGroup(
   tokenPtr: number,
@@ -48,6 +55,126 @@ function shouldProtectNextGroup(
   );
 }
 
+/** Merge locked keys and selections into a single forced-mapping dictionary. */
+function buildForcedMap(
+  lockedKeys?: Record<string, string>,
+  selections?: Record<string, string | null>,
+): Record<string, string> {
+  const forced: Record<string, string> = {};
+  for (const [ch, v] of Object.entries(lockedKeys || {})) if (v) forced[ch] = v;
+  for (const [ch, v] of Object.entries(selections || {})) if (v && !forced[ch]) forced[ch] = v as string;
+  return forced;
+}
+
+/** Allocate tokens for an unforced cell (no lock/selection). */
+function allocateUnforcedCell(
+  ptChar: PTChar,
+  ch: string,
+  tokenPtr: number,
+  groupSize: number,
+  ctTokens: CTToken[],
+  forced: Record<string, string>,
+  totalPTCells: number,
+  processedCells: number,
+): { column: Column; consumed: number } {
+  if (tokenPtr >= ctTokens.length) {
+    return { column: { pt: ptChar, ct: [] }, consumed: 0 };
+  }
+
+  const forcedValues = Object.values(forced);
+  const here = seqAt(tokenPtr, ctTokens, groupSize);
+
+  // Current token is forced for a DIFFERENT character — leave this cell empty
+  const isForcedForOtherChar = here != null && Object.entries(forced).some(
+    ([forcedCh, forcedToken]) => forcedToken === here && forcedCh !== ch
+  );
+  if (isForcedForOtherChar) {
+    return { column: { pt: ptChar, ct: [] }, consumed: 0 };
+  }
+
+  const protectNext = shouldProtectNextGroup(
+    tokenPtr, groupSize, ctTokens, forcedValues, totalPTCells, processedCells,
+  );
+  if (protectNext) {
+    return { column: { pt: ptChar, ct: [tokenPtr] }, consumed: 1 };
+  }
+
+  const groupIndices = indicesFrom(tokenPtr, groupSize, ctTokens.length);
+  return { column: { pt: ptChar, ct: groupIndices }, consumed: groupIndices.length };
+}
+
+/** Scan forward to find a forced token match, emitting deception cells for skipped tokens. */
+function allocateForcedCell(
+  ptChar: PTChar,
+  need: string,
+  tokenPtr: number,
+  groupSize: number,
+  ctTokens: CTToken[],
+  forced: Record<string, string>,
+  totalPTCells: number,
+  processedCells: number,
+): { columns: Column[]; consumed: number } {
+  const cols: Column[] = [];
+  let ptr = tokenPtr;
+
+  while (ptr < ctTokens.length) {
+    // Build candidate slice of up to groupSize tokens
+    const sliceTexts: string[] = [];
+    for (let g = 0; g < groupSize && ptr + g < ctTokens.length; g++) {
+      sliceTexts.push(ctTokens[ptr + g].text);
+    }
+
+    // Try to match the forced value as any prefix of the available slice
+    let matchLen = 0;
+    for (let pref = 1; pref <= sliceTexts.length; pref++) {
+      if (sliceTexts.slice(0, pref).join('') === need) { matchLen = pref; break; }
+    }
+
+    if (matchLen > 0) {
+      // Found the forced token — emit the PT cell
+      cols.push({ pt: ptChar, ct: indicesFrom(ptr, matchLen, ctTokens.length) });
+      return { columns: cols, consumed: ptr + matchLen - tokenPtr };
+    }
+
+    // Not a match — emit a deception cell and advance
+    const forcedValues = Object.values(forced);
+    const protectNext = shouldProtectNextGroup(
+      ptr, groupSize, ctTokens, forcedValues, totalPTCells, processedCells,
+    );
+    if (!protectNext && groupSize > 1 && ptr + groupSize <= ctTokens.length) {
+      cols.push({ pt: null, ct: indicesFrom(ptr, groupSize, ctTokens.length), deception: true });
+      ptr += groupSize;
+    } else {
+      cols.push({ pt: null, ct: [ptr], deception: true });
+      ptr += 1;
+    }
+  }
+
+  // Could not find forced token — mark as empty deception
+  cols.push({ pt: ptChar, ct: [], deception: true });
+  return { columns: cols, consumed: ptr - tokenPtr };
+}
+
+/** Append any remaining unallocated tokens as deception cells to a row. */
+function appendTrailingDeception(
+  rowCols: Column[],
+  tokenPtr: number,
+  groupSize: number,
+  ctTokens: CTToken[],
+): number {
+  let ptr = tokenPtr;
+  while (ptr < ctTokens.length) {
+    if (groupSize > 1 && ptr + groupSize <= ctTokens.length) {
+      rowCols.push({ pt: null, ct: indicesFrom(ptr, groupSize, ctTokens.length), deception: true });
+      ptr += groupSize;
+    } else {
+      rowCols.push({ pt: null, ct: [ptr], deception: true });
+      ptr++;
+    }
+  }
+  return ptr;
+}
+
 /**
  * Build allocation columns for fixed-length mode with lock/selection awareness.
  * 
@@ -68,108 +195,47 @@ export function buildShiftOnlyColumns(
 ): Column[][] {
   void bracketedIndices;
   const filteredRows = ptRows.map(r => r.filter(c => c.ch !== ''));
-  const forced: Record<string, string> = {};
-  for (const [ch, v] of Object.entries(lockedKeys || {})) if (v) forced[ch] = v;
-  for (const [ch, v] of Object.entries(selections || {})) if (v && !forced[ch]) forced[ch] = v as string;
+  const forced = buildForcedMap(lockedKeys, selections);
   const hasForced = Object.keys(forced).length > 0;
+  const totalPTCells = filteredRows.reduce((acc, r) => acc + r.length, 0);
+
   const result: Column[][] = [];
   let tokenPtr = 0;
-  // Total number of PT cells (flattened) to correctly compute remaining cells
-  const totalPTCells = filteredRows.reduce((acc, r) => acc + r.length, 0);
   let processedCells = 0;
+
   for (let r = 0; r < filteredRows.length; r++) {
     const rowChars = filteredRows[r];
     const rowCols: Column[] = [];
+
     for (let c = 0; c < rowChars.length; c++) {
       const ch = rowChars[c].ch;
       const want = hasForced ? forced[ch] : undefined;
+
       if (!want) {
-        // Unforced cell. Heuristic: try to take groupSize tokens starting at tokenPtr.
-        if (tokenPtr < ctTokens.length) {
-          const forcedValues = Object.values(forced);
-          const here = seqAt(tokenPtr, ctTokens, groupSize);
-          
-          // Check if current token is forced for a DIFFERENT character
-          // If so, this unforced cell cannot take it - leave empty
-          const isForcedForOtherChar = here != null && Object.entries(forced).some(
-            ([forcedCh, forcedToken]) => forcedToken === here && forcedCh !== ch
-          );
-          
-          const protectNext = shouldProtectNextGroup(tokenPtr, groupSize, ctTokens, forcedValues, totalPTCells, processedCells);
-          
-          if (isForcedForOtherChar) {
-            // Current token is forced for another character - leave this cell empty
-            rowCols.push({ pt: rowChars[c], ct: [] });
-          } else if (protectNext) {
-            rowCols.push({ pt: rowChars[c], ct: [tokenPtr] });
-            tokenPtr += 1;
-          } else {
-            const groupIndices: number[] = [];
-            for (let g = 0; g < groupSize && tokenPtr + g < ctTokens.length; g++) groupIndices.push(tokenPtr + g);
-            rowCols.push({ pt: rowChars[c], ct: groupIndices });
-            tokenPtr += groupIndices.length;
-          }
-        } else {
-          rowCols.push({ pt: rowChars[c], ct: [] });
-        }
+        const { column, consumed } = allocateUnforcedCell(
+          rowChars[c], ch, tokenPtr, groupSize, ctTokens,
+          forced, totalPTCells, processedCells,
+        );
+        rowCols.push(column);
+        tokenPtr += consumed;
       } else {
-        // Forced: advance one raw token at a time producing deception cells until the next groupSize tokens concatenated match 'want'
-        const need = want;
-        let found = false;
-        while (tokenPtr < ctTokens.length) {
-          const sliceTexts = [] as string[];
-          for (let g = 0; g < groupSize && tokenPtr + g < ctTokens.length; g++) sliceTexts.push(ctTokens[tokenPtr + g].text);
-          // Try to match the forced value as any prefix of the available slice
-          let matchedPrefixLength = 0;
-          for (let pref = 1; pref <= sliceTexts.length; pref++) {
-            const prefix = sliceTexts.slice(0, pref).join('');
-            if (prefix === need) { matchedPrefixLength = pref; break; }
-          }
-          if (matchedPrefixLength > 0) {
-            const groupIndices: number[] = [];
-            for (let g = 0; g < matchedPrefixLength; g++) groupIndices.push(tokenPtr + g);
-            rowCols.push({ pt: rowChars[c], ct: groupIndices });
-            tokenPtr += matchedPrefixLength;
-            found = true;
-            break;
-          } else {
-            // deception cell(s) for current tokenPtr
-            const forcedValues = Object.values(forced);
-            const protectNext = shouldProtectNextGroup(tokenPtr, groupSize, ctTokens, forcedValues, totalPTCells, processedCells);
-            if (!protectNext && groupSize > 1 && tokenPtr + groupSize <= ctTokens.length) {
-              const groupIndices: number[] = [];
-              for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
-              rowCols.push({ pt: null, ct: groupIndices, deception: true });
-              tokenPtr += groupSize;
-            } else {
-              rowCols.push({ pt: null, ct: [tokenPtr], deception: true });
-              tokenPtr += 1;
-            }
-          }
-        }
-        if (!found) {
-          // could not find sequence; mark empty deception cell
-          rowCols.push({ pt: rowChars[c], ct: [], deception: true });
-        }
-        // mark this PT cell as processed
+        const { columns, consumed } = allocateForcedCell(
+          rowChars[c], want, tokenPtr, groupSize, ctTokens,
+          forced, totalPTCells, processedCells,
+        );
+        rowCols.push(...columns);
+        tokenPtr += consumed;
         processedCells++;
       }
     }
+
+    // Append trailing deception cells on the last row
     if (r === filteredRows.length - 1) {
-      // At the very end, collapse remaining raw tokens into deception groups when possible
-      while (tokenPtr < ctTokens.length) {
-        if (groupSize > 1 && tokenPtr + groupSize <= ctTokens.length) {
-          const groupIndices: number[] = [];
-          for (let g = 0; g < groupSize; g++) groupIndices.push(tokenPtr + g);
-          rowCols.push({ pt: null, ct: groupIndices, deception: true });
-          tokenPtr += groupSize;
-        } else {
-          rowCols.push({ pt: null, ct: [tokenPtr], deception: true });
-          tokenPtr++;
-        }
-      }
+      tokenPtr = appendTrailingDeception(rowCols, tokenPtr, groupSize, ctTokens);
     }
+
     result.push(rowCols);
   }
+
   return result;
 }

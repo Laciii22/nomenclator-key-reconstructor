@@ -1,5 +1,14 @@
-﻿//return a map from effective token indices to original token indices, given the total token count and the list of bracketed token indices
-//so we dont see brackened tokens in mapping and insertion logic, but they still exist in the original token list and keep their original indices for reference when inserting new tokens
+﻿/**
+ * Build a mapping from effective token indices to original token indices.
+ *
+ * Bracketed (deception) tokens are hidden from mapping/insertion logic,
+ * but they still exist in the original token list. This index map lets
+ * callers translate effective-space positions back to original positions.
+ *
+ * @param tokenCount Total number of original tokens
+ * @param bracketedIndices Original indices of bracketed/deception tokens
+ * @returns Array where `result[effIndex]` is the original token index
+ */
 export function buildEffectiveToOriginalIndexMap(
   tokenCount: number,
   bracketedIndices: readonly number[]

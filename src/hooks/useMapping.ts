@@ -144,46 +144,33 @@ export function useMapping(params: {
     return deriveCountsFromColumns(baseColumns, groupSize || 1);
   }, [baseColumns, groupSize, manualPtCounts, ctParseMode]);
 
+  /** Flatten baseColumns into a 1D array for index-based neighbor access. */
+  const flatCols = React.useMemo(() => {
+    const flat: (Column | null)[] = [];
+    for (const row of baseColumns) for (const col of row) flat.push(col || null);
+    return flat;
+  }, [baseColumns]);
+
+  /** Check whether the neighbor at `neighborIndex` is a locked PT cell. */
+  const isLockedNeighbor = React.useCallback((neighborIndex: number): boolean => {
+    if (neighborIndex < 0 || neighborIndex >= flatCols.length) return false;
+    const cell = flatCols[neighborIndex];
+    if (!cell?.pt || typeof cell.pt !== 'object') return false;
+    const ptCh = cell.pt.ch;
+    return !!ptCh && Object.prototype.hasOwnProperty.call(lockedKeys, ptCh);
+  }, [flatCols, lockedKeys]);
+
   const canShiftLeftAt = React.useCallback((index: number) => {
     const maxLen = groupSize || 1;
-    // Disallow shifting into/out of a locked PT cell: check neighbor lock status
-    try {
-      // Build flat view of baseColumns (same order as countsForUi)
-      const flatCols: (import('../components/types').Column | null)[] = [];
-      for (const row of baseColumns) for (const col of row) flatCols.push(col || null);
-      // If left neighbor corresponds to a locked PT, disallow
-      if (index - 1 >= 0) {
-        const left = flatCols[index - 1];
-        if (left && left.pt && typeof left.pt === 'object') {
-          const ptCh = left.pt.ch;
-          if (ptCh && Object.prototype.hasOwnProperty.call(lockedKeys, ptCh)) return false;
-        }
-      }
-    } catch {
-      // fall back to default behavior on error
-    }
+    if (isLockedNeighbor(index - 1)) return false;
     return canShiftLeft(countsForUi, index, maxLen);
-  }, [countsForUi, groupSize, baseColumns, lockedKeys]);
+  }, [countsForUi, groupSize, isLockedNeighbor]);
 
   const canShiftRightAt = React.useCallback((index: number) => {
     const maxLen = groupSize || 1;
-    // Disallow shifting into/out of a locked PT cell: check neighbor lock status
-    try {
-      const flatCols: (import('../components/types').Column | null)[] = [];
-      for (const row of baseColumns) for (const col of row) flatCols.push(col || null);
-      // If right neighbor corresponds to a locked PT, disallow
-      if (index + 1 < flatCols.length) {
-        const right = flatCols[index + 1];
-        if (right && right.pt && typeof right.pt === 'object') {
-          const ptCh = right.pt.ch;
-          if (ptCh && Object.prototype.hasOwnProperty.call(lockedKeys, ptCh)) return false;
-        }
-      }
-    } catch {
-      // fall back to default behavior on error
-    }
+    if (isLockedNeighbor(index + 1)) return false;
     return canShiftRight(countsForUi, index, maxLen);
-  }, [countsForUi, groupSize, baseColumns, lockedKeys]);
+  }, [countsForUi, groupSize, isLockedNeighbor]);
 
   const shiftLeftAt = React.useCallback((index: number) => {
     if (ctParseMode !== 'fixedLength') return;

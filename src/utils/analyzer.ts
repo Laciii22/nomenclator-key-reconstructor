@@ -347,43 +347,18 @@ function buildProposedRowGroups(
   let total = 0;
   for (const cell of cells) total += cell.count;
 
+  // Set locked cell counts to 1
+  const lockedLen: Record<string, number> = {};
   for (let i = 0; i < cells.length; i++) {
     const ch = flat[i]?.ch;
     if (ch && lockedKeysIn?.[ch]) {
       proposed[cells[i].row][cells[i].col] = 1;
+      lockedLen[ch] = 1;
     }
   }
 
-  let sumNow = 0;
-  for (const row of proposed) for (const v of row) sumNow += (v || 0);
-  let delta = total - sumNow;
-
-  for (let i = 0; i < cells.length && delta !== 0; i++) {
-    const ch = flat[i]?.ch;
-    if (ch && lockedKeysIn?.[ch]) continue;
-    const { row, col } = cells[i];
-    if (delta > 0) {
-      proposed[row][col] = (proposed[row][col] || 0) + 1;
-      delta -= 1;
-    } else if (delta < 0 && (proposed[row][col] || 0) > 0) {
-      proposed[row][col] -= 1;
-      delta += 1;
-    }
-  }
-
-  if (delta !== 0) {
-    for (let i = 0; i < cells.length && delta < 0; i++) {
-      const { row, col } = cells[i];
-      const cur = proposed[row][col] || 0;
-      if (cur > 0) { proposed[row][col] = cur - 1; delta += 1; }
-    }
-    for (let i = 0; i < cells.length && delta > 0; i++) {
-      const { row, col } = cells[i];
-      proposed[row][col] = (proposed[row][col] || 0) + 1;
-      delta -= 1;
-    }
-  }
-
+  // Rebalance to preserve total token count
+  balanceGroups(proposed, total, flat, lockedLen);
   return proposed;
 }
 

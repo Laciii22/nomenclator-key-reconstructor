@@ -5,13 +5,13 @@ import { getExpectedCTIndicesForOT } from '../utils/grouping';
 
 /**
  * Returns the sorted flat array of CT indices occupied by a set of candidates.
+ * Uses a Set for O(k) token lookups instead of nested linear scans.
  */
 function collectIndices(candidates: Candidate[], ctTokens: CTToken[]): number[] {
+  const targetTokens = new Set(candidates.map(c => c.token));
   const indices: number[] = [];
-  for (const c of candidates) {
-    for (let i = 0; i < ctTokens.length; i++) {
-      if (ctTokens[i].text === c.token) indices.push(i);
-    }
+  for (let i = 0; i < ctTokens.length; i++) {
+    if (targetTokens.has(ctTokens[i].text)) indices.push(i);
   }
   return indices.sort((a, b) => a - b);
 }

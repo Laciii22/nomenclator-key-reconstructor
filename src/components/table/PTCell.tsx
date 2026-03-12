@@ -13,7 +13,7 @@ import React from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import type { PTCellProps } from '../types';
 import CTTokenComp from './CTToken';
-import { tokensFromIndices, joinTokenTexts } from '../../utils/tokenHelpers';
+import { tokensFromIndices, joinTokenTexts, expandDisplayedIndices } from '../../utils/tokenHelpers';
 import padlock from '../../assets/icons/padlock.png';
 import plusIcon from '../../assets/icons/plus.png';
 import minus from '../../assets/icons/minus.png';
@@ -21,6 +21,30 @@ import leftIcon from '../../assets/icons/left-arrow.png';
 import rightIcon from '../../assets/icons/right-arrow.png';
 import { useMappingCellContext } from './MappingCellContext';
 import PromptModal from '../common/PromptModal';
+
+/** Pure helper — computes the className for the PT character label. */
+function getPtLabelClassName(
+  locked: string | string[] | null | undefined,
+  dragging: boolean,
+  highlighted: boolean,
+): string {
+  const baseClasses = 'inline-block px-1 py-0.5 rounded font-mono text-sm font-bold select-none border';
+
+  const isLocked = locked && (typeof locked === 'string' || locked.length > 0);
+
+  let stateClasses: string;
+  if (isLocked) {
+    stateClasses = 'cursor-default bg-green-200 text-neutral-950 border-green-300';
+  } else if (dragging) {
+    stateClasses = 'cursor-grabbing opacity-60 bg-yellow-100 text-yellow-800 border-yellow-300';
+  } else {
+    stateClasses = 'cursor-grab bg-yellow-100 text-yellow-800 border-yellow-300';
+  }
+
+  const highlightClasses = highlighted ? 'ring-2 ring-purple-400' : '';
+
+  return `${baseClasses} ${stateClasses} ${highlightClasses}`;
+}
 
 /**
  * A single PT grid cell with its allocated CT tokens.
@@ -156,31 +180,9 @@ const PTCell: React.FC<PTCellProps> = ({
   // In fixed-length mode we may want to display up to `groupSize` constituent single-char tokens
   const displayedIndices = React.useMemo((): number[] => {
     if (!Array.isArray(tokenIndices) || tokenIndices.length === 0) return [];
-
-    const isRealPtCell = !!pt;
-    const shouldExpandGroup = isRealPtCell && isFixedLength && groupSize > 1;
-
-    if (!shouldExpandGroup) {
-      return tokenIndices.slice();
-    }
-
-    // Expand to full group size if allowed
-    if (tokenIndices.length >= groupSize) {
-      return tokenIndices.slice(0, groupSize);
-    }
-
-    if (tokenIndices.length === 1 && allowExpandFromStart) {
-      const startIndex = tokenIndices[0];
-      const expandedIndices: number[] = [];
-      for (let offset = 0; offset < groupSize; offset++) {
-        const idx = startIndex + offset;
-        if (idx < tokens.length) expandedIndices.push(idx);
-      }
-      return expandedIndices;
-    }
-
-    return tokenIndices.slice();
-  }, [tokenIndices, pt, isFixedLength, groupSize, allowExpandFromStart, tokens.length]);
+    if (!pt) return tokenIndices.slice();
+    return expandDisplayedIndices(tokenIndices, groupSize, allowExpandFromStart, tokens.length);
+  }, [tokenIndices, pt, groupSize, allowExpandFromStart, tokens.length]);
   
   const displayedTokens = React.useMemo(() => 
     displayedIndices.length
@@ -310,29 +312,6 @@ const PTCell: React.FC<PTCellProps> = ({
         <img src={icon} alt={direction} className="w-3 h-3" />
       </button>
     );
-  };
-
-  const getPtLabelClassName = (
-    locked: string | string[] | null | undefined, 
-    dragging: boolean, 
-    highlighted: boolean
-  ) => {
-    const baseClasses = 'inline-block px-1 py-0.5 rounded font-mono text-sm font-bold select-none border';
-    
-    const isLocked = locked && (typeof locked === 'string' || locked.length > 0);
-    
-    let stateClasses: string;
-    if (isLocked) {
-      stateClasses = 'cursor-default bg-green-200 text-neutral-950 border-green-300';
-    } else if (dragging) {
-      stateClasses = 'cursor-grabbing opacity-60 bg-yellow-100 text-yellow-800 border-yellow-300';
-    } else {
-      stateClasses = 'cursor-grab bg-yellow-100 text-yellow-800 border-yellow-300';
-    }
-
-    const highlightClasses = highlighted ? 'ring-2 ring-purple-400' : '';
-
-    return `${baseClasses} ${stateClasses} ${highlightClasses}`;
   };
 
   const cellBaseClasses = 'relative border rounded p-0.5 shadow-sm transition-colors';

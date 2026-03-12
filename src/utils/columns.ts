@@ -42,6 +42,27 @@ export function computePairsFromColumns(
   return out;
 }
 
+/** Tracking state for one PT character during aggregation. */
+type AggEntry = { allSet: Set<string>; nonEmptySet: Set<string>; displayList: string[] };
+
+/** Add a token to the display list for single-key mode (first non-empty wins). */
+function addSingleKeyDisplay(entry: AggEntry, token: string): void {
+  if (entry.displayList.length === 0) {
+    entry.displayList.push(token);
+  } else if (entry.displayList[0] === '' && token !== '') {
+    entry.displayList[0] = token;
+  }
+}
+
+/** Add a token to the display list for multi-key mode (all unique non-empty). */
+function addMultiKeyDisplay(entry: AggEntry, token: string): void {
+  if (token === '') {
+    if (entry.displayList.length === 0) entry.displayList.push('');
+  } else if (!entry.displayList.includes(token)) {
+    entry.displayList.push(token);
+  }
+}
+
 /**
  * Aggregate pairs by PT character, collecting unique CT tokens.
  * 
@@ -53,28 +74,21 @@ export function computePairsFromColumns(
  * @returns Aggregated view with unique token counts
  */
 export function aggregatePairsByOT(pairs: Pair[], keysPerPTMode: 'single' | 'multiple' = 'multiple') {
-  const map = new Map<string, { allSet: Set<string>; nonEmptySet: Set<string>; displayList: string[] }>();
+  const map = new Map<string, AggEntry>();
   const order: string[] = [];
+  const addDisplay = keysPerPTMode === 'single' ? addSingleKeyDisplay : addMultiKeyDisplay;
+
   for (const p of pairs) {
     if (!map.has(p.pt)) {
       map.set(p.pt, { allSet: new Set(), nonEmptySet: new Set(), displayList: [] });
       order.push(p.pt);
     }
     const entry = map.get(p.pt)!;
-    const tokenText = p.ct;
-    if (!entry.allSet.has(tokenText)) entry.allSet.add(tokenText);
-    if (tokenText !== '' && !entry.nonEmptySet.has(tokenText)) entry.nonEmptySet.add(tokenText);
-    if (keysPerPTMode === 'single') {
-      if (entry.displayList.length === 0) entry.displayList.push(tokenText);
-      else if (entry.displayList[0] === '' && tokenText !== '') entry.displayList[0] = tokenText;
-    } else {
-      if (tokenText === '') {
-        if (entry.displayList.length === 0) entry.displayList.push('');
-      } else if (!entry.displayList.includes(tokenText)) {
-        entry.displayList.push(tokenText);
-      }
-    }
+    entry.allSet.add(p.ct);
+    if (p.ct !== '') entry.nonEmptySet.add(p.ct);
+    addDisplay(entry, p.ct);
   }
+
   return order.map(pt => {
     const entry = map.get(pt)!;
     const uniqueCountNonEmpty = entry.nonEmptySet.size;

@@ -1,12 +1,10 @@
-﻿import React from 'react';
-import { buildCandidateOptions } from './candidateHelpers';
-import {
-  extendCandidateListWithLocked,
-  sortCandidatesByScore,
-  getCurrentSelectorValue,
-  getPTCharBadgeClasses,
-  getSelectorInputClasses
-} from './candidateSelectorCommon';
+﻿/**
+ * Fixed-length mode candidate selector.
+ * Thin wrapper around CandidateSelectorDropdown with groupSize derived from fixedLength.
+ */
+
+import React from 'react';
+import CandidateSelectorDropdown from './CandidateSelectorDropdown';
 import type { PTChar, CTToken } from '../../types/domain';
 import type { Candidate, SelectionMap } from '../../utils/analyzer';
 import type { Column } from '../types';
@@ -23,59 +21,21 @@ type Props = {
   sharedColumns: Column[][];
 };
 
-const CandidateSelectorFixed: React.FC<Props> = ({ candidatesByChar, lockedKeys, selections, setSelections, ptRows, effectiveCtTokens, fixedLength, reservedTokens, sharedColumns }) => {
-  const groupSize = Math.max(1, fixedLength || 1);
-  const totalChars = Object.keys(candidatesByChar).length;
-  const assignedChars = Object.entries(candidatesByChar).filter(([ch]) => lockedKeys[ch] || selections[ch]).length;
-
+const CandidateSelectorFixed: React.FC<Props> = (props) => {
+  const groupSize = Math.max(1, props.fixedLength || 1);
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-xs text-gray-500">Assigned:</span>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          assignedChars === totalChars ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-        }`}>{assignedChars} / {totalChars}</span>
-      </div>
-    <div className="grid grid-cols-3 gap-3">
-      {Object.entries(candidatesByChar).sort((a,b)=> a[0].localeCompare(b[0])).map(([ch, list]) => {
-        const lockedVal = lockedKeys[ch];
-        const selectionVal = selections[ch];
-        const normalizedSelectionVal = Array.isArray(selectionVal) ? selectionVal[0] : (selectionVal ?? null);
-        const currentValue = getCurrentSelectorValue(lockedVal, normalizedSelectionVal);
-        const disabledSelect = Boolean(lockedVal);
-        const extendedList = extendCandidateListWithLocked(list, lockedVal);
-        const sortedByScore = sortCandidatesByScore(extendedList);
-
-        return (
-          <div key={ch} className="flex items-center gap-3">
-            <div className="w-10 font-mono text-center">
-              <span className={`inline-block px-2 py-0.5 rounded border ${getPTCharBadgeClasses(Boolean(lockedVal))}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
-            </div>
-            <select
-              className={getSelectorInputClasses(disabledSelect)}
-              value={currentValue}
-              disabled={disabledSelect}
-              onChange={(e) => {
-                const val = e.target.value || '';
-                setSelections((prev) => ({ ...prev, [ch]: val === '' ? null : val }));
-              }}
-            >
-              <option value="">None</option>
-              {sortedByScore.filter((c) => c.length === 1).map((c, idx) => {
-                const opt = buildCandidateOptions({ c, idx, ch, ptRows, effectiveCtTokens, groupSize, reservedTokens, selectionVal: normalizedSelectionVal, lockedVal, sharedColumns });
-                return (
-                  <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>
-                );
-              })}
-            </select>
-            {lockedVal && (
-              <span className="text-xs text-green-700">locked: {lockedVal}</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-    </div>
+    <CandidateSelectorDropdown
+      candidatesByChar={props.candidatesByChar}
+      lockedKeys={props.lockedKeys}
+      selections={props.selections}
+      setSelections={props.setSelections}
+      ptRows={props.ptRows}
+      effectiveCtTokens={props.effectiveCtTokens}
+      reservedTokens={props.reservedTokens}
+      sharedColumns={props.sharedColumns}
+      groupSize={groupSize}
+      emptyOptionLabel="None"
+    />
   );
 };
 
