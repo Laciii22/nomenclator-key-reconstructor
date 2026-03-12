@@ -47,7 +47,7 @@ const KeyTable: React.FC<KeyTableProps & {
     return buildColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
   }, [columns, ptRows, ctTokens, lockedKeys, selections, ctParseMode, groupSize, bracketedIndices]);
 
-  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ctTokens, getGroupSize(ctParseMode, groupSize), keysPerPTMode), [colsForMode, ctTokens, ctParseMode, groupSize, keysPerPTMode]);
+  const pairs = useMemo(() => computePairsFromColumns(colsForMode, ctTokens, keysPerPTMode), [colsForMode, ctTokens, keysPerPTMode]);
 
   // Track PT chars that have at least one empty mapped cell.
   // This is separate from the aggregated display (which can omit empty entries

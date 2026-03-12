@@ -78,8 +78,7 @@ export function useAnalysis(params: {
   const augmentCandidatesWithCurrentMapping = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ctParseMode !== 'fixedLength') return base;
 
-    const gs = fixedLength || 1;
-    const pairs = computePairsFromColumns(columns, effectiveCtTokens, gs, keysPerPTMode);
+    const pairs = computePairsFromColumns(columns, effectiveCtTokens, keysPerPTMode);
 
     const currentByChar: Record<string, Set<string>> = {};
     for (const p of pairs) {
