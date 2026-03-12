@@ -177,7 +177,9 @@ export function useAnalysis(params: {
         const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
         const scored = applyScores(augmented);
         const filtered = filterCandidatesForShiftedGrid(scored);
-        setCandidatesByChar(sortCandidates(filtered));
+        const sorted = sortCandidates(filtered);
+
+        setCandidatesByChar(sorted);
         setSelections({});
         setAnalysisDone(true);
         setIsAnalyzing(false);

@@ -354,20 +354,24 @@ export function useNomenklator() {
     }
 
     // 2) Bracketed runs — scan ctTokens for contiguous bracketed-index spans.
-    //    These represent groups the user has already marked as deception.
+    //    Split each run into fixed-size chunks so adjacent bracketed groups
+    //    like "99" + "9" are shown as separate entries, not as "999".
     if (bracketedIndices.length) {
       const br = new Set(bracketedIndices);
       let i = 0;
       while (i < ctTokens.length) {
         if (!br.has(i)) { i++; continue; }
-        const runStart = i;
-        let text = '';
+        const runIndices: number[] = [];
         while (i < ctTokens.length && br.has(i)) {
-          text += ctTokens[i].text;
+          runIndices.push(i);
           i++;
         }
-        if (!text) continue;
-        entries.push({ startIdx: runStart, text, isBracketed: true });
+        for (let start = 0; start < runIndices.length; start += size) {
+          const chunk = runIndices.slice(start, start + size);
+          const text = chunk.map(idx => ctTokens[idx]?.text ?? '').join('');
+          if (!text) continue;
+          entries.push({ startIdx: chunk[0], text, isBracketed: true });
+        }
       }
     }
 
@@ -423,9 +427,8 @@ export function useNomenklator() {
 
     // If the group doesn't exist in the current shifted grid (e.g. it's already
     // fully bracketed and thus filtered out of `effectiveCtTokens`), fall back
-    // to the parse-based toggler so it can be restored.
+    // to currently bracketed runs chunked by fixed length.
     if (!indicesToToggle.length) {
-      // Try to un-bracket a contiguous bracketed run matching this text.
       if (bracketedIndices.length) {
         const br = new Set(bracketedIndices);
         let i = 0;
@@ -434,14 +437,16 @@ export function useNomenklator() {
             i++;
             continue;
           }
-          let runText = '';
           const runIndices: number[] = [];
           while (i < ctTokens.length && br.has(i)) {
-            runText += ctTokens[i].text;
             runIndices.push(i);
             i++;
           }
-          if (runText === text) indicesToToggle.push(...runIndices);
+          for (let start = 0; start < runIndices.length; start += size) {
+            const chunk = runIndices.slice(start, start + size);
+            const chunkText = chunk.map(idx => ctTokens[idx]?.text ?? '').join('');
+            if (chunkText === text) indicesToToggle.push(...chunk);
+          }
         }
       }
 
