@@ -1,7 +1,6 @@
 ﻿import type { PTChar } from '../../types/domain';
 
-// Kept in a small helper file so the main hook stays readable.
-// This is a pure predicate: no React, no state updates.
+//when locked token, returns true, so that the token will be rendered as locked and not draggable in the UI
 export function tokenIndexIsLockedInColumns(
   columns: { pt: PTChar | null; ct: number[] }[][],
   lockedKeys: Record<string, string>,
