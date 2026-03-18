@@ -41,8 +41,6 @@ function loadFromStorage(initial?: Partial<LocalSettings>): LocalSettings {
  * This hooks saves and loads local settings from localStorage.
  * Uses lazy initialization to read persisted state synchronously on first render,
  * which avoids the race where the write effect fires before the read effect applies.
- * @param initial Initial settings to use if none are stored.
- * @return A tuple containing the current settings and a function to update them.
  **/
 
 export function useLocalSettings(initial?: Partial<LocalSettings>) {
@@ -50,8 +48,9 @@ export function useLocalSettings(initial?: Partial<LocalSettings>) {
 
   useEffect(() => {
     try {
+      //KEY is nkr_settings
       localStorage.setItem(KEY, JSON.stringify(settings));
-    } catch { /* ignore */ }
+    } catch {console.warn('Failed to save settings to localStorage');}
   }, [settings]);
 
   return [settings, setSettings] as const;

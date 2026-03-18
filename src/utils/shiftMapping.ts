@@ -178,12 +178,6 @@ function appendTrailingDeception(
 /**
  * Build allocation columns for fixed-length mode with lock/selection awareness.
  * 
- * @param ptRows PT character rows
- * @param ctTokens Raw CT tokens (individual characters in fixed-length mode)
- * @param lockedKeys User-confirmed PT→CT mappings
- * @param selections Current manual selections
- * @param groupSize Size of token groups
- * @returns Column layout with deception cells
  */
 export function buildShiftOnlyColumns(
   ptRows: PTChar[][],

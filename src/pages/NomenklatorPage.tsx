@@ -404,6 +404,7 @@ const NomenklatorPage: React.FC = () => {
               uniqueCTTokenTexts={uniqueCTTokenTexts}
               onToggleText={toggleBracketGroupByText}
               onClear={() => setBracketedIndices([])}
+              lockedKeys={lockedKeys}
             />
 
             <ParseControls

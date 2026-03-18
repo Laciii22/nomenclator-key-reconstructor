@@ -1,5 +1,6 @@
 ﻿import type { CTToken } from '../../types/domain';
 
+//for worker: takes the raw list of CT tokens and groups them into logical tokens based on the groupSize (1 for separator mode, >1 for fixed-length mode)
 export function buildLogicalTokens(ctTokens: CTToken[], groupSize: number): CTToken[] {
   if (!groupSize || groupSize <= 1) return ctTokens;
   const out: CTToken[] = [];

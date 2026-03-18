@@ -28,6 +28,8 @@ interface BracketEditorProps {
   onToggleText: (text: string) => void;
   /** Callback to clear all brackets */
   onClear: () => void;
+  /** Locked keys — locked CT token texts cannot be marked as deception */
+  lockedKeys?: Record<string, string | string[]>;
 }
 
 /**
@@ -40,9 +42,20 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
   uniqueCTTokenTexts,
   onToggleText,
   onClear,
+  lockedKeys,
 }) => {
   if (ctTokens.length === 0 || !analysisDone) return null;
   const bracketedCount = uniqueCTTokenTexts.filter(t => t.allBracketed).length;
+
+  const lockedTexts = React.useMemo(() => {
+    const set = new Set<string>();
+    if (!lockedKeys) return set;
+    for (const val of Object.values(lockedKeys)) {
+      if (Array.isArray(val)) val.forEach(v => set.add(v));
+      else set.add(val);
+    }
+    return set;
+  }, [lockedKeys]);
 
   return (
     <div className="border rounded-lg p-3 border-purple-200 bg-purple-50/50">
@@ -64,20 +77,26 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
         <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-2">{bracketWarning}</div>
       )}
       <div className="flex flex-wrap gap-2 items-center">
-        {uniqueCTTokenTexts.map(({ text, allBracketed }) => (
-          <button
-            key={text}
-            className={`text-xs font-mono px-2 py-1 rounded-md border select-none transition-colors ${
-              allBracketed
-                ? 'bg-purple-200 border-purple-400 text-purple-900 font-semibold'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-purple-50 hover:border-purple-300'
-            }`}
-            onClick={() => onToggleText(text)}
-            title={allBracketed ? 'Click to restore all occurrences of this token' : 'Click to exclude all occurrences of this token from analysis'}
-          >
-            {allBracketed ? `[${text}]` : text}
-          </button>
-        ))}
+        {uniqueCTTokenTexts.map(({ text, allBracketed }) => {
+          const isLocked = lockedTexts.has(text);
+          return (
+            <button
+              key={text}
+              className={`text-xs font-mono px-2 py-1 rounded-md border select-none transition-colors ${
+                isLocked
+                  ? 'bg-green-100 border-green-300 text-green-700 cursor-not-allowed opacity-60'
+                  : allBracketed
+                    ? 'bg-purple-200 border-purple-400 text-purple-900 font-semibold'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-purple-50 hover:border-purple-300'
+              }`}
+              onClick={() => { if (!isLocked) onToggleText(text); }}
+              disabled={isLocked}
+              title={isLocked ? 'Locked token — cannot be marked as deception' : allBracketed ? 'Click to restore all occurrences of this token' : 'Click to exclude all occurrences of this token from analysis'}
+            >
+              {allBracketed ? `[${text}]` : text}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 ﻿import type { CTToken } from '../../types/domain';
 
 
-
+//utility for fixed-length parsing mode: grouping tokens, tracking which groups are bracketed, and toggling brackets by group text
 export function uniqueGroupTexts(tokens: CTToken[], groupSize: number, bracketedIndices: number[]): { text: string; allBracketed: boolean }[] {
   const size = Math.max(1, groupSize);
   const br = new Set(bracketedIndices);
@@ -28,6 +28,7 @@ export function uniqueGroupTexts(tokens: CTToken[], groupSize: number, bracketed
   return order.map(text => ({ text, allBracketed: meta.get(text)!.allBracketed }));
 }
 
+//looks for all groups of tokens matching the given text, and toggles their indices in the bracketedIndices list
 export function toggleBracketByGroupText(
   text: string,
   tokens: CTToken[],

@@ -64,7 +64,7 @@ const PTCell: React.FC<PTCellProps> = ({
   flatPtIndex,
   baseFlatIndex,
   onInsertAfterGroup,
-  allowExpandFromStart,
+  allowExpandFromStart = false, // undefined treated as false
   hasDuplicateKey,
   isTentative = false,
 }) => {
@@ -181,7 +181,7 @@ const PTCell: React.FC<PTCellProps> = ({
   const displayedIndices = React.useMemo((): number[] => {
     if (!Array.isArray(tokenIndices) || tokenIndices.length === 0) return [];
     if (!pt) return tokenIndices.slice();
-    return expandDisplayedIndices(tokenIndices, groupSize, allowExpandFromStart, tokens.length);
+    return expandDisplayedIndices(tokenIndices, groupSize, !!allowExpandFromStart, tokens.length);
   }, [tokenIndices, pt, groupSize, allowExpandFromStart, tokens.length]);
   
   const displayedTokens = React.useMemo(() => 
@@ -214,7 +214,7 @@ const PTCell: React.FC<PTCellProps> = ({
     disabled: !pt || Boolean(lockedValue),
   });
 
-  // Visual-only drop affordance for PT merging (real enforcement in resolveMergeFromEvent + joinPTAt)
+  // Visual-only drop affordance for PT merging (real enforcement in resolveMergeFromEvent in MappingGrid)
   const canAcceptPtMergeDrop = isPotentialPtMergeTarget;
 
   const isValidDropTarget = isDraggingOT && pt && !deception;

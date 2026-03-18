@@ -23,8 +23,8 @@ type SharedColumns = Array<Array<{ pt: { ch: string } | null; ct: number[] }>>;
  * - In 'multiple' mode, it displays all homophone tokens for each character.
  * - Supports locking (pt -> ct) and highlights violations (multiple keys in 'single' mode, or mismatch with lock).
  */
-const KeyTable: React.FC<KeyTableProps & { 
-  columns?: Array<Array<{ pt: { ch: string } | null; ct: number[] }>>; 
+const KeyTable: React.FC<KeyTableProps & {
+  columns?: Array<Array<{ pt: { ch: string } | null; ct: number[] }>>;
   onQuickAssign?: (ptPattern: string, ctToken: string) => { error?: string; warning?: { ptCount: number; ctCount: number } } | null;
   onExecuteQuickAssign?: (ptPattern: string, ctToken: string) => string | null;
   bracketedIndices?: number[];
@@ -33,17 +33,17 @@ const KeyTable: React.FC<KeyTableProps & {
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
     const gs = getGroupSize(ctParseMode, groupSize);
-    
+
     // Normalize to single-key format for buildColumns
     const normalizedLocks = normalizeLocks(lockedKeys);
-    
+
     const normalizedSelections: Record<string, string | null> = {};
     if (selections) {
       for (const [ch, val] of Object.entries(selections)) {
         normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
       }
     }
-    
+
     return buildColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
   }, [columns, ptRows, ctTokens, lockedKeys, selections, ctParseMode, groupSize, bracketedIndices]);
 
@@ -76,7 +76,7 @@ const KeyTable: React.FC<KeyTableProps & {
 
   const handleQuickAssign = React.useCallback(() => {
     if (!onQuickAssign) return;
-    
+
     const result = onQuickAssign(quickPtPattern, quickCtToken);
     if (!result) {
       // Success with no warnings
@@ -108,7 +108,7 @@ const KeyTable: React.FC<KeyTableProps & {
 
   const handleConfirmFrequencyWarning = React.useCallback(() => {
     if (!onExecuteQuickAssign) return;
-    
+
     const error = onExecuteQuickAssign(quickPtPattern, quickCtToken);
     if (error) {
       setQuickAssignError(error);
@@ -304,11 +304,10 @@ const KeyTable: React.FC<KeyTableProps & {
                           return (
                             <span
                               key={idx}
-                              className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs ${
-                                isLockedToken
+                              className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs ${isLockedToken
                                   ? 'bg-green-100 text-green-800 border border-green-300'
                                   : 'bg-gray-100 text-gray-800 border border-gray-300'
-                              }`}
+                                }`}
                               title={isLockedToken ? 'Locked' : undefined}
                             >
                               {ct}
@@ -376,18 +375,18 @@ const KeyTable: React.FC<KeyTableProps & {
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
                         </button>
                       )}
-                        {/* Highlighter icon shown for error rows */}
-                        { isRowError && onToggleHighlightOT ? (
-                          <button
-                            className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
-                            onClick={() => onToggleHighlightOT(row.pt)}
-                            title={`Highlight PT ${row.pt}`}
-                            aria-label={`Highlight PT ${row.pt}`}
-                            aria-pressed={highlightedPTChar === row.pt}
-                          >
-                            <img src={highlighter} alt="highlight" aria-hidden="true" className="w-4 h-4" />
-                          </button>
-                        ) : null}
+                      {/* Highlighter icon shown for error rows */}
+                      {isRowError && onToggleHighlightOT ? (
+                        <button
+                          className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
+                          onClick={() => onToggleHighlightOT(row.pt)}
+                          title={`Highlight PT ${row.pt}`}
+                          aria-label={`Highlight PT ${row.pt}`}
+                          aria-pressed={highlightedPTChar === row.pt}
+                        >
+                          <img src={highlighter} alt="highlight" aria-hidden="true" className="w-4 h-4" />
+                        </button>
+                      ) : null}
                     </>
                   ) : null}
                 </td>
@@ -406,7 +405,7 @@ const KeyTable: React.FC<KeyTableProps & {
         >
           <div className="space-y-4">
             <p className="text-gray-700">
-              The pattern <strong>{quickPtPattern}</strong> appears <strong>{showFrequencyWarning.ptCount}x</strong> in PT, 
+              The pattern <strong>{quickPtPattern}</strong> appears <strong>{showFrequencyWarning.ptCount}x</strong> in PT,
               but token <strong>{quickCtToken}</strong> appears <strong>{showFrequencyWarning.ctCount}x</strong> in CT.
             </p>
             <p className="text-gray-700">

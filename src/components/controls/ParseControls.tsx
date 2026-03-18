@@ -55,7 +55,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
             className="text-xs text-blue-600 hover:text-blue-800 underline"
             onClick={() => setIsHelpOpen(true)}
           >
-            What&apos;s this?
+            What is this for??
           </button>
         </div>
 

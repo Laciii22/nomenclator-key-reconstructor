@@ -7,8 +7,6 @@
  * - Token parsing and validation
  * - Deception/null token marking (bracketing)
  * 
- * @param params Configuration with PT count for validation
- * @returns Parsing state and controls
  */
 
 import * as React from 'react';

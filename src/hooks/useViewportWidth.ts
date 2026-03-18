@@ -6,7 +6,6 @@ import { useEffect, useState } from 'react';
  * Extracted from useNomenklator so the resize listener lifecycle is isolated,
  * testable (SSR-safe: returns 1200 when `window` is undefined), and reusable.
  *
- * @param delayMs - Debounce delay in milliseconds (default: 150)
  */
 export function useViewportWidth(delayMs = 150): number {
   const [width, setWidth] = useState<number>(() =>

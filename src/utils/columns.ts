@@ -14,11 +14,6 @@ type ColumnLike = { pt: { ch: string } | null; ct: number[] };
 /**
  * Extract all PT→CT pairs from the allocation grid.
  * 
- * @param cols The allocation grid columns
- * @param ctTokens All CT tokens for lookup
- * @param groupSize Size of token groups (1 for separator, >1 for fixed-length)
- * @param keysPerPTMode Keys per PT mode: 'single' or 'multiple' (homophones)
- * @returns Array of PT→CT pairs (one per column)
  */
 export function computePairsFromColumns(
   cols: ColumnLike[][],
@@ -68,10 +63,6 @@ function addMultiKeyDisplay(entry: AggEntry, token: string): void {
  * 
  * In 'single' mode: shows only the first non-empty token per PT.
  * In 'multiple' mode: shows all unique tokens per PT.
- * 
- * @param pairs Array of PT→CT pairs
- * @param keysPerPTMode Whether to show single or multiple keys per PT
- * @returns Aggregated view with unique token counts
  */
 export function aggregatePairsByOT(pairs: Pair[], keysPerPTMode: 'single' | 'multiple' = 'multiple') {
   const map = new Map<string, AggEntry>();

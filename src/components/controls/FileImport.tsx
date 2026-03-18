@@ -27,7 +27,7 @@ interface FileImportProps {
 const FileImport: React.FC<FileImportProps> = ({
   label,
   onFileLoad,
-  accept = '.txt',
+  accept = '.txt,.docs',
   className = '',
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);

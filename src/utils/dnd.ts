@@ -15,10 +15,6 @@ import type { DragData } from '../types/domain';
  * - Source and target are both PT cells
  * - Target is exactly one column to the right of source
  * - Neither cell is a deception/null cell
- * 
- * @param evt The drag end event from @dnd-kit
- * @param columns The current allocation grid
- * @returns Flat indices for source and target, or null if invalid
  */
 export function resolveMergeFromEvent(evt: DragEndEvent, columns: Column[][]) {
   const active = evt.active;

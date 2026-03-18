@@ -39,7 +39,7 @@ export type AnalysisOptions = {
 export type Candidate = {
   /** The cipher token value */
   readonly token: string;
-  /** Number of tokens in this sequence (always 1 for current implementation) */
+  /** Number of tokens in this sequence */
   readonly length: number;
   /** How many times this token appears in the cipher text */
   readonly support: number;

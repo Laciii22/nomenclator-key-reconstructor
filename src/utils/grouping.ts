@@ -11,11 +11,6 @@ import type { PTChar, CTToken } from '../types/domain';
  * 
  * Aligns PT characters with CT tokens sequentially, skipping
  * any tokens marked as deception/null (bracketed).
- * 
- * @param ptRowsLocal Rows of PT characters
- * @param ctTokensLocal All CT tokens
- * @param bracketed Indices of tokens marked as deception/null
- * @returns Map of PT char → array of expected CT indices
  */
 export function getExpectedCTIndicesForOT(
   ptRowsLocal: PTChar[][],

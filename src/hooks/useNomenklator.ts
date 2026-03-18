@@ -103,7 +103,6 @@ export function useNomenklator() {
   const ptChars = useMemo(() => {
     if (customPtGroups && customPtGroups.length) return customPtGroups;
     // Bracket syntax: [WORD] is a single multi-char token, bare chars are single tokens.
-    // e.g. "[PES]AHOJ[PES]" → ["PES", "A", "H", "O", "J", "PES"]
     const stripped = ptRaw.replace(/\s/g, '');
     const tokens: string[] = [];
     let i = 0;

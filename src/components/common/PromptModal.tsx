@@ -63,21 +63,21 @@ const PromptModal: React.FC<PromptModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4" 
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
       aria-labelledby="prompt-modal-title"
     >
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5"
+        className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5 animate-slideUp"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="prompt-modal-title" className="text-base font-semibold text-gray-800 mb-3">
           {title}
         </h2>
         <label
-          className="block text-sm text-gray-600 mb-1"
+          className="block text-sm text-gray-600"
           htmlFor="prompt-modal-input"
         >
           {label}
@@ -88,21 +88,21 @@ const PromptModal: React.FC<PromptModalProps> = ({
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2"
           autoFocus
         />
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+            className="px-3 py-1 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={() => onConfirm(value)}
-            className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
+            className="px-3 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
           >
             OK
           </button>

@@ -8,11 +8,11 @@
  * 
  * This application helps reconstruct the key by aligning:
  * - PT (original/plain text)
- * - CT (cipher text tokens)
+ * - CT (cipher text)
  */
 
 /**
- * A single cipher token from the encrypted text (Ziffertext/CT).
+ * A single cipher token from the encrypted text (CT).
  */
 export type CTToken = {
   /** Unique identifier for React keys and drag-and-drop */
@@ -38,7 +38,6 @@ export type PTChar = {
 export type KeysPerPTMode = 'single' | 'multiple';
 
 /**
- * User-confirmed mappings that shouldn't change during re-analysis.
  * - In 'single' mode: string (one token per character)
  * - In 'multiple' mode: string[] (multiple homophones per character)
  */
@@ -57,7 +56,9 @@ export type SelectionMap = Record<string, string | string[] | null>;
  * All fields are optional — only the relevant subset is populated per source.
  */
 export type DragData = {
-  /** Drag origin: 'ct' for cipher token, 'pt' for plain-text cell, 'ct-edge' for left/right edge strips (fixed-length mode) */
+  /** Drag origin: 'ct' for cipher token, 'pt' for plain-text cell, 'ct-edge' for left/right edge strips (fixed-length mode) 
+   *  Because we wanted funcionality for splitting even tokens even in figed-length mode.
+  */
   type?: 'ct' | 'pt' | 'ct-edge';
   /** Flat index of the CT token being dragged */
   tokenIndex?: number;
