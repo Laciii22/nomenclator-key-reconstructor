@@ -240,8 +240,8 @@ const NomenklatorPage: React.FC = () => {
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   // ESC  → clear saved data (with confirmation)
-  // Space → open Frequency modal
-  // H    → open Help modal
+  // Shift → toggle Frequency modal
+  // H    → toggle Help modal
   React.useEffect(() => {
     const isInteractiveElement = (el: Element | null): boolean => {
       if (!el) return false;
@@ -254,6 +254,9 @@ const NomenklatorPage: React.FC = () => {
       // Never intercept when user is typing in a form element
       if (isInteractiveElement(document.activeElement)) return;
 
+      // Prevent rapid open/close loops while holding a shortcut key
+      if (e.repeat) return;
+
       if (e.key === 'Escape') {
         // Don't steal Escape when a modal is open — modals handle their own close
         if (isHelpOpen || isFrequencyOpen) return;
@@ -262,15 +265,15 @@ const NomenklatorPage: React.FC = () => {
         return;
       }
 
-      if (e.key === ' ' || e.code === 'Space') {
+      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
         e.preventDefault();
-        setIsFrequencyOpen(true);
+        setIsFrequencyOpen(prev => !prev);
         return;
       }
 
       if (e.key === 'h' || e.key === 'H') {
         e.preventDefault();
-        setIsHelpOpen(true);
+        setIsHelpOpen(prev => !prev);
         return;
       }
     };
