@@ -26,7 +26,7 @@ function computeFrequency(texts: string[]): { token: string; count: number }[] {
   }
   return Array.from(map.entries()).map(([token, count]) => ({ token, count }));
 }
-
+  
 const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChars, ctTokens, groupSize = 1 }) => {
   const [tab, setTab] = useState<Tab>('pt');
   const [sortKey, setSortKey] = useState<SortKey>('count');
@@ -34,7 +34,7 @@ const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChar
 
   const ptRows = useMemo(() => computeFrequency(ptChars.map(c => c.ch)), [ptChars]);
   const ctRows = useMemo(() => {
-    const g = Math.max(1, groupSize);
+    const g = Math.max(1, groupSize);  
     const texts: string[] = [];
     for (let i = 0; i < ctTokens.length; i += g) {
       texts.push(ctTokens.slice(i, i + g).map(t => t.text).join(''));
