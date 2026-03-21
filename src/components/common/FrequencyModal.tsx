@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import Modal from './Modal';
 import type { PTChar, CTToken } from '../../types/domain';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface FrequencyModalProps {
   isOpen: boolean;
@@ -56,6 +57,8 @@ const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChar
     return copy;
   }, [rows, sortKey, sortAsc]);
 
+  const chartData = useMemo(() => sorted.map(r => ({ name: r.token, value: r.count })), [sorted]);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortAsc(p => !p);
     else { setSortKey(key); setSortAsc(false); }
@@ -89,6 +92,20 @@ const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChar
       <p className="text-xs text-gray-500 mb-3">
         Total tokens: <strong>{total}</strong> &nbsp;·&nbsp; Unique: <strong>{rows.length}</strong>
       </p>
+
+      {/* Chart */}
+      {rows.length > 0 && (
+        <div className="mb-4 h-52">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+              <XAxis dataKey="name" stroke="#666" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} stroke="#666" />
+              <Tooltip />
+              <Bar dataKey="value" fill="#4b82ff" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Table */}
       {rows.length === 0 ? (
