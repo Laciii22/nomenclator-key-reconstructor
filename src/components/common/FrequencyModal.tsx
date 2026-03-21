@@ -26,7 +26,7 @@ function computeFrequency(texts: string[]): { token: string; count: number }[] {
   }
   return Array.from(map.entries()).map(([token, count]) => ({ token, count }));
 }
-  
+
 const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChars, ctTokens, groupSize = 1 }) => {
   const [tab, setTab] = useState<Tab>('pt');
   const [sortKey, setSortKey] = useState<SortKey>('count');
@@ -67,7 +67,7 @@ const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChar
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Token Frequency">
+    <Modal isOpen={isOpen} onClose={onClose} title="Frequency">
       {/* Tabs */}
       <div className="flex gap-1 mb-4">
         {(['pt', 'ct'] as Tab[]).map(t => (

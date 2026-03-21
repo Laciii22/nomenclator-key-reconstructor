@@ -154,8 +154,8 @@ const PTCell: React.FC<PTCellProps> = ({
 
   // Always register droppables when dragging ZT in fixedLength so dnd-kit sees them immediately.
   // Validity is signalled via the `active` flag in data so the handler can reject wrong drops.
-  // Injected null (deception) cells never act as edge-strip drop targets.
-  const showEdgeStrips = isDraggingZT && isFixedLength && !deception;
+  // Includes null/deception cells as destinations for reabsorption/extraction edge drops.
+  const showEdgeStrips = isDraggingZT && isFixedLength;
   // For extraction: source must have >1 token (so original cell doesn't go empty).
   // For reabsorption (dragging from a null cell): this DESTINATION cell must have room (< groupSize tokens).
   const sourceCount = activeCtSourceCellCount ?? 0;

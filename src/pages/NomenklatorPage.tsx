@@ -199,13 +199,11 @@ const NomenklatorPage: React.FC = () => {
 
     // CT token dropped on a left/right edge strip → extract or reabsorb null cell
     if (src?.type === 'ct' && dst?.type === 'ct-edge') {
-      if (dst.active) {
         if (activeCtIsFromNull && typeof activeNullInsertedAfterBaseFlatIndex === 'number') {
           reabsorbNullByDirection(activeNullInsertedAfterBaseFlatIndex, dst.direction!);
         } else if (typeof activeDragInfo.ctTokenIndex === 'number') {
           extractEdgeTokenByCtIndex(activeDragInfo.ctTokenIndex, dst.direction!);
-        }
-      }
+        } 
       clearDragState();
       return;
     }

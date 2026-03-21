@@ -207,7 +207,12 @@ export function buildMultiKeyColumns(
 ): Column[][] {
   const filteredRows = ptRows.map(r => r.filter(c => c.ch !== ''));
   const allLocked = mergeLockAndSelection(lockedKeys, selections);
-  const tokenOwners = buildTokenOwnersMap(allLocked);
+  // Build token ownership map only from confirmed lockedKeys (not transient selections)
+  const confirmedLocked: Record<string, string[]> = {};
+  for (const [ch, val] of Object.entries(lockedKeys || {})) {
+    confirmedLocked[ch] = Array.isArray(val) ? val : val ? [val] : [];
+  }
+  const tokenOwners = buildTokenOwnersMap(confirmedLocked);
   
   const result: Column[][] = [];
   let tokenPtr = 0;
