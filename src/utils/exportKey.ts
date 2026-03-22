@@ -9,6 +9,8 @@ export type KeyExportData = {
   mode: KeysPerPTMode;
   /** PT → CT mapping. In single mode: string. In multiple mode: string[]. Only populated entries are included. */
   key: Record<string, string | string[]>;
+  /** Optional list of CT tokens that are NULL / deception (have no PT). */
+  nulls?: string[];
 };
 
 /**
@@ -18,6 +20,7 @@ export type KeyExportData = {
 export function buildKeyExportData(
   aggregated: { pt: string; ctList: string[] }[],
   mode: KeysPerPTMode,
+  deceptionList?: string[],
 ): KeyExportData {
   const key: Record<string, string | string[]> = {};
   for (const row of aggregated) {
@@ -28,10 +31,9 @@ export function buildKeyExportData(
       key[row.pt] = [...row.ctList];
     }
   }
-  return {
-    mode,
-    key,
-  };
+  const out: KeyExportData = { mode, key };
+  if (deceptionList && deceptionList.length > 0) out.nulls = [...deceptionList];
+  return out;
 }
 
 /**
@@ -40,8 +42,9 @@ export function buildKeyExportData(
 export function downloadKeyAsJson(
   aggregated: { pt: string; ctList: string[] }[],
   mode: KeysPerPTMode,
+  deceptionList?: string[],
 ): void {
-  const data = buildKeyExportData(aggregated, mode);
+  const data = buildKeyExportData(aggregated, mode, deceptionList);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

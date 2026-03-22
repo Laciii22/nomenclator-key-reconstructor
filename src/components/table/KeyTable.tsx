@@ -28,7 +28,8 @@ const KeyTable: React.FC<KeyTableProps & {
   onQuickAssign?: (ptPattern: string, ctToken: string) => { error?: string; warning?: { ptCount: number; ctCount: number } } | null;
   onExecuteQuickAssign?: (ptPattern: string, ctToken: string) => string | null;
   bracketedIndices?: number[];
-}> = ({ ptRows, ctTokens, keysPerPTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ctParseMode = 'separator', groupSize = 1, columns, highlightedPTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [] }) => {
+  uniqueCTTokenTexts?: { text: string; allBracketed: boolean }[];
+}> = ({ ptRows, ctTokens, keysPerPTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ctParseMode = 'separator', groupSize = 1, columns, highlightedPTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [], uniqueCTTokenTexts }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
@@ -47,6 +48,23 @@ const KeyTable: React.FC<KeyTableProps & {
     return buildColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, gs, bracketedIndices);
   }, [columns, ptRows, ctTokens, lockedKeys, selections, ctParseMode, groupSize, bracketedIndices]);
 
+  // Prefer the canonical deception list coming from parsing (`uniqueCTTokenTexts`)
+  // where `allBracketed === true`. Fall back to scanning columns for PT-null
+  // cells for robustness.
+  const deceptionList = React.useMemo(() => {
+    if (uniqueCTTokenTexts && uniqueCTTokenTexts.length) {
+      return uniqueCTTokenTexts.filter(u => u.allBracketed).map(u => u.text);
+    }
+    const set = new Set<string>();
+    for (const row of colsForMode) {
+      for (const col of row) {
+        if (col.pt) continue;
+        const text = col.ct.map((i: number) => ctTokens[i]?.text || '').join('');
+        if (text) set.add(text);
+      }
+    }
+    return Array.from(set);
+  }, [uniqueCTTokenTexts, colsForMode, ctTokens]);
   const pairs = useMemo(() => computePairsFromColumns(colsForMode, ctTokens, keysPerPTMode), [colsForMode, ctTokens, keysPerPTMode]);
 
   // Track PT chars that have at least one empty mapped cell.
@@ -259,7 +277,7 @@ const KeyTable: React.FC<KeyTableProps & {
           {allLocked && (
             <button
               className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"
-              onClick={() => downloadKeyAsJson(sortedAggregated, keysPerPTMode)}
+              onClick={() => downloadKeyAsJson(sortedAggregated, keysPerPTMode, deceptionList)}
               title="Export reconstructed key as JSON file"
             >
               Export JSON
@@ -395,6 +413,18 @@ const KeyTable: React.FC<KeyTableProps & {
           })}
         </tbody>
       </table>
+
+      {/* Null / Deception tokens section */}
+      {deceptionList.length > 0 && (
+        <div className="px-3 py-3 bg-purple-50 border-t border-purple-100">
+          <div className="text-sm font-medium text-purple-800 mb-2">Nulls (deception tokens)</div>
+          <div className="flex flex-wrap gap-2">
+            {deceptionList.map((t) => (
+              <span key={t} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800 border border-purple-200 font-mono">{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Frequency Warning Modal */}
       {showFrequencyWarning && (

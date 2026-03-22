@@ -104,4 +104,51 @@ describe('buildMultiKeyColumns', () => {
     expect(columns[0][2].deception).toBe(true);
     expect(columns[0][2].ct).toEqual([1]);
   });
+
+  it('keeps confirmed locks higher priority than selections for the same PT char', () => {
+    const ptRows = makePtRow('A');
+    const ctTokens = makeCtTokens(['11']);
+
+    const columns = buildMultiKeyColumns(
+      ptRows,
+      ctTokens,
+      { A: ['11'] },
+      { A: ['22'] },
+      1,
+    );
+
+    expect(columns).toHaveLength(1);
+    expect(columns[0]).toHaveLength(1);
+    expect(columns[0][0].pt?.ch).toBe('A');
+    expect(columns[0][0].ct).toEqual([0]);
+    expect(columns[0][0].tentative).toBeUndefined();
+  });
+
+  it('stops lookahead at foreign hard-lock boundary and keeps current cell tentative', () => {
+    const ptRows = makePtRow('AO');
+    const ctTokens = makeCtTokens(['99', '22', '11']);
+
+    const columns = buildMultiKeyColumns(
+      ptRows,
+      ctTokens,
+      { A: ['11'], O: ['22'] },
+      undefined,
+      1,
+    );
+
+    expect(columns).toHaveLength(1);
+
+    // A cannot skip over O's hard-locked token (22) to reach 11.
+    expect(columns[0][0].pt?.ch).toBe('A');
+    expect(columns[0][0].ct).toEqual([0]);
+    expect(columns[0][0].tentative).toBe(true);
+
+    expect(columns[0][1].pt?.ch).toBe('O');
+    expect(columns[0][1].ct).toEqual([1]);
+    expect(columns[0][1].tentative).toBeUndefined();
+
+    expect(columns[0][2].pt).toBeNull();
+    expect(columns[0][2].deception).toBe(true);
+    expect(columns[0][2].ct).toEqual([2]);
+  });
 });

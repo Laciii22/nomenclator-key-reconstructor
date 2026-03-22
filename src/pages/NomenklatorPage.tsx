@@ -521,6 +521,7 @@ const NomenklatorPage: React.FC = () => {
               onQuickAssign={quickAssign}
               onExecuteQuickAssign={executeQuickAssign}
               bracketedIndices={bracketedIndices}
+              uniqueCTTokenTexts={uniqueCTTokenTexts}
             />
           </div>
         </div>
