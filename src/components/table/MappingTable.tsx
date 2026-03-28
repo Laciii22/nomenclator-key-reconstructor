@@ -9,6 +9,8 @@ import { useViewportWidth } from '../../hooks/useViewportWidth';
 import { MappingCellContext, type MappingCellContextValue } from './MappingCellContext';
 import PromptModal from '../common/PromptModal';
 
+const EMPTY_SELECTIONS: Record<string, string | string[] | null> = Object.freeze({});
+
 type MappingTableExtraProps = {
 	groupSize?: number;
 	onInsertRawCharsAfterPosition?: (positionIndex: number, text: string, replace?: boolean) => void;
@@ -27,7 +29,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { ptRows, ctTokens, lockedKeys, selections, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
+	const { ptRows, ctTokens, lockedKeys, selections = EMPTY_SELECTIONS, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -44,7 +46,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		// Fallback: normalize multi-key to single-key for buildShiftOnlyColumns
 		const normalizedLocks = normalizeLocks(lockedKeys);
 		const normalizedSelections: Record<string, string | null> = {};
-		for (const [ch, val] of Object.entries(selections || {})) {
+		for (const [ch, val] of Object.entries(selections)) {
 			normalizedSelections[ch] = Array.isArray(val) ? val[0] || null : (val ?? null);
 		}
 
@@ -97,10 +99,11 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				}
 
 				const start = col.ct[0];
+				const cellCtSet = new Set(col.ct);
 				let canExpand = true;
 				for (let k = 1; k < groupSize; k++) {
 					const idx = start + k;
-					if (allOwnedIndices.has(idx) && !col.ct.includes(idx)) {
+					if (allOwnedIndices.has(idx) && !cellCtSet.has(idx)) {
 						canExpand = false;
 						break;
 					}
@@ -118,7 +121,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
 	// what users see and reason about when spotting collisions.
 	const duplicatePTChars = React.useMemo(() => {
-		const tokenToOTs: Record<string, Set<string>> = {};
+		const tokenToOTs = new Map<string, Set<string>>();
 
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
@@ -132,14 +135,20 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					col.ct, groupSize, allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false, ctTokens.length
 				);
 
-				const groupText = displayedIndices.map(i => ctTokens[i]?.text ?? '').join('').trim();
-				if (!groupText) continue;
-				(tokenToOTs[groupText] ||= new Set()).add(col.pt.ch);
+				let groupText = '';
+				for (let i = 0; i < displayedIndices.length; i++) {
+					groupText += ctTokens[displayedIndices[i]]?.text ?? '';
+				}
+				if (!groupText.trim()) continue;
+
+				const ots = tokenToOTs.get(groupText);
+				if (ots) ots.add(col.pt.ch);
+				else tokenToOTs.set(groupText, new Set([col.pt.ch]));
 			}
 		}
 
 		const dup = new Set<string>();
-		for (const ots of Object.values(tokenToOTs)) {
+		for (const ots of tokenToOTs.values()) {
 			if (ots.size <= 1) continue;
 			for (const pt of ots) dup.add(pt);
 		}
@@ -180,6 +189,26 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		return result;
 	}, [rows]);
 
+	const flatColumns = useMemo(() => {
+		const result: { ptCh: string | null; indices: number[] }[] = [];
+		for (const row of rows) {
+			for (const col of row) {
+				result.push({ ptCh: col.pt ? col.pt.ch : null, indices: col.ct });
+			}
+		}
+		return result;
+	}, [rows]);
+
+	const ptOnlyIndexByFlat = useMemo(() => {
+		const result: number[] = [];
+		let ptCounter = 0;
+		for (let i = 0; i < flatColumns.length; i++) {
+			result[i] = ptCounter;
+			if (flatColumns[i].ptCh != null) ptCounter++;
+		}
+		return result;
+	}, [flatColumns]);
+
 	// Grid dimensions
 	const containerRef = useRef<HTMLDivElement>(null);
 	const CELL_HEIGHT = 65; // approximate height per cell in pixels
@@ -206,6 +235,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	const columnCount = effectiveColumnCount;
 	const rowCount = Math.ceil(flatCells.length / columnCount);
+	const gridCellProps = useMemo(() => ({}), []);
 
 	// State for the non-blocking insert/edit modal (replaces window.prompt in the Cell callback)
 	const [insertPrompt, setInsertPrompt] = React.useState<{
@@ -273,7 +303,6 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		return (
 			<div style={{ ...style, padding: '2px' }} {...ariaAttributes}>
 				<PTCell
-					key={`${rIdx}-${cIdx}`}
 					pt={col.pt ?? null}
 					tokenIndices={col.ct}
 					row={rIdx}
@@ -288,19 +317,17 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					nullInsertedAfterBaseFlatIdx={col.insertedAfterBaseFlatIndex}
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;
-						const flatColumns: { ptCh: string | null; indices: number[] }[] = [];
-						for (const row of rows) for (const col of row) flatColumns.push({ ptCh: col.pt ? col.pt.ch : null, indices: col.ct });
 						const target = flatColumns[fi];
 						if (!target || !target.ptCh) return;
 						const current = target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
 						const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this PT (no spaces):';
-						const ptOnlyIndex = flatColumns.slice(0, fi).filter(f => f.ptCh != null).length;
+						const ptOnlyIndex = ptOnlyIndexByFlat[fi] ?? 0;
 						setInsertPrompt({ current, label, ptOnlyIndex });
 					}}
 				/>
 			</div>
 		);
-	}, [flatCells, columnCount, duplicatePTChars, flatIndices, flatPtIndices, allowExpandMap, canInsertRaw, rows, ctTokens, groupSize]);
+	}, [flatCells, columnCount, duplicatePTChars, flatIndices, flatPtIndices, allowExpandMap, canInsertRaw, flatColumns, ctTokens, groupSize, ptOnlyIndexByFlat]);
 
 	if (rows.length === 0) {
 		return (
@@ -340,7 +367,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					rowCount={rowCount}
 					rowHeight={CELL_HEIGHT}
 					cellComponent={Cell}
-					cellProps={{}}
+					cellProps={gridCellProps}
 				/>
 			</div>
 			<PromptModal

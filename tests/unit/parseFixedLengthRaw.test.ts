@@ -47,12 +47,12 @@ describe('parseFixedRaw', () => {
     });
 
     // -----------------------------------------------------------------
-    // Status: needsKlamac
+    // Status: needsNull
     // -----------------------------------------------------------------
-    describe('status "needsKlamac" — token count > ptCount', () => {
-        it('sets needsKlamac and reports counts in message', () => {
+    describe('status "needsNull" — token count > ptCount', () => {
+        it('sets needsNull and reports counts in message', () => {
         const res = parseFixedRaw('11223344', 2, 3);
-        expect(res.klamacStatus).toBe('needsKlamac');
+        expect(res.klamacStatus).toBe('needsNull');
         expect(res.tokens).toHaveLength(8);
 
         // Avoid brittle exact-string check; verify the key numbers instead

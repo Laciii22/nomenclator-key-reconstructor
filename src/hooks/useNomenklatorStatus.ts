@@ -3,7 +3,7 @@ import type { CTToken } from '../types/domain';
 import type { PTChar } from '../types/domain';
 
 interface UseNomenklatorStatusParams {
-  klamacStatusFromParse: 'none' | 'needsKlamac' | 'ok' | 'invalid';
+  klamacStatusFromParse: 'none' | 'needsNull' | 'ok' | 'invalid';
   statusMessageFromParse: string | null;
   bracketWarningFromParse: string | null;
   analysisDone: boolean;
@@ -16,7 +16,7 @@ interface UseNomenklatorStatusParams {
 }
 
 interface NomenklatorStatus {
-  klamacStatus: 'none' | 'needsKlamac' | 'ok' | 'invalid';
+  klamacStatus: 'none' | 'needsNull' | 'ok' | 'invalid';
   statusMessage: string | null;
   bracketWarning: string | null;
 }
@@ -74,7 +74,7 @@ export function useNomenklatorStatus(params: UseNomenklatorStatusParams): Nomenk
 
     if (effGroups > PT) {
       return {
-        klamacStatus: 'needsKlamac',
+        klamacStatus: 'needsNull',
         statusMessage: `Excess groups: ${effGroups - PT}. Choose another deception token.`,
       };
     }

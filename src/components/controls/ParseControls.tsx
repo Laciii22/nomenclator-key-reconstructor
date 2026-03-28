@@ -10,7 +10,8 @@
 
 import React from 'react';
 import type { KeysPerPTMode } from '../types';
-import HelpModal from '../common/HelpModal';
+
+const HelpModal = React.lazy(() => import('../common/HelpModal'));
 
 interface ParseControlsProps {
   ctParseMode: 'separator' | 'fixedLength';
@@ -143,7 +144,9 @@ const ParseControls: React.FC<ParseControlsProps> = ({
         </div>
       </div>
 
-      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <React.Suspense fallback={null}>
+        <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      </React.Suspense>
     </>
   );
 };

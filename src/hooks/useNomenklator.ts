@@ -2,7 +2,7 @@
 import type { KeysPerPTMode, PTChar, SelectionMap, DragData } from '../types/domain';
 import { useLocalSettings, STORAGE_KEY } from './useLocalSettings';
 import { resolveMergeFromEvent } from '../utils/dnd';
-import { buildCandidateOptions } from '../components/controls/candidateHelpers';
+import { buildCandidateOptions, buildPTCharFlatIndexMap, countTotalDeceptionTokens } from '../components/controls/candidateHelpers';
 import { buildOccMap } from '../utils/parseStrategies';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { normalizeToArray, getReservedTokens } from '../utils/multiKeyHelpers';
@@ -11,7 +11,6 @@ import { useMapping } from './useMapping';
 import { useAnalysis } from './useAnalysis';
 import { useNomenklatorPersistence } from './useNomenklatorPersistence';
 import { useNomenklatorStatus } from './useNomenklatorStatus';
-import { useDebouncedCallback } from './useDebouncedCallback';
 import { useViewportWidth } from './useViewportWidth';
 import { buildEffectiveToOriginalIndexMap } from './nomenclator/ctIndexMaps';
 import { tokenIndexIsLockedInColumns } from './nomenclator/dndRules';
@@ -35,6 +34,27 @@ const RESPONSIVE_BREAKPOINTS = [
   { maxWidth: 1280, columns: 18 },
   { maxWidth: Infinity, columns: 24 },
 ] as const;
+
+const DEFER_MAPPING_PREVIEW_PT_THRESHOLD = 200;
+
+function normalizeSelectionValue(value: string | string[] | null | undefined): string[] {
+  if (!value) return [];
+  const arr = Array.isArray(value) ? value : [value];
+  return [...arr].sort();
+}
+
+function selectionMapsEqual(a: SelectionMap, b: SelectionMap): boolean {
+  const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    const left = normalizeSelectionValue(a[key]);
+    const right = normalizeSelectionValue(b[key]);
+    if (left.length !== right.length) return false;
+    for (let i = 0; i < left.length; i++) {
+      if (left[i] !== right[i]) return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Central state/logic hook for the Nomenclator UI.
@@ -71,6 +91,7 @@ export function useNomenklator() {
   // Locks & selections
   const [lockedKeys, setLockedKeys] = useState<Record<string, string | string[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
+  const [appliedSelectionsForMapping, setAppliedSelectionsForMapping] = useState<SelectionMap>({});
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
   const isDraggingRef = useRef(false);
 
@@ -129,6 +150,30 @@ export function useNomenklator() {
       ? customPtGroups
       : ptChars.filter(c => c.ch !== '');
   }, [customPtGroups, ptChars]);
+
+  const shouldDeferSelectionMappingPreview = ptChars.length > DEFER_MAPPING_PREVIEW_PT_THRESHOLD;
+
+  const hasPendingMappingPreviewUpdate = useMemo(() => {
+    if (!shouldDeferSelectionMappingPreview) return false;
+    return !selectionMapsEqual(selections, appliedSelectionsForMapping);
+  }, [appliedSelectionsForMapping, selections, shouldDeferSelectionMappingPreview]);
+
+  const applySelectionsToMappingPreview = useCallback(() => {
+    setAppliedSelectionsForMapping(selections);
+  }, [selections]);
+
+  React.useEffect(() => {
+    if (!shouldDeferSelectionMappingPreview) {
+      if (!selectionMapsEqual(appliedSelectionsForMapping, selections)) {
+        setAppliedSelectionsForMapping(selections);
+      }
+      return;
+    }
+    // In deferred mode, keep mapping-preview state clean once selections are cleared.
+    if (Object.keys(selections).length === 0 && Object.keys(appliedSelectionsForMapping).length > 0) {
+      setAppliedSelectionsForMapping({});
+    }
+  }, [appliedSelectionsForMapping, selections, shouldDeferSelectionMappingPreview]);
 
   const countMergeableOccurrences = useCallback((groups: PTChar[], pattern: string) => {
     // Normalize to single-key format for this helper
@@ -292,11 +337,15 @@ export function useNomenklator() {
     return rows.length ? rows : [[]];
   }, [ptChars, OT_COLUMNS_PER_ROW]);
 
+  const mappingSelections = shouldDeferSelectionMappingPreview
+    ? appliedSelectionsForMapping
+    : selections;
+
   const mapping = useMapping({
     ptRows,
     effectiveCtTokens,
     lockedKeys,
-    selections,
+    selections: mappingSelections,
     ctParseMode,
     groupSize,
     keysPerPTMode,
@@ -519,6 +568,7 @@ export function useNomenklator() {
     
     // Reset manual shifting state for fixed-length mode
     mapping.setManualPtCounts(null);
+    setAppliedSelectionsForMapping({});
   }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
   /**
@@ -540,6 +590,7 @@ export function useNomenklator() {
     setSelectionError(null);
     mapping.setManualPtCounts(null);
     preAnalysisStateRef.current = null;
+    setAppliedSelectionsForMapping({});
   }, [parsing, setPtRaw, setKeysPerPTMode, setCustomPtGroups, setLockedKeys, setSelections, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
   // Derived status: pure computation, no effect-based state sync.
@@ -556,23 +607,15 @@ export function useNomenklator() {
     bracketedIndices,
   });
 
-  // Debounce refreshes so rapid edits/locks don't block typing/dragging.
-  // Adaptive delay: short texts stay responsive; large texts avoid UI jank.
-  const analysisRefreshDelayMs = useMemo(() => {
-    const size = Math.max(ptChars.length, effectiveCtTokens.length);
-    if (size > 500) return 500;
-    if (size > 200) return 300;
-    if (size > 100) return 200;
-    return 100;
-  }, [ptChars.length, effectiveCtTokens.length]);
+  // Debounce disabled (experiment mode): refresh immediately after state changes.
+  const refreshAnalysisPreserveDebounced = useCallback(() => {
+    if (!analysisDone) return;
+    refreshAnalysisPreserve();
+  }, [analysisDone, refreshAnalysisPreserve]);
 
-  const { debounced: refreshAnalysisPreserveDebounced, cancel: cancelRefreshDebounce } = useDebouncedCallback(
-    () => {
-      if (!analysisDone) return;
-      refreshAnalysisPreserve();
-    },
-    analysisRefreshDelayMs
-  );
+  const cancelRefreshDebounce = useCallback(() => {
+    // no-op when debounce is disabled
+  }, []);
 
   useNomenklatorPersistence({
     settings,
@@ -654,26 +697,10 @@ export function useNomenklator() {
   const chooseScoreOneSuggestions = useCallback(() => {
     const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
     const precomputedOccMap = buildOccMap(effectiveCtTokens, gs);
+    const precomputedPTCharFlatIndexMap = buildPTCharFlatIndexMap(ptRows);
+    const precomputedDeceptionCount = countTotalDeceptionTokens(columns);
 
-    if (keysPerPTMode === 'multiple') {
-      // In multi-key mode: for each PT char, pick ALL perfect candidates as an array.
-      const picks: Record<string, string[]> = {};
-      for (const [ch, list] of Object.entries(candidatesByChar)) {
-        const perfect = list.filter(c => (c.occurrences || 0) > 0 && c.support === c.occurrences);
-        if (perfect.length === 0) continue;
-        const existing = normalizeToArray(selections[ch]);
-        const merged = [...new Set([...existing, ...perfect.map(c => c.token)])];
-        picks[ch] = merged;
-      }
-      if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
-      setSelectionError(null);
-      return true;
-    }
-
-    const picks: Record<string, string> = {};
-    const ambiguous: string[] = [];
-    for (const [ch, list] of Object.entries(candidatesByChar)) {
-      // build candidate options to know which candidates are disabled by ordering/reserved rules
+    const collectEnabledPerfectTokens = (ch: string, list: typeof candidatesByChar[string]) => {
       const lockedVal = lockedKeys?.[ch];
       const normalizedLocked = Array.isArray(lockedVal) ? lockedVal[0] : lockedVal;
       const selectionVal = selections[ch];
@@ -691,21 +718,67 @@ export function useNomenklator() {
         lockedVal: normalizedLocked,
         sharedColumns: columns,
         _occMap: precomputedOccMap,
+        _ptCharFlatIndexMap: precomputedPTCharFlatIndexMap,
+        _deceptionCount: precomputedDeceptionCount,
       }));
-      // Determine "perfect" candidates by concrete evidence (support === occurrences)
-      const enabledPerfect = opts.filter((opt, i) => !opt.disabled && (list[i].occurrences || 0) > 0 && list[i].support === list[i].occurrences);
-      if (enabledPerfect.length > 1) {
-        ambiguous.push(ch);
+
+      return opts
+        .filter((opt, i) => !opt.disabled && (list[i].occurrences || 0) > 0 && list[i].support === list[i].occurrences)
+        .map(opt => opt.token);
+    };
+
+    const uniquePickByChar: Record<string, string> = {};
+    const ambiguousChars: string[] = [];
+
+    for (const [ch, list] of Object.entries(candidatesByChar)) {
+      const perfectTokens = collectEnabledPerfectTokens(ch, list);
+      if (perfectTokens.length === 0) continue;
+      if (perfectTokens.length > 1) {
+        ambiguousChars.push(ch);
         continue;
       }
-      if (enabledPerfect.length === 1) picks[ch] = enabledPerfect[0].token;
+      uniquePickByChar[ch] = perfectTokens[0];
     }
-    // Apply only the unambiguous picks, preserving existing selections for others
-    if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
-    if (ambiguous.length) {
-      setSelectionError(`Ambiguous suggestions for ${ambiguous.join(', ')} (multiple score==1)`);
+
+    const tokenOwners = new Map<string, string[]>();
+    for (const [ch, token] of Object.entries(uniquePickByChar)) {
+      const owners = tokenOwners.get(token);
+      if (owners) owners.push(ch);
+      else tokenOwners.set(token, [ch]);
+    }
+
+    const duplicateTokenConflicts: string[] = [];
+    for (const [token, owners] of tokenOwners.entries()) {
+      if (owners.length > 1) duplicateTokenConflicts.push(`${token} -> ${owners.join('/')}`);
+    }
+
+    if (ambiguousChars.length || duplicateTokenConflicts.length) {
+      const parts: string[] = [];
+      if (ambiguousChars.length) {
+        parts.push(`Ambiguous score==1 for ${ambiguousChars.join(', ')}`);
+      }
+      if (duplicateTokenConflicts.length) {
+        parts.push(`Non-unique token(s): ${duplicateTokenConflicts.join(', ')}`);
+      }
+      setSelectionError(`${parts.join('. ')}. Preview did not auto-select anything.`);
       return false;
     }
+
+    if (keysPerPTMode === 'multiple') {
+      // In multi-key mode Preview stays strict: only unique, single perfect token per char.
+      const picks: Record<string, string[]> = {};
+      for (const [ch, token] of Object.entries(uniquePickByChar)) {
+        const existing = normalizeToArray(selections[ch]);
+        const merged = [...new Set([...existing, token])];
+        picks[ch] = merged;
+      }
+      if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
+      setSelectionError(null);
+      return true;
+    }
+
+    const picks = uniquePickByChar;
+    if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
     setSelectionError(null);
     return true;
   }, [candidatesByChar, columns, effectiveCtTokens, fixedLength, keysPerPTMode, lockedKeys, ptRows, reservedTokens, selections, setSelectionError, setSelections, ctParseMode]);
@@ -780,6 +853,7 @@ export function useNomenklator() {
       setLockedKeys(prev => ({ ...prev, ...newLocks }));
       // Clear selections after applying
       setSelections({});
+      setAppliedSelectionsForMapping({});
     }
   }, [keysPerPTMode, lockedKeys, previewSelection, selections, setSelections]);
 
@@ -961,6 +1035,8 @@ export function useNomenklator() {
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
+    shouldDeferSelectionMappingPreview,
+    hasPendingMappingPreviewUpdate,
   }), [analysisDone, isAnalyzing, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices]);
 
   /** Derived data structures used to render tables/selectors. */
@@ -1004,6 +1080,7 @@ export function useNomenklator() {
     executeQuickAssign,
     resetToPreAnalysis,
     clearAll,
+    applySelectionsToMappingPreview,
   }), [
     applySelection,
     chooseScoreOneSuggestions,
@@ -1032,6 +1109,7 @@ export function useNomenklator() {
     quickAssign,
     executeQuickAssign,
     resetToPreAnalysis,
+    applySelectionsToMappingPreview,
   ]);
 
   return { inputs, state, derived, actions } as const;

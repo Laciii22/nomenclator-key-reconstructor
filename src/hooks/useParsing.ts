@@ -19,7 +19,7 @@ import { toggleBracketByGroupText, uniqueGroupTexts } from '../utils/parse/fixed
 export type CtParseMode = 'separator' | 'fixedLength';
 
 /** Status of PT/CT alignment validation */
-export type KlamacStatus = 'none' | 'needsKlamac' | 'ok' | 'invalid';
+export type KlamacStatus = 'none' | 'needsNull' | 'ok' | 'invalid';
 
 /**
  * Hook for managing CT token parsing and validation.

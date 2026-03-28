@@ -113,7 +113,6 @@ src/
 - **Vite** for fast development and building
 - **@dnd-kit** for drag-and-drop interactions
 - **Tailwind CSS** for styling
-- **Zustand** for state persistence (localStorage)
 - **Vitest** for testing
 
 ## Storybook (Optional)

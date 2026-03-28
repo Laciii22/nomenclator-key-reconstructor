@@ -19,10 +19,10 @@ export function parseSeparatorRaw(raw: string, separator: string, ptCount: numbe
   const s = raw.trim();
   if (!s) return { tokens: [] as CTToken[], klamacStatus: 'none' as const, statusMessage: null as string | null };
   const parts = s.split(separator).map(p => p.trim()).filter(Boolean);
-  let klamacStatus: 'none' | 'needsKlamac' | 'ok' | 'invalid' = 'none';
+  let klamacStatus: 'none' | 'needsNull' | 'ok' | 'invalid' = 'none';
   let statusMessage: string | null = null;
   if (parts.length === 0 || ptCount === 0) { klamacStatus = 'none'; statusMessage = null; }
-  else if (parts.length > ptCount) { klamacStatus = 'needsKlamac'; statusMessage = `Warning: PT (${ptCount}) < CT tokens (${parts.length}). Choose deception tokens.`; }
+  else if (parts.length > ptCount) { klamacStatus = 'needsNull'; statusMessage = `Warning: PT (${ptCount}) < CT tokens (${parts.length}). Choose deception tokens.`; }
   else if (parts.length < ptCount) { klamacStatus = 'invalid'; statusMessage = `PT (${ptCount}) > CT tokens (${parts.length}). Text may be corrupted.`; }
   else { klamacStatus = 'ok'; statusMessage = null; }
   const tokens = parts.map((t, i) => ({ id: `zt_${i}`, text: t }));

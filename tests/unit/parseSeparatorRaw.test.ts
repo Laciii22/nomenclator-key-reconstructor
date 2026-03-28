@@ -46,13 +46,13 @@ describe('parseSeparatorRaw', () => {
   });
 
   // -----------------------------------------------------------------
-  // Status: needsKlamac
+  // Status: needsNull
   // -----------------------------------------------------------------
-  describe('status "needsKlamac" — token count > ptCount', () => {
-    it('sets needsKlamac and reports counts in message', () => {
+  describe('status "needsNull" — token count > ptCount', () => {
+    it('sets needsNull and reports counts in message', () => {
       const res = parseSeparatorRaw('11:22:11:22:99:33:99', ':', 5);
 
-      expect(res.klamacStatus).toBe('needsKlamac');
+      expect(res.klamacStatus).toBe('needsNull');
       expect(res.tokens).toHaveLength(7);
 
       // Avoid brittle exact-string check; verify the key numbers instead
@@ -60,9 +60,9 @@ describe('parseSeparatorRaw', () => {
       expect(res.statusMessage).toContain('7');  // CT count
     });
 
-    it('even one extra token triggers needsKlamac', () => {
+    it('even one extra token triggers needsNull', () => {
       const res = parseSeparatorRaw('1:2:3:4', ':', 3);
-      expect(res.klamacStatus).toBe('needsKlamac');
+      expect(res.klamacStatus).toBe('needsNull');
     });
   });
 

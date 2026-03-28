@@ -30,10 +30,10 @@ describe('Integration: AHAHO separator workflow', () => {
     return { ptRows, ctTokens, parsed, rowGroups };
   }
 
-  it('Step 1: parse detects deception tokens needed (needsKlamac)', () => {
+  it('Step 1: parse detects deception tokens needed (needsNull)', () => {
     const { parsed } = setup();
 
-    expect(parsed.klamacStatus).toBe('needsKlamac');
+    expect(parsed.klamacStatus).toBe('needsNull');
     expect(parsed.tokens).toHaveLength(7);
     // Status message mentions both counts (not brittle on exact wording)
     expect(parsed.statusMessage).toContain('5');

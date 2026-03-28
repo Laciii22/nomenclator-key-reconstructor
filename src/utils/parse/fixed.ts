@@ -31,11 +31,11 @@ export function parseFixedRaw(raw: string, groupSize: number, ptCount: number) {
 
   const groupsCount = Math.floor(tokens.length / size);
   const leftover = tokens.length % size;
-  let klamacStatus: 'none' | 'needsKlamac' | 'ok' | 'invalid' = 'none';
+  let klamacStatus: 'none' | 'needsNull' | 'ok' | 'invalid' = 'none';
   let statusMessage: string | null = null;
   if (groupsCount === 0 || ptCount === 0) { klamacStatus = 'none'; statusMessage = null; }
   else if (leftover !== 0) { klamacStatus = 'invalid'; statusMessage = `Incomplete group: missing ${size - leftover} character(s) for the last group.`; }
-  else if (groupsCount > ptCount) { klamacStatus = 'needsKlamac'; statusMessage = `Warning: PT (${ptCount}) < CT groups (${groupsCount}). Choose deception tokens.`; }
+  else if (groupsCount > ptCount) { klamacStatus = 'needsNull'; statusMessage = `Warning: PT (${ptCount}) < CT groups (${groupsCount}). Choose deception tokens.`; }
   else if (groupsCount < ptCount) { klamacStatus = 'invalid'; statusMessage = `PT (${ptCount}) > CT groups (${groupsCount}). Text may be corrupted.`; }
   else { klamacStatus = 'ok'; statusMessage = null; }
   return { tokens, klamacStatus, statusMessage };

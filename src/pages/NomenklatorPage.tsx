@@ -2,7 +2,6 @@
 import type { Active, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import { DndContext, DragOverlay, useSensors, useSensor, MouseSensor, TouchSensor, KeyboardSensor, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import AppLayout from '../components/layout/AppLayout';
-import FrequencyModal from '../components/common/FrequencyModal';
 import MappingTable from '../components/table/MappingTable';
 import KeyTable from '../components/table/KeyTable';
 import BracketEditor from '../components/controls/BracketEditor';
@@ -10,10 +9,12 @@ import ParseControls from '../components/controls/ParseControls';
 import CandidateSelectorFixed from '../components/controls/CandidateSelectorFixed';
 import CandidateSelectorSeparator from '../components/controls/CandidateSelectorSeparator';
 import CandidateSelectorMulti from '../components/controls/CandidateSelectorMulti';
-import HelpModal from '../components/common/HelpModal';
 import FileImport from '../components/controls/FileImport';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap, DragData } from '../types/domain';
+
+const FrequencyModal = React.lazy(() => import('../components/common/FrequencyModal'));
+const HelpModal = React.lazy(() => import('../components/common/HelpModal'));
 
 /**
  * Main interactive page for reconstructing a nomenclator key from PT (plain text)
@@ -61,6 +62,8 @@ const NomenklatorPage: React.FC = () => {
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
+    shouldDeferSelectionMappingPreview,
+    hasPendingMappingPreviewUpdate,
   } = state;
 
   const {
@@ -98,6 +101,7 @@ const NomenklatorPage: React.FC = () => {
     executeQuickAssign,
     resetToPreAnalysis,
     clearAll,
+    applySelectionsToMappingPreview,
   } = actions;
 
   const ptTextareaId = 'pt-raw';
@@ -286,14 +290,18 @@ const NomenklatorPage: React.FC = () => {
       onFrequencyClick={() => setIsFrequencyOpen(true)}
       onClearPersistenceClick={onClearPersistenceClick}
     >
-      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      <FrequencyModal
-        isOpen={isFrequencyOpen}
-        onClose={() => setIsFrequencyOpen(false)}
-        ptChars={ptChars}
-        ctTokens={effectiveCtTokens}
-        groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
-      />
+      <React.Suspense fallback={null}>
+        <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      </React.Suspense>
+      <React.Suspense fallback={null}>
+        <FrequencyModal
+          isOpen={isFrequencyOpen}
+          onClose={() => setIsFrequencyOpen(false)}
+          ptChars={ptChars}
+          ctTokens={effectiveCtTokens}
+          groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
+        />
+      </React.Suspense>
       <DndContext
         sensors={sensors}
         measuring={{
@@ -382,7 +390,7 @@ const NomenklatorPage: React.FC = () => {
                 className={`text-sm rounded-lg p-3 mt-2 border flex items-start gap-2 ${
                   klamacStatus === 'invalid'
                     ? 'text-red-700 bg-red-50 border-red-300'
-                    : klamacStatus === 'needsKlamac'
+                    : klamacStatus === 'needsNull'
                       ? 'text-red-700 bg-red-50 border-red-300'
                       : 'text-green-700 bg-green-50 border-green-300'
                 }`}
@@ -429,6 +437,20 @@ const NomenklatorPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-blue-800">Suggestions</h3>
                   <div className="flex gap-2">
+                      {shouldDeferSelectionMappingPreview && (
+                        <button
+                          className={`text-xs px-2.5 py-1 rounded-md border ${
+                            hasPendingMappingPreviewUpdate
+                              ? 'border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800'
+                              : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
+                          }`}
+                          onClick={applySelectionsToMappingPreview}
+                          disabled={!hasPendingMappingPreviewUpdate}
+                          title="Update Mapping Grid from current suggestions"
+                        >
+                          Update mapping preview
+                        </button>
+                      )}
                       <button
                         className="text-xs px-2.5 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 text-gray-600"
                         onClick={onClearAll}
@@ -459,6 +481,11 @@ const NomenklatorPage: React.FC = () => {
                 <div className="text-xs text-gray-500 mb-2">
                   Mode: {keysPerPTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
                 </div>
+                {shouldDeferSelectionMappingPreview && (
+                  <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                    PT has more than 200 characters. Changes in Suggestions are applied to Mapping Grid only after you click Update mapping preview.
+                  </div>
+                )}
                 
                 {keysPerPTMode === 'multiple' ? (
                   <CandidateSelectorMulti
@@ -560,9 +587,8 @@ const NomenklatorPage: React.FC = () => {
                 onLockOT={onLockOT}
                 onUnlockOT={onUnlockOT}
                 lockedKeys={lockedKeys}
-                hasDeceptionWarning={klamacStatus === 'needsKlamac'}
+                hasDeceptionWarning={klamacStatus === 'needsNull'}
                 onEditToken={editCtToken}
-                selections={selections}
                 groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
                 onInsertRawCharsAfterPosition={insertRawCharsAfterPosition}
                 onSplitGroup={splitPTAt}

@@ -206,7 +206,7 @@ export function useAnalysis(params: {
     
     dispatchAnalysisRequest((sorted) => {
       setCandidatesByChar(sorted);
-      setSelections({});
+      setSelections(prev => (Object.keys(prev).length ? {} : prev));
       setAnalysisDone(true);
       setIsAnalyzing(false);
     });
@@ -227,7 +227,23 @@ export function useAnalysis(params: {
             if (list.some(c => c.token === sel)) next[ch] = sel;
           }
         }
-        return next;
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length !== nextKeys.length) return next;
+        for (const key of prevKeys) {
+          const prevVal = prev[key];
+          const nextVal = next[key];
+          if (Array.isArray(prevVal) || Array.isArray(nextVal)) {
+            if (!Array.isArray(prevVal) || !Array.isArray(nextVal)) return next;
+            if (prevVal.length !== nextVal.length) return next;
+            for (let i = 0; i < prevVal.length; i++) {
+              if (prevVal[i] !== nextVal[i]) return next;
+            }
+            continue;
+          }
+          if (prevVal !== nextVal) return next;
+        }
+        return prev;
       });
     });
   }, [dispatchAnalysisRequest, setSelections]);

@@ -11,12 +11,15 @@
  */
 
 import React from 'react';
-import { buildCandidateOptions } from './candidateHelpers';
+import { Grid } from 'react-window';
+import { buildCandidateOptions, buildPTCharFlatIndexMap, countTotalDeceptionTokens } from './candidateHelpers';
 import { sortCandidatesByScore } from './candidateSelectorCommon';
+import { buildOccMap } from '../../utils/parseStrategies';
 import type { SelectionMap, Candidate } from '../../utils/analyzer';
 import type { PTChar, CTToken } from '../../types/domain';
 import type { Column } from '../types';
 import { normalizeToArray } from '../../utils/multiKeyHelpers';
+import { useViewportWidth } from '../../hooks/useViewportWidth';
 
 /**
  * Check if token is already selected or locked for a different PT character.
@@ -24,19 +27,12 @@ import { normalizeToArray } from '../../utils/multiKeyHelpers';
 function isTokenUsedElsewhere(
   token: string,
   currentChar: string,
-  selections: SelectionMap,
-  lockedKeys: Record<string, string | string[]>
+  tokenOwners: Map<string, Set<string>>,
 ): boolean {
-  for (const [otherCh, otherSel] of Object.entries(selections)) {
-    if (otherCh !== currentChar && Array.isArray(otherSel) && otherSel.includes(token)) return true;
-  }
-  for (const [otherCh, otherLock] of Object.entries(lockedKeys)) {
-    if (otherCh !== currentChar) {
-      const arr = Array.isArray(otherLock) ? otherLock : [otherLock];
-      if (arr.includes(token)) return true;
-    }
-  }
-  return false;
+  const owners = tokenOwners.get(token);
+  if (!owners || owners.size === 0) return false;
+  if (owners.size > 1) return true;
+  return !owners.has(currentChar);
 }
 
 /**
@@ -76,6 +72,17 @@ interface CandidateSelectorMultiProps {
   sharedColumns: Column[][];
 }
 
+const OUTER_HEIGHT = 384; // max-h-96
+const CARD_HEIGHT = 272;
+const MIN_CARD_WIDTH = 240;
+
+function getColumnCount(viewportWidth: number): number {
+  if (viewportWidth >= 1280) return 4;
+  if (viewportWidth >= 1024) return 3;
+  if (viewportWidth >= 768) return 2;
+  return 1;
+}
+
 /**
  * Candidate selector for multi-key (homophone) mode.
  * Displays checkboxes for selecting multiple tokens per PT character.
@@ -90,6 +97,99 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   reservedTokens,
   sharedColumns
 }) => {
+  const viewportWidth = useViewportWidth(120);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = React.useState(0);
+
+  React.useEffect(() => {
+    const next = containerRef.current?.clientWidth ?? 0;
+    if (next > 0 && next !== gridWidth) setGridWidth(next);
+  }, [viewportWidth, gridWidth]);
+
+  const charEntries = React.useMemo(
+    () => Object.entries(candidatesByChar).sort((a, b) => a[0].localeCompare(b[0])),
+    [candidatesByChar],
+  );
+
+  const sortedCandidatesByChar = React.useMemo(() => {
+    const result: Record<string, Candidate[]> = {};
+    for (const [ch, list] of charEntries) {
+      const lockedTokens = normalizeToArray(lockedKeys[ch]);
+      const extendedList = extendCandidateList(list, lockedTokens);
+      result[ch] = sortCandidatesByScore(extendedList);
+    }
+    return result;
+  }, [charEntries, lockedKeys]);
+
+  const occMap = React.useMemo(
+    () => buildOccMap(effectiveCtTokens, 1),
+    [effectiveCtTokens],
+  );
+
+  const ptCharFlatIndexMap = React.useMemo(
+    () => buildPTCharFlatIndexMap(ptRows),
+    [ptRows],
+  );
+
+  const deceptionCount = React.useMemo(
+    () => countTotalDeceptionTokens(sharedColumns),
+    [sharedColumns],
+  );
+
+  const tokenOwners = React.useMemo(() => {
+    const owners = new Map<string, Set<string>>();
+
+    for (const [ch, sel] of Object.entries(selections)) {
+      if (!Array.isArray(sel)) continue;
+      for (const token of sel) {
+        if (!owners.has(token)) owners.set(token, new Set<string>());
+        owners.get(token)!.add(ch);
+      }
+    }
+
+    for (const [ch, lock] of Object.entries(lockedKeys)) {
+      const arr = Array.isArray(lock) ? lock : [lock];
+      for (const token of arr) {
+        if (!owners.has(token)) owners.set(token, new Set<string>());
+        owners.get(token)!.add(ch);
+      }
+    }
+
+    return owners;
+  }, [lockedKeys, selections]);
+
+  const cardModels = React.useMemo(() => {
+    return charEntries.map(([ch]) => {
+      const lockedTokens = normalizeToArray(lockedKeys[ch]);
+      const selectedTokens = normalizeToArray(selections[ch]);
+      const allTokens = new Set([...lockedTokens, ...selectedTokens]);
+      const sortedByScore = sortedCandidatesByChar[ch] ?? [];
+      const isLocked = lockedTokens.length > 0;
+      return {
+        ch,
+        lockedTokens,
+        selectedTokens,
+        allTokensCount: allTokens.size,
+        sortedByScore,
+        isLocked,
+      };
+    });
+  }, [charEntries, lockedKeys, selections, sortedCandidatesByChar]);
+
+  const columnCount = React.useMemo(
+    () => getColumnCount(viewportWidth),
+    [viewportWidth],
+  );
+  const rowCount = React.useMemo(
+    () => Math.ceil(cardModels.length / columnCount),
+    [cardModels.length, columnCount],
+  );
+
+  const columnWidth = React.useMemo(() => {
+    if (!gridWidth) return MIN_CARD_WIDTH;
+    return Math.max(MIN_CARD_WIDTH, Math.floor(gridWidth / columnCount));
+  }, [gridWidth, columnCount]);
+
   const handleToggleToken = React.useCallback((char: string, token: string) => {
     setSelections(prev => {
       const currentArr = normalizeToArray(prev[char]);
@@ -101,110 +201,138 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
     });
   }, [setSelections]);
 
-  return (
-    <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {Object.entries(candidatesByChar)
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([ch, list]) => {
-          const lockedTokens = normalizeToArray(lockedKeys[ch]);
-          const selectedTokens = normalizeToArray(selections[ch]);
-          const allTokens = new Set([...lockedTokens, ...selectedTokens]);
+  const Cell = React.useCallback(({ columnIndex, rowIndex, style, ariaAttributes }: {
+    columnIndex: number;
+    rowIndex: number;
+    style: React.CSSProperties;
+    ariaAttributes: { 'aria-colindex': number; role: 'gridcell' };
+  }) => {
+    const flatIndex = rowIndex * columnCount + columnIndex;
+    if (flatIndex >= cardModels.length) return <div style={style} {...ariaAttributes} />;
 
-          const extendedList = extendCandidateList(list, lockedTokens);
-          const sortedByScore = sortCandidatesByScore(extendedList);
-          const isLocked = lockedTokens.length > 0;
+    const model = cardModels[flatIndex];
 
-          return (
-            <div key={ch} className="border rounded-lg p-2 bg-white shadow-sm">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-2 pb-1.5 border-b">
-                <span
-                  className={`inline-block px-2 py-0.5 rounded font-mono font-semibold text-base ${
-                    isLocked
-                      ? 'bg-green-100 text-green-800 border border-green-300'
-                      : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+    return (
+      <div style={{ ...style, padding: '6px' }} {...ariaAttributes}>
+        <div className="border rounded-lg p-2 bg-white shadow-sm h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2 pb-1.5 border-b">
+            <span
+              className={`inline-block px-2 py-0.5 rounded font-mono font-semibold text-base ${
+                model.isLocked
+                  ? 'bg-green-100 text-green-800 border border-green-300'
+                  : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+              }`}
+              title={model.isLocked ? `Locked: ${model.lockedTokens.join(', ')}` : undefined}
+            >
+              {model.ch}
+            </span>
+            {model.allTokensCount > 0 && (
+              <div className="text-xs text-gray-600">
+                {model.allTokensCount} homophone{model.allTokensCount > 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
+
+          {/* Candidate checkboxes — all candidates, no artificial cap */}
+          <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+            {model.sortedByScore.map((c, idx) => {
+              const token = c.token;
+              const isLockedToken = model.lockedTokens.includes(token);
+              const isSelectedToken = model.selectedTokens.includes(token);
+              const isChecked = isLockedToken || isSelectedToken;
+              const isUsedElsewhere = isTokenUsedElsewhere(token, model.ch, tokenOwners);
+              const isReservedElsewhere =
+                reservedTokens.has(token) && !isLockedToken && !isSelectedToken;
+
+              const opt = buildCandidateOptions({
+                c,
+                idx,
+                ch: model.ch,
+                ptRows,
+                effectiveCtTokens,
+                groupSize: 1,
+                reservedTokens,
+                selectionVal: model.selectedTokens[0] ?? null,
+                lockedVal: model.lockedTokens[0],
+                sharedColumns,
+                _occMap: occMap,
+                _ptCharFlatIndexMap: ptCharFlatIndexMap,
+                _deceptionCount: deceptionCount,
+              });
+
+              const isDisabled = isLockedToken || isReservedElsewhere || isUsedElsewhere;
+
+              return (
+                <label
+                  key={idx}
+                  className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${
+                    isLockedToken
+                      ? 'bg-green-50 border border-green-200'
+                      : isSelectedToken
+                        ? 'bg-blue-50 border border-blue-200 hover:bg-blue-100'
+                        : isDisabled
+                          ? 'bg-gray-50 border border-gray-200 opacity-50 cursor-not-allowed'
+                          : 'hover:bg-gray-50 border border-transparent'
                   }`}
-                  title={isLocked ? `Locked: ${lockedTokens.join(', ')}` : undefined}
+                  title={isUsedElsewhere ? 'Already used for another PT character' : opt.title}
                 >
-                  {ch}
-                </span>
-                {allTokens.size > 0 && (
-                  <div className="text-xs text-gray-600">
-                    {allTokens.size} homophone{allTokens.size > 1 ? 's' : ''}
+                  <input
+                    type="checkbox"
+                    className="rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    checked={isChecked}
+                    disabled={isDisabled}
+                    onChange={() => handleToggleToken(model.ch, token)}
+                  />
+                  <div className="flex-1 flex items-center justify-between text-sm">
+                    <span className="font-mono font-medium">{token}</span>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span title="Score">{c.score.toFixed(2)}</span>
+                      <span title="Support / Occurrences">({c.support}/{c.occurrences})</span>
+                    </div>
                   </div>
-                )}
-              </div>
+                </label>
+              );
+            })}
+          </div>
 
-              {/* Candidate checkboxes — all candidates, no artificial cap */}
-              <div className="space-y-1">
-                {sortedByScore.map((c, idx) => {
-                  const token = c.token;
-                  const isLockedToken = lockedTokens.includes(token);
-                  const isSelectedToken = selectedTokens.includes(token);
-                  const isChecked = isLockedToken || isSelectedToken;
-                  const isUsedElsewhere = isTokenUsedElsewhere(token, ch, selections, lockedKeys);
-                  const isReservedElsewhere =
-                    reservedTokens.has(token) && !isLockedToken && !isSelectedToken;
-
-                  const opt = buildCandidateOptions({
-                    c,
-                    idx,
-                    ch,
-                    ptRows,
-                    effectiveCtTokens,
-                    groupSize: 1,
-                    reservedTokens,
-                    selectionVal: selectedTokens[0] ?? null,
-                    lockedVal: lockedTokens[0],
-                    sharedColumns
-                  });
-
-                  const isDisabled = isLockedToken || isReservedElsewhere || isUsedElsewhere;
-
-                  return (
-                    <label
-                      key={idx}
-                      className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${
-                        isLockedToken
-                          ? 'bg-green-50 border border-green-200'
-                          : isSelectedToken
-                            ? 'bg-blue-50 border border-blue-200 hover:bg-blue-100'
-                            : isDisabled
-                              ? 'bg-gray-50 border border-gray-200 opacity-50 cursor-not-allowed'
-                              : 'hover:bg-gray-50 border border-transparent'
-                      }`}
-                      title={isUsedElsewhere ? `Already used for another PT character` : opt.title}
-                    >
-                      <input
-                        type="checkbox"
-                        className="rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                        checked={isChecked}
-                        disabled={isDisabled}
-                        onChange={() => handleToggleToken(ch, token)}
-                      />
-                      <div className="flex-1 flex items-center justify-between text-sm">
-                        <span className="font-mono font-medium">{token}</span>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span title="Score">{c.score.toFixed(2)}</span>
-                          <span title="Support / Occurrences">({c.support}/{c.occurrences})</span>
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-
-              {/* Locked tokens summary */}
-              {isLocked && (
-                <div className="mt-2 pt-1.5 border-t text-xs text-green-700 bg-green-50 rounded p-1.5">
-                  <strong>Locked:</strong> {lockedTokens.join(', ')}
-                </div>
-              )}
+          {/* Locked tokens summary */}
+          {model.isLocked && (
+            <div className="mt-2 pt-1.5 border-t text-xs text-green-700 bg-green-50 rounded p-1.5">
+              <strong>Locked:</strong> {model.lockedTokens.join(', ')}
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
+    );
+  }, [
+    cardModels,
+    columnCount,
+    tokenOwners,
+    reservedTokens,
+    ptRows,
+    effectiveCtTokens,
+    sharedColumns,
+    occMap,
+    ptCharFlatIndexMap,
+    deceptionCount,
+    handleToggleToken,
+  ]);
+
+  return (
+    <div ref={containerRef} className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+      <Grid
+        columnCount={columnCount}
+        columnWidth={columnWidth}
+        rowCount={rowCount}
+        rowHeight={CARD_HEIGHT}
+        cellComponent={Cell}
+        cellProps={{}}
+        style={{
+          width: '100%',
+          height: OUTER_HEIGHT,
+        }}
+      />
     </div>
   );
 };

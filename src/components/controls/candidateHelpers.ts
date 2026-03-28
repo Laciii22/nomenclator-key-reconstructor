@@ -11,6 +11,25 @@ export type CandidateOption = {
 };
 
 /**
+ * Build a fast lookup map: PT char -> first flat index in the rendered PT grid.
+ * Empty PT cells are ignored (same indexing rule as computeFlatIndexForChar).
+ */
+export function buildPTCharFlatIndexMap(ptRows: PTChar[][]): Record<string, number> {
+  const map: Record<string, number> = {};
+  let idx = 0;
+
+  for (const row of ptRows) {
+    for (const cell of row) {
+      if (cell.ch === '') continue;
+      if (map[cell.ch] == null) map[cell.ch] = idx;
+      idx++;
+    }
+  }
+
+  return map;
+}
+
+/**
  * Find the flat index of the first occurrence of a character in PT rows.
  * Excludes empty cells from indexing.
  */
@@ -32,7 +51,7 @@ export function computeFlatIndexForChar(ptRows: PTChar[][], ch: string): number 
 /**
  * Count total deception tokens in the entire grid.
  */
-function countTotalDeceptionTokens(sharedColumns: Column[][]): number {
+export function countTotalDeceptionTokens(sharedColumns: Column[][]): number {
   let total = 0;
   for (const row of sharedColumns)
     for (const col of row)
@@ -85,6 +104,10 @@ export function buildCandidateOptions(params: {
   sharedColumns: Column[][];
   /** Precomputed occurrence map — avoids recomputing per candidate. */
   _occMap?: Record<string, number[]>;
+  /** Precomputed PT char -> first flat index map. */
+  _ptCharFlatIndexMap?: Record<string, number>;
+  /** Precomputed deception token count for this grid snapshot. */
+  _deceptionCount?: number;
 }): CandidateOption {
   const {
     c,
@@ -107,11 +130,11 @@ export function buildCandidateOptions(params: {
     !selectionArr.includes(c.token) && 
     !lockedArr.includes(c.token);
   
-  const cellFlatIndex = computeFlatIndexForChar(ptRows, ch);
+  const cellFlatIndex = params._ptCharFlatIndexMap?.[ch] ?? computeFlatIndexForChar(ptRows, ch);
   const occMap = params._occMap ?? buildOccMap(effectiveCtTokens, groupSize);
   const tokenOccurrences = occMap[c.token] || [];
   
-  const deceptionCount = countTotalDeceptionTokens(sharedColumns);
+  const deceptionCount = params._deceptionCount ?? countTotalDeceptionTokens(sharedColumns);
   const hasInvalidPosition = !isTokenPositionValid(
     tokenOccurrences,
     cellFlatIndex,
