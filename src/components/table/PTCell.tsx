@@ -437,7 +437,7 @@ const PTCell: React.FC<PTCellProps> = ({
           <img src={plusIcon} alt="edit CT token" className="w-3 h-3" />
         </button>
       )}
-      {pt && (
+      {pt && keysPerPTMode !== 'multiple' && (
         <button
           className={`absolute bottom-0 left-0 p-1 text-xs rounded-tr leading-none ${
             !lockedValue && isEmptyRealPtCell
@@ -461,12 +461,10 @@ const PTCell: React.FC<PTCellProps> = ({
           disabled={!lockedValue && isEmptyRealPtCell}
           title={
             lockedValue
-              ? (keysPerPTMode === 'multiple' ? `Remove homophone ${lockedValue} from ${pt.ch}` : `Unlock ${pt.ch}`)
+              ? `Unlock ${pt.ch}`
               : (isEmptyRealPtCell
                   ? 'Cannot lock an empty cell'
-                  : keysPerPTMode === 'multiple'
-                    ? `Add ${joinTokenTexts(displayedTokens.map(f => f.token))} as homophone for ${pt.ch}`
-                    : `Lock ${pt.ch}`)
+                  : `Lock ${pt.ch}`)
           }
           aria-label={lockedValue ? `Unlock ${pt.ch}` : `Lock ${pt.ch}`}
           aria-pressed={!!lockedValue}
