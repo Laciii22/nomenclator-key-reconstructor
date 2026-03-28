@@ -197,7 +197,7 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
           assignedChars === totalChars ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
         }`}>{assignedChars} / {totalChars}</span>
       </div>
-      <div ref={containerRef} className="max-h-96 overflow-y-auto">
+      <div ref={containerRef} className="overflow-hidden">
         <Grid
           columnCount={columnCount}
           columnWidth={columnWidth}
@@ -208,6 +208,8 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
           style={{
             width: '100%',
             height: OUTER_HEIGHT,
+            overflowX: 'hidden',
+            overflowY: 'auto',
           }}
         />
       </div>

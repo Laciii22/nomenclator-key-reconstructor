@@ -210,9 +210,21 @@ const KeyTable: React.FC<KeyTableProps & {
   useEffect(() => {
     if (!highlightedPTChar) return;
     if (!onToggleHighlightOT) return;
-    if (rowMetaByOT[highlightedPTChar]?.isError) return;
+
+    const meta = rowMetaByOT[highlightedPTChar];
+    if (!meta) return;
+
+    if (keysPerPTMode === 'multiple') {
+      // In multi-key mode keep highlight sticky until user turns it off,
+      // or automatically clear once the highlighted PT gets locked.
+      if (meta.isLocked) onToggleHighlightOT(highlightedPTChar);
+      return;
+    }
+
+    // In single-key mode, keep existing behavior: highlight only error rows.
+    if (meta.isError) return;
     onToggleHighlightOT(highlightedPTChar);
-  }, [rowMetaByOT, highlightedPTChar, onToggleHighlightOT]);
+  }, [rowMetaByOT, highlightedPTChar, onToggleHighlightOT, keysPerPTMode]);
 
   if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(no pairs)</div>;
 
@@ -393,8 +405,8 @@ const KeyTable: React.FC<KeyTableProps & {
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
                         </button>
                       )}
-                      {/* Highlighter icon shown for error rows */}
-                      {isRowError && onToggleHighlightOT ? (
+                      {/* Highlighter icon available on every row */}
+                      {onToggleHighlightOT ? (
                         <button
                           className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
                           onClick={() => onToggleHighlightOT(row.pt)}
