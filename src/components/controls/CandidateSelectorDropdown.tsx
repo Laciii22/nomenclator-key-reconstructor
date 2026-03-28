@@ -7,7 +7,8 @@
  */
 
 import React from 'react';
-import { buildCandidateOptions } from './candidateHelpers';
+import { buildCandidateOptions, buildPTCharFlatIndexMap, countTotalDeceptionTokens } from './candidateHelpers';
+import { buildOccMap } from '../../utils/parseStrategies';
 import {
   extendCandidateListWithLocked,
   sortCandidatesByScore,
@@ -39,6 +40,36 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
   ptRows, effectiveCtTokens, reservedTokens, sharedColumns,
   groupSize, emptyOptionLabel = 'None',
 }) => {
+  const charEntries = React.useMemo(
+    () => Object.entries(candidatesByChar).sort((a, b) => a[0].localeCompare(b[0])),
+    [candidatesByChar],
+  );
+
+  const occMap = React.useMemo(
+    () => buildOccMap(effectiveCtTokens, groupSize),
+    [effectiveCtTokens, groupSize],
+  );
+
+  const ptCharFlatIndexMap = React.useMemo(
+    () => buildPTCharFlatIndexMap(ptRows),
+    [ptRows],
+  );
+
+  const deceptionCount = React.useMemo(
+    () => countTotalDeceptionTokens(sharedColumns),
+    [sharedColumns],
+  );
+
+  const sortedCandidatesByChar = React.useMemo(() => {
+    const result: Record<string, Candidate[]> = {};
+    for (const [ch, list] of charEntries) {
+      const lockedVal = lockedKeys[ch];
+      const extendedList = extendCandidateListWithLocked(list, lockedVal);
+      result[ch] = sortCandidatesByScore(extendedList).filter((c) => c.length === 1);
+    }
+    return result;
+  }, [charEntries, lockedKeys]);
+
   const totalChars = Object.keys(candidatesByChar).length;
   const assignedChars = Object.entries(candidatesByChar).filter(([ch]) => lockedKeys[ch] || selections[ch]).length;
 
@@ -51,14 +82,13 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
         }`}>{assignedChars} / {totalChars}</span>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        {Object.entries(candidatesByChar).sort((a, b) => a[0].localeCompare(b[0])).map(([ch, list]) => {
+        {charEntries.map(([ch]) => {
           const lockedVal = lockedKeys[ch];
           const selectionVal = selections[ch];
           const normalizedSelectionVal = Array.isArray(selectionVal) ? selectionVal[0] : (selectionVal ?? null);
           const currentValue = getCurrentSelectorValue(lockedVal, normalizedSelectionVal);
           const disabledSelect = Boolean(lockedVal);
-          const extendedList = extendCandidateListWithLocked(list, lockedVal);
-          const sortedByScore = sortCandidatesByScore(extendedList);
+          const sortedByScore = sortedCandidatesByChar[ch] ?? [];
 
           return (
             <div key={ch} className="flex items-center gap-3">
@@ -75,8 +105,22 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
                 }}
               >
                 <option value="">{emptyOptionLabel}</option>
-                {sortedByScore.filter((c) => c.length === 1).map((c, idx) => {
-                  const opt = buildCandidateOptions({ c, idx, ch, ptRows, effectiveCtTokens, groupSize, reservedTokens, selectionVal: normalizedSelectionVal, lockedVal, sharedColumns });
+                {sortedByScore.map((c, idx) => {
+                  const opt = buildCandidateOptions({
+                    c,
+                    idx,
+                    ch,
+                    ptRows,
+                    effectiveCtTokens,
+                    groupSize,
+                    reservedTokens,
+                    selectionVal: normalizedSelectionVal,
+                    lockedVal,
+                    sharedColumns,
+                    _occMap: occMap,
+                    _ptCharFlatIndexMap: ptCharFlatIndexMap,
+                    _deceptionCount: deceptionCount,
+                  });
                   return (
                     <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>
                   );
