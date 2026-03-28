@@ -36,6 +36,27 @@ const RESPONSIVE_BREAKPOINTS = [
   { maxWidth: Infinity, columns: 24 },
 ] as const;
 
+const DEFER_MAPPING_PREVIEW_PT_THRESHOLD = 200;
+
+function normalizeSelectionValue(value: string | string[] | null | undefined): string[] {
+  if (!value) return [];
+  const arr = Array.isArray(value) ? value : [value];
+  return [...arr].sort();
+}
+
+function selectionMapsEqual(a: SelectionMap, b: SelectionMap): boolean {
+  const keys = new Set<string>([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    const left = normalizeSelectionValue(a[key]);
+    const right = normalizeSelectionValue(b[key]);
+    if (left.length !== right.length) return false;
+    for (let i = 0; i < left.length; i++) {
+      if (left[i] !== right[i]) return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Central state/logic hook for the Nomenclator UI.
  *
@@ -71,6 +92,7 @@ export function useNomenklator() {
   // Locks & selections
   const [lockedKeys, setLockedKeys] = useState<Record<string, string | string[]>>({});
   const [selections, setSelections] = useState<SelectionMap>({});
+  const [appliedSelectionsForMapping, setAppliedSelectionsForMapping] = useState<SelectionMap>({});
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
   const isDraggingRef = useRef(false);
 
@@ -129,6 +151,30 @@ export function useNomenklator() {
       ? customPtGroups
       : ptChars.filter(c => c.ch !== '');
   }, [customPtGroups, ptChars]);
+
+  const shouldDeferSelectionMappingPreview = ptChars.length > DEFER_MAPPING_PREVIEW_PT_THRESHOLD;
+
+  const hasPendingMappingPreviewUpdate = useMemo(() => {
+    if (!shouldDeferSelectionMappingPreview) return false;
+    return !selectionMapsEqual(selections, appliedSelectionsForMapping);
+  }, [appliedSelectionsForMapping, selections, shouldDeferSelectionMappingPreview]);
+
+  const applySelectionsToMappingPreview = useCallback(() => {
+    setAppliedSelectionsForMapping(selections);
+  }, [selections]);
+
+  React.useEffect(() => {
+    if (!shouldDeferSelectionMappingPreview) {
+      if (!selectionMapsEqual(appliedSelectionsForMapping, selections)) {
+        setAppliedSelectionsForMapping(selections);
+      }
+      return;
+    }
+
+    if (Object.keys(selections).length === 0 && Object.keys(appliedSelectionsForMapping).length > 0) {
+      setAppliedSelectionsForMapping({});
+    }
+  }, [appliedSelectionsForMapping, selections, shouldDeferSelectionMappingPreview]);
 
   const countMergeableOccurrences = useCallback((groups: PTChar[], pattern: string) => {
     // Normalize to single-key format for this helper
@@ -292,11 +338,15 @@ export function useNomenklator() {
     return rows.length ? rows : [[]];
   }, [ptChars, OT_COLUMNS_PER_ROW]);
 
+  const mappingSelections = shouldDeferSelectionMappingPreview
+    ? appliedSelectionsForMapping
+    : selections;
+
   const mapping = useMapping({
     ptRows,
     effectiveCtTokens,
     lockedKeys,
-    selections,
+    selections: mappingSelections,
     ctParseMode,
     groupSize,
     keysPerPTMode,
@@ -519,6 +569,7 @@ export function useNomenklator() {
     
     // Reset manual shifting state for fixed-length mode
     mapping.setManualPtCounts(null);
+    setAppliedSelectionsForMapping({});
   }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
   /**
@@ -540,6 +591,7 @@ export function useNomenklator() {
     setSelectionError(null);
     mapping.setManualPtCounts(null);
     preAnalysisStateRef.current = null;
+    setAppliedSelectionsForMapping({});
   }, [parsing, setPtRaw, setKeysPerPTMode, setCustomPtGroups, setLockedKeys, setSelections, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
   // Derived status: pure computation, no effect-based state sync.
@@ -780,6 +832,7 @@ export function useNomenklator() {
       setLockedKeys(prev => ({ ...prev, ...newLocks }));
       // Clear selections after applying
       setSelections({});
+      setAppliedSelectionsForMapping({});
     }
   }, [keysPerPTMode, lockedKeys, previewSelection, selections, setSelections]);
 
@@ -961,6 +1014,8 @@ export function useNomenklator() {
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
+    shouldDeferSelectionMappingPreview,
+    hasPendingMappingPreviewUpdate,
   }), [analysisDone, isAnalyzing, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices]);
 
   /** Derived data structures used to render tables/selectors. */
@@ -1004,8 +1059,10 @@ export function useNomenklator() {
     executeQuickAssign,
     resetToPreAnalysis,
     clearAll,
+    applySelectionsToMappingPreview,
   }), [
     applySelection,
+    applySelectionsToMappingPreview,
     chooseScoreOneSuggestions,
     clearAll,
     dismissMergeAllPrompt,

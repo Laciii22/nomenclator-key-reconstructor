@@ -30,9 +30,29 @@ export function computeFlatIndexForChar(ptRows: PTChar[][], ch: string): number 
 }
 
 /**
+ * Build a map from PT character to its first flat index in the rendered PT grid.
+ */
+export function buildPTCharFlatIndexMap(ptRows: PTChar[][]): Record<string, number> {
+  const flatIndexMap: Record<string, number> = {};
+  let idx = 0;
+
+  for (const row of ptRows) {
+    for (const cell of row) {
+      if (cell.ch === '') continue;
+      if (flatIndexMap[cell.ch] == null) {
+        flatIndexMap[cell.ch] = idx;
+      }
+      idx++;
+    }
+  }
+
+  return flatIndexMap;
+}
+
+/**
  * Count total deception tokens in the entire grid.
  */
-function countTotalDeceptionTokens(sharedColumns: Column[][]): number {
+export function countTotalDeceptionTokens(sharedColumns: Column[][]): number {
   let total = 0;
   for (const row of sharedColumns)
     for (const col of row)
@@ -85,6 +105,10 @@ export function buildCandidateOptions(params: {
   sharedColumns: Column[][];
   /** Precomputed occurrence map — avoids recomputing per candidate. */
   _occMap?: Record<string, number[]>;
+  /** Precomputed PT char -> first flat index map. */
+  _ptCharFlatIndexMap?: Record<string, number>;
+  /** Precomputed deception token count. */
+  _deceptionCount?: number;
 }): CandidateOption {
   const {
     c,
@@ -107,11 +131,11 @@ export function buildCandidateOptions(params: {
     !selectionArr.includes(c.token) && 
     !lockedArr.includes(c.token);
   
-  const cellFlatIndex = computeFlatIndexForChar(ptRows, ch);
+  const cellFlatIndex = params._ptCharFlatIndexMap?.[ch] ?? computeFlatIndexForChar(ptRows, ch);
   const occMap = params._occMap ?? buildOccMap(effectiveCtTokens, groupSize);
   const tokenOccurrences = occMap[c.token] || [];
   
-  const deceptionCount = countTotalDeceptionTokens(sharedColumns);
+  const deceptionCount = params._deceptionCount ?? countTotalDeceptionTokens(sharedColumns);
   const hasInvalidPosition = !isTokenPositionValid(
     tokenOccurrences,
     cellFlatIndex,

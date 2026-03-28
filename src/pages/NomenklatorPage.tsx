@@ -61,6 +61,8 @@ const NomenklatorPage: React.FC = () => {
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
+    shouldDeferSelectionMappingPreview,
+    hasPendingMappingPreviewUpdate,
   } = state;
 
   const {
@@ -98,6 +100,7 @@ const NomenklatorPage: React.FC = () => {
     executeQuickAssign,
     resetToPreAnalysis,
     clearAll,
+    applySelectionsToMappingPreview,
   } = actions;
 
   const ptTextareaId = 'pt-raw';
@@ -429,6 +432,20 @@ const NomenklatorPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-blue-800">Suggestions</h3>
                   <div className="flex gap-2">
+                      {shouldDeferSelectionMappingPreview && (
+                        <button
+                          className={`text-xs px-2.5 py-1 rounded-md border ${
+                            hasPendingMappingPreviewUpdate
+                              ? 'border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800'
+                              : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
+                          }`}
+                          onClick={applySelectionsToMappingPreview}
+                          disabled={!hasPendingMappingPreviewUpdate}
+                          title="Update Mapping Grid from current suggestions"
+                        >
+                          Update mapping preview
+                        </button>
+                      )}
                       <button
                         className="text-xs px-2.5 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 text-gray-600"
                         onClick={onClearAll}
@@ -459,6 +476,12 @@ const NomenklatorPage: React.FC = () => {
                 <div className="text-xs text-gray-500 mb-2">
                   Mode: {keysPerPTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
                 </div>
+
+                {shouldDeferSelectionMappingPreview && (
+                  <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                    PT has more than 200 characters. Changes in Suggestions are applied to Mapping Grid only after you click Update mapping preview.
+                  </div>
+                )}
                 
                 {keysPerPTMode === 'multiple' ? (
                   <CandidateSelectorMulti
