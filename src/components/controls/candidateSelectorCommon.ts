@@ -57,6 +57,13 @@ export function getCurrentSelectorValue(
 }
 
 /**
+ * Selector is disabled when the PT char already has a lock.
+ */
+export function isSelectorDisabled(lockedValue: string | undefined): boolean {
+  return Boolean(lockedValue);
+}
+
+/**
  * Get CSS classes for PT character badge based on lock status.
  */
 export function getPTCharBadgeClasses(isLocked: boolean): string {
