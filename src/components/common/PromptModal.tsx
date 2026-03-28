@@ -34,14 +34,23 @@ const PromptModal: React.FC<PromptModalProps> = ({
 }) => {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
+  const openedAtRef = useRef<number>(0);
 
   // Reset input text whenever the modal is (re-)opened
   useEffect(() => {
     if (isOpen) {
+      openedAtRef.current = Date.now();
       setValue(initialValue);
       requestAnimationFrame(() => inputRef.current?.select());
     }
   }, [isOpen, initialValue]);
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Ignore the synthetic/ghost click that can follow pointer-driven opening.
+    if (Date.now() - openedAtRef.current < 180) return;
+    if (e.target !== e.currentTarget) return;
+    onCancel();
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -64,7 +73,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4" 
-      onClick={onCancel}
+      onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="prompt-modal-title"

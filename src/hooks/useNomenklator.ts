@@ -11,7 +11,6 @@ import { useMapping } from './useMapping';
 import { useAnalysis } from './useAnalysis';
 import { useNomenklatorPersistence } from './useNomenklatorPersistence';
 import { useNomenklatorStatus } from './useNomenklatorStatus';
-import { useAutoPickScoreOneSequential } from './useAutoPickScoreOneSequential';
 import { useDebouncedCallback } from './useDebouncedCallback';
 import { useViewportWidth } from './useViewportWidth';
 import { buildEffectiveToOriginalIndexMap } from './nomenclator/ctIndexMaps';
@@ -574,15 +573,6 @@ export function useNomenklator() {
     },
     analysisRefreshDelayMs
   );
-
-  useAutoPickScoreOneSequential({
-    candidatesByChar,
-    ptRows,
-    ctTokens,
-    bracketedIndices,
-    setSelections,
-    keysPerPTMode,
-  });
 
   useNomenklatorPersistence({
     settings,

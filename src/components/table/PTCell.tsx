@@ -20,7 +20,6 @@ import minus from '../../assets/icons/minus.png';
 import leftIcon from '../../assets/icons/left-arrow.png';
 import rightIcon from '../../assets/icons/right-arrow.png';
 import { useMappingCellContext } from './MappingCellContext';
-import PromptModal from '../common/PromptModal';
 
 /** Pure helper — computes the className for the PT character label. */
 function getPtLabelClassName(
@@ -98,9 +97,6 @@ const PTCell: React.FC<PTCellProps> = ({
   const canShiftRight = (shiftMeta && typeof flatIndex === 'number')
     ? (shiftMeta[flatIndex]?.canShiftRight ?? false) : false;
 
-  // ── PromptModal state (replaces window.prompt for token editing) ──────────
-  const [editPromptOpen, setEditPromptOpen] = React.useState(false);
-  const [editPromptInitial, setEditPromptInitial] = React.useState('');
   // When we handle an action on pointer down, browsers may still fire a click
   // afterwards (or may cancel it). Use this flag to avoid double-triggering.
   const suppressNextClickRef = React.useRef(false);
@@ -251,21 +247,13 @@ const PTCell: React.FC<PTCellProps> = ({
   }, [displayedTokens, isEmptyRealPtCell, lockedValue, onLockOT, onUnlockOT, pt, keysPerPTMode]);
 
   // Handle edit or insert in separator mode.
-  // Opens PromptModal instead of calling window.prompt().
+  // Delegates to the table-level modal so only one prompt can be open at a time.
   const editOrInsert = React.useCallback(() => {
-    if (displayedTokens.length === 0) {
-      if (typeof flatIndex === 'number' && flatIndex >= 0) {
-        onInsertAfterGroup?.(flatIndex);
-      }
+    if (typeof flatIndex !== 'number' || flatIndex < 0) {
       return;
     }
-    
-    if (!onEditToken) return;
-    
-    const currentGroupText = displayedTokens.map(f => f.token.text).join('');
-    setEditPromptInitial(currentGroupText);
-    setEditPromptOpen(true);
-  }, [displayedTokens, flatIndex, onEditToken, onInsertAfterGroup]);
+    onInsertAfterGroup?.(flatIndex);
+  }, [flatIndex, onInsertAfterGroup]);
 
   const splitGroup = React.useCallback(() => {
     if (lockedValue) return;
@@ -435,7 +423,7 @@ const PTCell: React.FC<PTCellProps> = ({
       {/* In separator mode show a + to edit the token, or insert when empty */}
       {!isFixedLength && pt && !lockedValue && (
         <button
-          className="absolute top-0.5 right-0.5 p-0.5 text-xs rounded bg-purple-50 hover:bg-purple-200 border border-purple-100"
+          className="absolute top-0.5 right-0.5 z-30 p-0.5 text-xs rounded bg-purple-50 hover:bg-purple-200 border border-purple-100 pointer-events-auto"
           onPointerDown={(e) => {
             runPointerAction(e, editOrInsert);
           }}
@@ -513,20 +501,6 @@ const PTCell: React.FC<PTCellProps> = ({
         </button>
       )}
     </div>
-    {/* Non-blocking modal replacement for window.prompt() */}
-    <PromptModal
-      isOpen={editPromptOpen}
-      title="Edit CT Token"
-      label="Edit token for this PT (no spaces):"
-      initialValue={editPromptInitial}
-      onConfirm={(value) => {
-        if (value.trim() && onEditToken && displayedTokens.length > 0) {
-          onEditToken(displayedTokens[0].tokenIndex, value.trim());
-        }
-        setEditPromptOpen(false);
-      }}
-      onCancel={() => setEditPromptOpen(false)}
-    />
     </>
   );
 };

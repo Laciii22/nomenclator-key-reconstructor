@@ -49,8 +49,8 @@ const CTTokenComp: React.FC<CTTokenProps> = ({ token, tokenIndex, row, col, isLo
         <span
           {...attributes}
           {...listeners}
-          className={`inline-block text-xs px-1 py-0.5 rounded font-mono border select-none ${isLocked ? `cursor-default ${colors.tokenLocked}` : `${isDragging ? 'cursor-grabbing opacity-60' : 'cursor-grab'} ${colors.tokenUnlocked}`} ${isDragging ? 'shadow-sm' : ''}`}
-          title={isLocked ? 'Locked token' : 'Drag to swap with adjacent token'}
+          className={`inline-block max-w-[7rem] truncate align-middle text-xs px-1 py-0.5 rounded font-mono border select-none ${isLocked ? `cursor-default ${colors.tokenLocked}` : `${isDragging ? 'cursor-grabbing opacity-60' : 'cursor-grab'} ${colors.tokenUnlocked}`} ${isDragging ? 'shadow-sm' : ''}`}
+          title={`${token.text}${isLocked ? ' (locked token)' : ' (drag to swap with adjacent token)'}`}
         >
           {token.text}
         </span>
