@@ -11,7 +11,13 @@
  */
 
 import React from 'react';
-import { buildCandidateOptions, buildPTCharFlatIndexMap, countTotalDeceptionTokens } from './candidateHelpers';
+import {
+  buildCandidateOptions,
+  buildCandidateOptionCacheKey,
+  buildPTCharFlatIndexMap,
+  countTotalDeceptionTokens,
+  type CandidateOption,
+} from './candidateHelpers';
 import { sortCandidatesByScore } from './candidateSelectorCommon';
 import { buildOccMap } from '../../utils/parseStrategies';
 import type { SelectionMap, Candidate } from '../../utils/analyzer';
@@ -93,6 +99,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   reservedTokens,
   sharedColumns
 }) => {
+  const optionCacheRef = React.useRef<Map<string, CandidateOption>>(new Map());
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = React.useState(0);
 
@@ -164,23 +171,87 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
     return owners;
   }, [lockedKeys, selections]);
 
+  const optionRowsByChar = React.useMemo(() => {
+    const out: Record<string, Array<{ c: Candidate; opt: CandidateOption }>> = {};
+    const cache = optionCacheRef.current;
+
+    for (const [ch, sortedByScore] of Object.entries(sortedCandidatesByChar)) {
+      const lockedTokens = normalizeToArray(lockedKeys[ch]);
+      const selectedTokens = normalizeToArray(selections[ch]);
+      const selectionVal = selectedTokens[0] ?? null;
+      const lockedVal = lockedTokens[0];
+      const cellFlatIndex = ptCharFlatIndexMap[ch] ?? -1;
+
+      out[ch] = sortedByScore.map((c, idx) => {
+        const tokenOccurrences = occMap[c.token] || [];
+        const isReservedByOther =
+          reservedTokens.has(c.token)
+          && !selectedTokens.includes(c.token)
+          && !lockedTokens.includes(c.token);
+        const cacheKey = buildCandidateOptionCacheKey({
+          c,
+          ch,
+          groupSize: 1,
+          tokenOccurrences,
+          cellFlatIndex,
+          deceptionCount,
+          isReservedByOther,
+          selectionArr: selectedTokens,
+          lockedArr: lockedTokens,
+        });
+
+        const opt = buildCandidateOptions({
+          c,
+          idx,
+          ch,
+          ptRows,
+          effectiveCtTokens,
+          groupSize: 1,
+          reservedTokens,
+          selectionVal,
+          lockedVal,
+          sharedColumns,
+          _occMap: occMap,
+          _ptCharFlatIndexMap: ptCharFlatIndexMap,
+          _deceptionCount: deceptionCount,
+          _cache: cache,
+          _cacheKey: cacheKey,
+        });
+
+        return { c, opt };
+      });
+    }
+
+    return out;
+  }, [
+    sortedCandidatesByChar,
+    lockedKeys,
+    selections,
+    ptCharFlatIndexMap,
+    occMap,
+    reservedTokens,
+    deceptionCount,
+    ptRows,
+    effectiveCtTokens,
+    sharedColumns,
+  ]);
+
   const cardModels = React.useMemo(() => {
     return charEntries.map(([ch]) => {
       const lockedTokens = normalizeToArray(lockedKeys[ch]);
       const selectedTokens = normalizeToArray(selections[ch]);
       const allTokens = new Set([...lockedTokens, ...selectedTokens]);
-      const sortedByScore = sortedCandidatesByChar[ch] ?? [];
       const isLocked = lockedTokens.length > 0;
       return {
         ch,
         lockedTokens,
         selectedTokens,
         allTokensCount: allTokens.size,
-        sortedByScore,
+        optionRows: optionRowsByChar[ch] ?? [],
         isLocked,
       };
     });
-  }, [charEntries, lockedKeys, selections, sortedCandidatesByChar]);
+  }, [charEntries, lockedKeys, selections, optionRowsByChar]);
 
   const columnCount = React.useMemo(
     () => getColumnCount(gridWidth),
@@ -236,7 +307,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
     lockedTokens: string[];
     selectedTokens: string[];
     allTokensCount: number;
-    sortedByScore: Candidate[];
+    optionRows: Array<{ c: Candidate; opt: CandidateOption }>;
     isLocked: boolean;
   }) => (
     <section
@@ -260,7 +331,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
       </header>
 
       <div className="max-h-[172px] space-y-1.5 overflow-y-auto pr-1">
-        {model.sortedByScore.map((c, idx) => {
+        {model.optionRows.map(({ c, opt }, idx) => {
           const token = c.token;
           const isLockedToken = model.lockedTokens.includes(token);
           const isSelectedToken = model.selectedTokens.includes(token);
@@ -277,22 +348,6 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
           const isUsedElsewhere = isTokenUsedElsewhere(token, model.ch, tokenOwners);
           const isReservedElsewhere =
             reservedTokens.has(token) && !isLockedToken && !isSelectedToken;
-
-          const opt = buildCandidateOptions({
-            c,
-            idx,
-            ch: model.ch,
-            ptRows,
-            effectiveCtTokens,
-            groupSize: 1,
-            reservedTokens,
-            selectionVal: model.selectedTokens[0] ?? null,
-            lockedVal: model.lockedTokens[0],
-            sharedColumns,
-            _occMap: occMap,
-            _ptCharFlatIndexMap: ptCharFlatIndexMap,
-            _deceptionCount: deceptionCount,
-          });
 
           const isDisabled =
             isLockedToken
@@ -348,12 +403,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   ), [
     tokenOwners,
     reservedTokens,
-    ptRows,
-    effectiveCtTokens,
-    sharedColumns,
-    occMap,
-    ptCharFlatIndexMap,
-    deceptionCount,
+    supportBudgetByChar,
     handleToggleToken,
   ]);
 

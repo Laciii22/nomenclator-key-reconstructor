@@ -50,18 +50,40 @@ export function useNomenklatorPersistence(params: {
     setBracketedIndices([]);
     setCustomPtGroups(null);
     hydratedRef.current = true;
-  }, [hydratedRef, setBracketedIndices, setCustomPtGroups, setKeysPerPTMode, setLockedKeys, setPtRaw, setCtRawFixed, setCtRawSeparator, settings]);
+  }, [
+    hydratedRef,
+    setBracketedIndices,
+    setCustomPtGroups,
+    setKeysPerPTMode,
+    setLockedKeys,
+    setPtRaw,
+    setCtRawFixed,
+    setCtRawSeparator,
+    settings.ptRaw,
+    settings.ctRaw,
+    settings.keysPerPTMode,
+  ]);
 
-  // Minimal persistence
+  // Minimal persistence: merge updates into a single state transition.
   React.useEffect(() => {
-    setSettings(p => (p.ptRaw === ptRaw ? p : { ...p, ptRaw }));
-  }, [ptRaw, setSettings]);
+    setSettings(prev => {
+      let changed = false;
+      const next = { ...prev };
 
-  React.useEffect(() => {
-    setSettings(p => (p.ctRaw === ctRaw ? p : { ...p, ctRaw }));
-  }, [setSettings, ctRaw]);
+      if (prev.ptRaw !== ptRaw) {
+        next.ptRaw = ptRaw;
+        changed = true;
+      }
+      if (prev.ctRaw !== ctRaw) {
+        next.ctRaw = ctRaw;
+        changed = true;
+      }
+      if (prev.keysPerPTMode !== keysPerPTMode) {
+        next.keysPerPTMode = keysPerPTMode;
+        changed = true;
+      }
 
-  React.useEffect(() => {
-    setSettings(p => (p.keysPerPTMode === keysPerPTMode ? p : { ...p, keysPerPTMode }));
-  }, [keysPerPTMode, setSettings]);
+      return changed ? next : prev;
+    });
+  }, [ptRaw, ctRaw, keysPerPTMode, setSettings]);
 }

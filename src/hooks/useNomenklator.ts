@@ -9,6 +9,7 @@ import { normalizeToArray, getReservedTokens } from '../utils/multiKeyHelpers';
 import { useParsing } from './useParsing';
 import { useMapping } from './useMapping';
 import { useAnalysis } from './useAnalysis';
+import { useDebouncedCallback } from './useDebouncedCallback';
 import { useNomenklatorPersistence } from './useNomenklatorPersistence';
 import { useNomenklatorStatus } from './useNomenklatorStatus';
 import { useViewportWidth } from './useViewportWidth';
@@ -56,6 +57,46 @@ function selectionMapsEqual(a: SelectionMap, b: SelectionMap): boolean {
   return true;
 }
 
+type NomenklatorSelectionState = {
+  lockedKeys: Record<string, string | string[]>;
+  selections: SelectionMap;
+  appliedSelectionsForMapping: SelectionMap;
+};
+
+type NomenklatorSelectionAction =
+  | { type: 'setLockedKeys'; value: React.SetStateAction<Record<string, string | string[]>> }
+  | { type: 'setSelections'; value: React.SetStateAction<SelectionMap> }
+  | { type: 'setAppliedSelectionsForMapping'; value: React.SetStateAction<SelectionMap> }
+  | { type: 'applySelectionLocks'; newLocks: Record<string, string | string[]> };
+
+function resolveSetStateAction<T>(value: React.SetStateAction<T>, prev: T): T {
+  return typeof value === 'function'
+    ? (value as (prev: T) => T)(prev)
+    : value;
+}
+
+function selectionStateReducer(
+  state: NomenklatorSelectionState,
+  action: NomenklatorSelectionAction,
+): NomenklatorSelectionState {
+  if (action.type === 'setLockedKeys') {
+    return { ...state, lockedKeys: resolveSetStateAction(action.value, state.lockedKeys) };
+  }
+  if (action.type === 'setSelections') {
+    return { ...state, selections: resolveSetStateAction(action.value, state.selections) };
+  }
+  if (action.type === 'setAppliedSelectionsForMapping') {
+    return { ...state, appliedSelectionsForMapping: resolveSetStateAction(action.value, state.appliedSelectionsForMapping) };
+  }
+
+  if (Object.keys(action.newLocks).length === 0) return state;
+  return {
+    lockedKeys: { ...state.lockedKeys, ...action.newLocks },
+    selections: {},
+    appliedSelectionsForMapping: {},
+  };
+}
+
 /**
  * Central state/logic hook for the Nomenclator UI.
  *
@@ -89,9 +130,25 @@ export function useNomenklator() {
   } | null>(null);
 
   // Locks & selections
-  const [lockedKeys, setLockedKeys] = useState<Record<string, string | string[]>>({});
-  const [selections, setSelections] = useState<SelectionMap>({});
-  const [appliedSelectionsForMapping, setAppliedSelectionsForMapping] = useState<SelectionMap>({});
+  const [selectionState, dispatchSelectionState] = React.useReducer(selectionStateReducer, {
+    lockedKeys: {},
+    selections: {},
+    appliedSelectionsForMapping: {},
+  });
+  const { lockedKeys, selections, appliedSelectionsForMapping } = selectionState;
+
+  const setLockedKeys = useCallback<React.Dispatch<React.SetStateAction<Record<string, string | string[]>>>>((value) => {
+    dispatchSelectionState({ type: 'setLockedKeys', value });
+  }, []);
+
+  const setSelections = useCallback<React.Dispatch<React.SetStateAction<SelectionMap>>>((value) => {
+    dispatchSelectionState({ type: 'setSelections', value });
+  }, []);
+
+  const setAppliedSelectionsForMapping = useCallback<React.Dispatch<React.SetStateAction<SelectionMap>>>((value) => {
+    dispatchSelectionState({ type: 'setAppliedSelectionsForMapping', value });
+  }, []);
+
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
   const isDraggingRef = useRef(false);
 
@@ -607,15 +664,14 @@ export function useNomenklator() {
     bracketedIndices,
   });
 
-  // Debounce disabled (experiment mode): refresh immediately after state changes.
+  const { debounced: debouncedRefresh, cancel: cancelRefreshDebounce } = useDebouncedCallback(() => {
+    refreshAnalysisPreserve();
+  }, 180);
+
   const refreshAnalysisPreserveDebounced = useCallback(() => {
     if (!analysisDone) return;
-    refreshAnalysisPreserve();
-  }, [analysisDone, refreshAnalysisPreserve]);
-
-  const cancelRefreshDebounce = useCallback(() => {
-    // no-op when debounce is disabled
-  }, []);
+    debouncedRefresh();
+  }, [analysisDone, debouncedRefresh]);
 
   useNomenklatorPersistence({
     settings,
@@ -669,8 +725,12 @@ export function useNomenklator() {
 
   // uniqueCTTokenTexts comes from parsing hook
 
+  const totalPtCells = useMemo(
+    () => ptRows.reduce((a, r) => a + r.filter(c => c.ch !== '').length, 0),
+    [ptRows],
+  );
+
   const previewSelection = useCallback(() => {
-    const totalCells = ptRows.reduce((a, r) => a + r.filter(c => c.ch !== '').length, 0);
     let err: string | null = null;
     if (!bracketedIndices.length) {
       // When no deception/brackets are used, we can give the user quick feedback
@@ -680,25 +740,32 @@ export function useNomenklator() {
         // Treat groupSize as a maximum: allow final shorter group.
         // Number of logical groups equals ceil(total tokens / groupSize).
         const effGroups = Math.ceil(effectiveCtTokens.length / groupSize);
-        if (effGroups > totalCells) {
-          err = `Warning: too many CT groups by ${effGroups - totalCells}.`;
+        if (effGroups > totalPtCells) {
+          err = `Warning: too many CT groups by ${effGroups - totalPtCells}.`;
         }
       } else {
-        if (effectiveCtTokens.length > totalCells) err = `Warning: CT tokens exceed PT by ${effectiveCtTokens.length - totalCells}.`;
+        if (effectiveCtTokens.length > totalPtCells) err = `Warning: CT tokens exceed PT by ${effectiveCtTokens.length - totalPtCells}.`;
       }
     }
     setSelectionError(err);
     return err;
-  }, [bracketedIndices.length, effectiveCtTokens.length, fixedLength, ptRows, setSelectionError, ctParseMode]);
+  }, [bracketedIndices.length, effectiveCtTokens.length, fixedLength, totalPtCells, setSelectionError, ctParseMode]);
+
+  const scoreOnePrecomputed = useMemo(() => {
+    const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
+    return {
+      gs,
+      occMap: buildOccMap(effectiveCtTokens, gs),
+      ptCharFlatIndexMap: buildPTCharFlatIndexMap(ptRows),
+      deceptionCount: countTotalDeceptionTokens(columns),
+    } as const;
+  }, [columns, ctParseMode, effectiveCtTokens, fixedLength, ptRows]);
 
   // Choose suggestions where candidates have score==1 for that PT char.
   // Single mode: exactly one score==1 required (ambiguous = error).
   // Multi mode: all score==1 candidates are selected together (that's the point of homophones).
   const chooseScoreOneSuggestions = useCallback(() => {
-    const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
-    const precomputedOccMap = buildOccMap(effectiveCtTokens, gs);
-    const precomputedPTCharFlatIndexMap = buildPTCharFlatIndexMap(ptRows);
-    const precomputedDeceptionCount = countTotalDeceptionTokens(columns);
+    const { gs, occMap, ptCharFlatIndexMap, deceptionCount } = scoreOnePrecomputed;
 
     const collectEnabledPerfectTokens = (ch: string, list: typeof candidatesByChar[string]) => {
       const lockedVal = lockedKeys?.[ch];
@@ -717,9 +784,9 @@ export function useNomenklator() {
         selectionVal: normalizedSelection,
         lockedVal: normalizedLocked,
         sharedColumns: columns,
-        _occMap: precomputedOccMap,
-        _ptCharFlatIndexMap: precomputedPTCharFlatIndexMap,
-        _deceptionCount: precomputedDeceptionCount,
+        _occMap: occMap,
+        _ptCharFlatIndexMap: ptCharFlatIndexMap,
+        _deceptionCount: deceptionCount,
       }));
 
       return opts
@@ -781,7 +848,7 @@ export function useNomenklator() {
     if (Object.keys(picks).length) setSelections(prev => ({ ...prev, ...picks } as SelectionMap));
     setSelectionError(null);
     return true;
-  }, [candidatesByChar, columns, effectiveCtTokens, fixedLength, keysPerPTMode, lockedKeys, ptRows, reservedTokens, selections, setSelectionError, setSelections, ctParseMode]);
+  }, [candidatesByChar, columns, effectiveCtTokens, keysPerPTMode, lockedKeys, ptRows, reservedTokens, scoreOnePrecomputed, selections, setSelectionError, setSelections]);
 
   const editCtToken = useCallback((effIndex: number, newText: string) => {
     // Map effective index (skipping bracketed tokens) back to original index
@@ -850,12 +917,9 @@ export function useNomenklator() {
       }
     }
     if (Object.keys(newLocks).length) {
-      setLockedKeys(prev => ({ ...prev, ...newLocks }));
-      // Clear selections after applying
-      setSelections({});
-      setAppliedSelectionsForMapping({});
+      dispatchSelectionState({ type: 'applySelectionLocks', newLocks });
     }
-  }, [keysPerPTMode, lockedKeys, previewSelection, selections, setSelections]);
+  }, [keysPerPTMode, lockedKeys, previewSelection, selections]);
 
   // Merge adjacent PT groups: fromIndex merged into toIndex (concatenate text), only if toIndex is adjacent (fromIndex+1)
   const joinPTAt = useCallback((fromIndex: number, toIndex: number) => {

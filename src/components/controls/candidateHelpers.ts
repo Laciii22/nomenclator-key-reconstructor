@@ -10,6 +10,43 @@ export type CandidateOption = {
   score: number;
 };
 
+export function buildCandidateOptionCacheKey(params: {
+  c: { token: string; score: number };
+  ch: string;
+  groupSize: number;
+  tokenOccurrences: number[];
+  cellFlatIndex: number;
+  deceptionCount: number;
+  isReservedByOther: boolean;
+  selectionArr: string[];
+  lockedArr: string[];
+}): string {
+  const {
+    c,
+    ch,
+    groupSize,
+    tokenOccurrences,
+    cellFlatIndex,
+    deceptionCount,
+    isReservedByOther,
+    selectionArr,
+    lockedArr,
+  } = params;
+
+  return [
+    ch,
+    c.token,
+    c.score,
+    groupSize,
+    cellFlatIndex,
+    deceptionCount,
+    isReservedByOther ? 1 : 0,
+    selectionArr.join(','),
+    lockedArr.join(','),
+    tokenOccurrences.join(','),
+  ].join('|');
+}
+
 /**
  * Build a fast lookup map: PT char -> first flat index in the rendered PT grid.
  * Empty PT cells are ignored (same indexing rule as computeFlatIndexForChar).
@@ -108,6 +145,10 @@ export function buildCandidateOptions(params: {
   _ptCharFlatIndexMap?: Record<string, number>;
   /** Precomputed deception token count for this grid snapshot. */
   _deceptionCount?: number;
+  /** Optional cache map to skip recomputing equivalent options. */
+  _cache?: Map<string, CandidateOption>;
+  /** Optional prebuilt cache key. */
+  _cacheKey?: string;
 }): CandidateOption {
   const {
     c,
@@ -142,6 +183,23 @@ export function buildCandidateOptions(params: {
     deceptionCount
   );
 
+  const cache = params._cache;
+  const cacheKey = params._cacheKey ?? buildCandidateOptionCacheKey({
+    c,
+    ch,
+    groupSize,
+    tokenOccurrences,
+    cellFlatIndex,
+    deceptionCount,
+    isReservedByOther,
+    selectionArr,
+    lockedArr,
+  });
+
+  if (cache && cache.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+
   const disabled = isReservedByOther || hasInvalidPosition;
   const scoreStr = ` (score: ${c.score.toFixed(2)})`;
   
@@ -158,11 +216,14 @@ export function buildCandidateOptions(params: {
 
   const isLocked = lockedArr.includes(c.token);
   
-  return {
+  const result: CandidateOption = {
     token: c.token,
     disabled,
     title,
     label: `${c.token}${scoreStr}${isLocked ? ' (locked)' : ''}`,
     score: c.score,
   };
+
+  if (cache) cache.set(cacheKey, result);
+  return result;
 }

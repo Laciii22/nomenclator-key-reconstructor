@@ -1,7 +1,5 @@
 ﻿import * as React from 'react';
 import type { Candidate, SelectionMap } from '../utils/analyzer';
-import { fixedModeScore, separatorModeScore, buildFixedModeGridContext } from '../utils/analyzer';
-import { countPtFrequency, countTokenFrequency } from '../utils/frequency';
 import { computeRowAlloc } from '../utils/allocation';
 import type { PTChar, CTToken, KeysPerPTMode } from '../types/domain';
 import buildLogicalTokens from '../utils/parse/logicalTokens';
@@ -75,6 +73,16 @@ export function useAnalysis(params: {
   const [analysisDone, setAnalysisDone] = React.useState(false);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
 
+  React.useEffect(() => {
+    return () => {
+      latestRequestId += 1;
+      if (analysisWorker) {
+        analysisWorker.terminate();
+        analysisWorker = null;
+      }
+    };
+  }, []);
+
   const augmentCandidatesWithCurrentMapping = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
     if (ctParseMode !== 'fixedLength') return base;
 
@@ -115,48 +123,6 @@ export function useAnalysis(params: {
     return result;
   }, [columns, effectiveCtTokens, fixedLength, gridTokenSet, keysPerPTMode, ctParseMode]);
 
-  const filterCandidatesForShiftedGrid = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
-    if (ctParseMode !== 'fixedLength') return base;
-
-    // Only keep candidates that exist as a token in the *current shifted grid*
-    // OR have a non-zero score.
-    const out: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(base)) {
-      out[ch] = list.filter(c => c.score > 0 || gridTokenSet.has(c.token));
-    }
-    return out;
-  }, [gridTokenSet, ctParseMode]);
-
-  const applyScores = React.useCallback((base: Record<string, Candidate[]>): Record<string, Candidate[]> => {
-    if (ctParseMode !== 'fixedLength') {
-      // Precompute frequency maps once for the entire batch
-      const ptFreq = countPtFrequency(ptRows);
-      const tokenFreq = countTokenFrequency(effectiveCtTokens);
-      const precomputed = { ptFreq, tokenFreq } as const;
-
-      const out: Record<string, Candidate[]> = {};
-      for (const [ch, list] of Object.entries(base)) {
-        out[ch] = list.map(c => {
-          const scored = separatorModeScore({ token: c.token, ptChar: ch, ptRows, effectiveCtTokens, _precomputed: precomputed });
-          return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
-        });
-      }
-      return out;
-    }
-
-    // Precompute grid context once for the entire batch
-    const gridCtx = buildFixedModeGridContext(columns, effectiveCtTokens);
-    const gs = fixedLength || 1;
-    const out: Record<string, Candidate[]> = {};
-    for (const [ch, list] of Object.entries(base)) {
-      out[ch] = list.map(c => {
-        const scored = fixedModeScore({ token: c.token, ptChar: ch, columns, effectiveCtTokens, groupSize: gs, keysPerPTMode, _gridCtx: gridCtx });
-        return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
-      });
-    }
-    return out;
-  }, [columns, effectiveCtTokens, fixedLength, ptRows, ctParseMode, keysPerPTMode]);
-
   /**
    * Shared worker dispatch: builds logical tokens, posts the analysis request,
    * and calls `onResult` with the final sorted candidate map.
@@ -172,14 +138,29 @@ export function useAnalysis(params: {
       const requestId = ++latestRequestId;
 
       const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
-        if (e.data.type === 'analyze-result') {
-          worker.removeEventListener('message', handleMessage);
-          if (requestId !== latestRequestId) return;
+        if (requestId !== latestRequestId || e.data.requestId !== requestId) return;
 
+        if (e.data.type === 'analyze-result') {
           const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
-          const scored = applyScores(augmented);
-          const filtered = filterCandidatesForShiftedGrid(scored);
-          const sorted = sortCandidates(filtered);
+          const scoreRequest: AnalysisWorkerRequest = {
+            type: 'score-candidates',
+            requestId,
+            candidatesByChar: augmented,
+            ptRows: ptRows as PTChar[][],
+            ctParseMode,
+            fixedLength,
+            effectiveCtTokens,
+            columns,
+            keysPerPTMode,
+            gridTokenSet: Array.from(gridTokenSet),
+          };
+          worker.postMessage(scoreRequest);
+          return;
+        }
+
+        if (e.data.type === 'score-candidates-result') {
+          worker.removeEventListener('message', handleMessage);
+          const sorted = sortCandidates(e.data.candidatesByChar);
           onResult(sorted);
         }
       };
@@ -188,6 +169,7 @@ export function useAnalysis(params: {
 
       const request: AnalysisWorkerRequest = {
         type: 'analyze',
+        requestId,
         ptRows: ptRows as PTChar[][],
         ctTokens: logicalTokens,
         rowGroups: baseCounts,
@@ -198,7 +180,7 @@ export function useAnalysis(params: {
 
       worker.postMessage(request);
     },
-    [applyScores, augmentCandidatesWithCurrentMapping, effectiveCtTokens, filterCandidatesForShiftedGrid, fixedLength, keysPerPTMode, lockedKeys, ptRows, ctParseMode, getWorker],
+    [augmentCandidatesWithCurrentMapping, columns, effectiveCtTokens, fixedLength, keysPerPTMode, lockedKeys, ptRows, ctParseMode, getWorker, gridTokenSet],
   );
 
   const runAnalysis = React.useCallback(() => {
