@@ -97,6 +97,121 @@ export function countTotalDeceptionTokens(sharedColumns: Column[][]): number {
 }
 
 /**
+ * Derive soft suggestions per PT char from the current mapping.
+ * Only stable (non-tentative) PT->CT cells are considered.
+ */
+export function buildSuggestedTokensByChar(
+  sharedColumns: Column[][],
+  effectiveCtTokens: CTToken[],
+  lockedKeys?: Record<string, string | string[]>,
+): Record<string, string[]> {
+  const flatCols: Column[] = [];
+  for (const row of sharedColumns) {
+    for (const col of row) {
+      flatCols.push(col);
+    }
+  }
+
+  const isCharLocked = (ch: string): boolean => {
+    const val = lockedKeys?.[ch];
+    if (Array.isArray(val)) return val.length > 0;
+    return Boolean(val);
+  };
+
+  const anchorIndices: number[] = [];
+  for (let i = 0; i < flatCols.length; i++) {
+    const col = flatCols[i];
+    if (col.pt?.ch && isCharLocked(col.pt.ch)) anchorIndices.push(i);
+  }
+
+  const findLeftAnchor = (idx: number): number => {
+    let left = -1;
+    for (const a of anchorIndices) {
+      if (a < idx) left = a;
+      else break;
+    }
+    return left;
+  };
+
+  const findRightAnchor = (idx: number): number => {
+    for (const a of anchorIndices) {
+      if (a > idx) return a;
+    }
+    return -1;
+  };
+
+  const segmentEligible = new Map<string, boolean>();
+
+  const isInsideUnambiguousLockedSegment = (idx: number): boolean => {
+    const left = findLeftAnchor(idx);
+    const right = findRightAnchor(idx);
+    if (left < 0 || right < 0 || right - left <= 1) return false;
+
+    const key = `${left}-${right}`;
+    if (segmentEligible.has(key)) return segmentEligible.get(key)!;
+
+    let ok = true;
+    for (let j = left + 1; j < right; j++) {
+      const col = flatCols[j];
+      // Any null/deception or tentative cell means this segment is ambiguous.
+      if (!col.pt || col.deception || col.tentative) {
+        ok = false;
+        break;
+      }
+    }
+
+    segmentEligible.set(key, ok);
+    return ok;
+  };
+
+  // PT cells inside an overloaded lock-anchor segment are ambiguous.
+  const blockedPtCellIndices = new Set<number>();
+  for (let i = 0; i + 1 < anchorIndices.length; i++) {
+    const left = anchorIndices[i];
+    const right = anchorIndices[i + 1];
+    if (right - left <= 1) continue;
+
+    let hasDeceptionInside = false;
+    for (let j = left + 1; j < right; j++) {
+      const col = flatCols[j];
+      if (!col.pt || col.deception) {
+        hasDeceptionInside = true;
+        break;
+      }
+    }
+    if (!hasDeceptionInside) continue;
+
+    for (let j = left + 1; j < right; j++) {
+      const col = flatCols[j];
+      if (col.pt && !col.deception && !isCharLocked(col.pt.ch)) {
+        blockedPtCellIndices.add(j);
+      }
+    }
+  }
+
+  const byChar = new Map<string, Set<string>>();
+
+  for (let i = 0; i < flatCols.length; i++) {
+    const col = flatCols[i];
+    if (blockedPtCellIndices.has(i)) continue;
+    if (!col.pt || col.deception || col.tentative || !col.ct || col.ct.length === 0) continue;
+    if (!isInsideUnambiguousLockedSegment(i)) continue;
+
+    const token = col.ct.map(idx => effectiveCtTokens[idx]?.text ?? '').join('');
+    if (!token) continue;
+
+    if (!byChar.has(col.pt.ch)) byChar.set(col.pt.ch, new Set<string>());
+    byChar.get(col.pt.ch)!.add(token);
+  }
+
+  const out: Record<string, string[]> = {};
+  for (const [ch, tokens] of byChar.entries()) {
+    out[ch] = Array.from(tokens);
+  }
+  return out;
+}
+
+/**
  * Check if token position is valid based on expected PT character position.
  * Accounts for deception tokens which can shift expected positions.
  */

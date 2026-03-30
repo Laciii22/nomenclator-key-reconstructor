@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { buildCandidateOptions, buildPTCharFlatIndexMap, countTotalDeceptionTokens } from './candidateHelpers';
+import { buildCandidateOptions, buildPTCharFlatIndexMap, countTotalDeceptionTokens, buildSuggestedTokensByChar } from './candidateHelpers';
 import { buildOccMap } from '../../utils/parseStrategies';
 import {
   extendCandidateListWithLocked,
@@ -60,6 +60,11 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
     [sharedColumns],
   );
 
+  const suggestedTokensByChar = React.useMemo(
+    () => buildSuggestedTokensByChar(sharedColumns, effectiveCtTokens, lockedKeys),
+    [sharedColumns, effectiveCtTokens, lockedKeys],
+  );
+
   const sortedCandidatesByChar = React.useMemo(() => {
     const result: Record<string, Candidate[]> = {};
     for (const [ch, list] of charEntries) {
@@ -69,6 +74,11 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
     }
     return result;
   }, [charEntries, lockedKeys]);
+
+  const hasAnyLock = React.useMemo(
+    () => Object.values(lockedKeys).some((v) => typeof v === 'string' && v.length > 0),
+    [lockedKeys],
+  );
 
   const totalChars = Object.keys(candidatesByChar).length;
   const assignedChars = Object.entries(candidatesByChar).filter(([ch]) => lockedKeys[ch] || selections[ch]).length;
@@ -89,6 +99,9 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
           const currentValue = getCurrentSelectorValue(lockedVal, normalizedSelectionVal);
           const disabledSelect = Boolean(lockedVal);
           const sortedByScore = sortedCandidatesByChar[ch] ?? [];
+          const suggestedTokens = hasAnyLock ? (suggestedTokensByChar[ch] ?? []) : [];
+          const suggestedToken = suggestedTokens.length === 1 ? suggestedTokens[0] : null;
+          const showSuggestion = !lockedVal && !normalizedSelectionVal && Boolean(suggestedToken);
 
           return (
             <div key={ch} className="flex items-center gap-3">
@@ -96,7 +109,7 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
                 <span className={`inline-block px-2 py-0.5 rounded border ${getPTCharBadgeClasses(Boolean(lockedVal))}`} title={lockedVal ? `Locked: ${lockedVal}` : undefined}>{ch}</span>
               </div>
               <select
-                className={getSelectorInputClasses(disabledSelect)}
+                className={`${getSelectorInputClasses(disabledSelect)} ${showSuggestion ? 'ring-1 ring-amber-300 bg-amber-50' : ''}`}
                 value={currentValue}
                 disabled={disabledSelect}
                 onChange={(e) => {
@@ -122,13 +135,12 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
                     _deceptionCount: deceptionCount,
                   });
                   return (
-                    <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>{opt.label}</option>
+                    <option key={idx} value={opt.token} disabled={opt.disabled} title={opt.title}>
+                      {opt.label}{showSuggestion && opt.token === suggestedToken ? ' (suggested)' : ''}
+                    </option>
                   );
                 })}
               </select>
-              {lockedVal && (
-                <span className="text-xs text-green-700">locked: {lockedVal}</span>
-              )}
             </div>
           );
         })}

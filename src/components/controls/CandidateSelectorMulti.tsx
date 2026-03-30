@@ -16,6 +16,7 @@ import {
   buildCandidateOptionCacheKey,
   buildPTCharFlatIndexMap,
   countTotalDeceptionTokens,
+  buildSuggestedTokensByChar,
   type CandidateOption,
 } from './candidateHelpers';
 import { sortCandidatesByScore } from './candidateSelectorCommon';
@@ -149,6 +150,11 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
     [sharedColumns],
   );
 
+  const suggestedTokensByChar = React.useMemo(
+    () => buildSuggestedTokensByChar(sharedColumns, effectiveCtTokens, lockedKeys),
+    [sharedColumns, effectiveCtTokens, lockedKeys],
+  );
+
   const tokenOwners = React.useMemo(() => {
     const owners = new Map<string, Set<string>>();
 
@@ -272,6 +278,11 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
     return byChar;
   }, [sortedCandidatesByChar]);
 
+  const hasAnyLock = React.useMemo(
+    () => Object.values(lockedKeys).some((v) => (Array.isArray(v) ? v.length > 0 : Boolean(v))),
+    [lockedKeys],
+  );
+
   const handleToggleToken = React.useCallback((char: string, token: string) => {
     setSelections(prev => {
       const currentArr = normalizeToArray(prev[char]);
@@ -333,8 +344,14 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
       <div className="max-h-[172px] space-y-1.5 overflow-y-auto pr-1">
         {model.optionRows.map(({ c, opt }, idx) => {
           const token = c.token;
+          const suggestedTokens = hasAnyLock ? (suggestedTokensByChar[model.ch] ?? []) : [];
           const isLockedToken = model.lockedTokens.includes(token);
           const isSelectedToken = model.selectedTokens.includes(token);
+          const isSuggestedToken = Boolean(
+            suggestedTokens.includes(token)
+            && !isLockedToken
+            && !isSelectedToken
+          );
           const isChecked = isLockedToken || isSelectedToken;
           const budget = supportBudgetByChar[model.ch];
           const chosen = new Set<string>([...model.lockedTokens, ...model.selectedTokens]);
@@ -366,7 +383,9 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                     ? 'border-blue-200 bg-blue-50 hover:bg-blue-100'
                     : isDisabled
                       ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-55'
-                      : 'border-transparent bg-slate-50/50 hover:border-slate-200 hover:bg-slate-100'
+                      : isSuggestedToken
+                        ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+                        : 'border-transparent bg-slate-50/50 hover:border-slate-200 hover:bg-slate-100'
               }`}
               title={
                 isUsedElsewhere
@@ -384,7 +403,9 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                 onChange={() => handleToggleToken(model.ch, token)}
               />
               <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="font-mono font-medium text-slate-800">{token}</span>
+                <span className="font-mono font-medium text-slate-800">
+                  {token}{isSuggestedToken ? ' (suggested)' : ''}
+                </span>
                 <span className="shrink-0 text-xs text-slate-500" title="Score / Support / Occurrences">
                   {c.score.toFixed(2)} ({c.support}/{c.occurrences})
                 </span>
@@ -403,6 +424,8 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   ), [
     tokenOwners,
     reservedTokens,
+    hasAnyLock,
+    suggestedTokensByChar,
     supportBudgetByChar,
     handleToggleToken,
   ]);
