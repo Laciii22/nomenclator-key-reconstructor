@@ -98,9 +98,11 @@ function allocateLockedWithLocalLookahead(
   groupSize: number,
   ctTokens: CTToken[],
   tokenOwners: Map<string, Set<string>>,
+  maxSkippedGroups: number,
 ): { columns: Column[]; tokensConsumed: number; found: boolean } {
   const cols: Column[] = [];
   let ptr = tokenPtr;
+  let skippedGroups = 0;
 
   while (ptr < ctTokens.length) {
     const seq = buildTokenSequence(ctTokens, ptr, groupSize);
@@ -118,9 +120,14 @@ function allocateLockedWithLocalLookahead(
       };
     }
 
+    if (skippedGroups >= maxSkippedGroups) {
+      break;
+    }
+
     const skipped = createTokenGroup(ptr, groupSize, ctTokens.length);
     cols.push({ pt: null, ct: skipped, deception: true });
     ptr += skipped.length;
+    skippedGroups += 1;
   }
 
   return {
@@ -205,6 +212,7 @@ export function buildMultiKeyColumns(
   selections?: Record<string, string | string[] | null>,
   groupSize: number = 1,
 ): Column[][] {
+  const MAX_LOOKAHEAD_SKIPPED_GROUPS = 1;
   const filteredRows = ptRows.map(r => r.filter(c => c.ch !== ''));
   const allLocked = mergeLockAndSelection(lockedKeys, selections);
   // Build token ownership map only from confirmed lockedKeys (not transient selections)
@@ -261,6 +269,7 @@ export function buildMultiKeyColumns(
         groupSize,
         ctTokens,
         tokenOwners,
+        MAX_LOOKAHEAD_SKIPPED_GROUPS,
       );
 
       if (lookahead.found && lookahead.tokensConsumed > 0) {

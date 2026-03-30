@@ -151,4 +151,35 @@ describe('buildMultiKeyColumns', () => {
     expect(columns[0][2].deception).toBe(true);
     expect(columns[0][2].ct).toEqual([2]);
   });
+
+  it('limits lookahead to one skipped group and keeps farther mismatch tentative', () => {
+    const ptRows = makePtRow('AHH');
+    const ctTokens = makeCtTokens(['11', '44', '66', '22']);
+
+    const columns = buildMultiKeyColumns(
+      ptRows,
+      ctTokens,
+      { A: ['11'], H: ['22'] },
+      undefined,
+      1,
+    );
+
+    expect(columns).toHaveLength(1);
+
+    expect(columns[0][0].pt?.ch).toBe('A');
+    expect(columns[0][0].ct).toEqual([0]);
+
+    // First H stays sequential (tentative) instead of scanning far ahead.
+    expect(columns[0][1].pt?.ch).toBe('H');
+    expect(columns[0][1].ct).toEqual([1]);
+    expect(columns[0][1].tentative).toBe(true);
+
+    // Second H can still skip one token locally to reach 22.
+    expect(columns[0][2].pt).toBeNull();
+    expect(columns[0][2].deception).toBe(true);
+    expect(columns[0][2].ct).toEqual([2]);
+    expect(columns[0][3].pt?.ch).toBe('H');
+    expect(columns[0][3].ct).toEqual([3]);
+    expect(columns[0][3].tentative).toBeUndefined();
+  });
 });

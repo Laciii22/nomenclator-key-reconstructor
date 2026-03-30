@@ -342,7 +342,7 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			<div>
 			<div className="flex flex-wrap gap-3 mb-2 text-xs text-gray-500 select-none">
 				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200 border border-green-300"></span> Locked</span>
-				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-100 border border-yellow-300"></span> Unlocked</span>
+				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-100 border border-yellow-300"></span> Tentative</span>
 				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-50 border border-red-300"></span> Error / empty</span>
 				<span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-purple-50 border border-purple-300"></span> Highlighted</span>
 			</div>
