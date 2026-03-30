@@ -34,13 +34,28 @@ describe('buildMultiKeyColumns', () => {
     expect(columns[0][2].pt?.ch).toBe('A');
     expect(columns[0][2].ct).toEqual([2]);
 
-    expect(columns[0][3].pt).toBeNull();
-    expect(columns[0][3].deception).toBe(true);
+    // Without lookahead, H consumes sequentially (99 is not 22 or 33, so tentative).
+    expect(columns[0][3].pt?.ch).toBe('H');
     expect(columns[0][3].ct).toEqual([3]);
+    expect(columns[0][3].tentative).toBe(true);
 
-    expect(columns[0][4].pt?.ch).toBe('H');
+    // O consumes sequentially (no lock, so no tentative).
+    expect(columns[0][4].pt?.ch).toBe('O');
     expect(columns[0][4].ct).toEqual([4]);
     expect(columns[0][4].tentative).toBeUndefined();
+
+    // Rest become deception
+    expect(columns[0][5].pt).toBeNull();
+    expect(columns[0][5].deception).toBe(true);
+    expect(columns[0][5].ct).toEqual([5]);
+
+    expect(columns[0][6].pt).toBeNull();
+    expect(columns[0][6].deception).toBe(true);
+    expect(columns[0][6].ct).toEqual([6]);
+
+    expect(columns[0][7].pt).toBeNull();
+    expect(columns[0][7].deception).toBe(true);
+    expect(columns[0][7].ct).toEqual([7]);
   });
 
   it('keeps sequential allocation between locked anchors and marks mismatch as tentative', () => {
@@ -169,17 +184,19 @@ describe('buildMultiKeyColumns', () => {
     expect(columns[0][0].pt?.ch).toBe('A');
     expect(columns[0][0].ct).toEqual([0]);
 
-    // First H stays sequential (tentative) instead of scanning far ahead.
+    // With lookahead disabled, first H consumes sequentially without scanning.
     expect(columns[0][1].pt?.ch).toBe('H');
     expect(columns[0][1].ct).toEqual([1]);
     expect(columns[0][1].tentative).toBe(true);
 
-    // Second H can still skip one token locally to reach 22.
-    expect(columns[0][2].pt).toBeNull();
-    expect(columns[0][2].deception).toBe(true);
+    // Second H also consumes sequentially (no lookahead).
+    expect(columns[0][2].pt?.ch).toBe('H');
     expect(columns[0][2].ct).toEqual([2]);
-    expect(columns[0][3].pt?.ch).toBe('H');
+    expect(columns[0][2].tentative).toBe(true);
+
+    // Leftover token becomes deception.
+    expect(columns[0][3].pt).toBeNull();
+    expect(columns[0][3].deception).toBe(true);
     expect(columns[0][3].ct).toEqual([3]);
-    expect(columns[0][3].tentative).toBeUndefined();
   });
 });

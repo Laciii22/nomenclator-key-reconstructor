@@ -37,11 +37,18 @@ export function useMapping(params: {
 }) {
   const { ptRows, effectiveCtTokens, lockedKeys, selections, ctParseMode, groupSize, keysPerPTMode } = params;
 
+  // Calculate excess tokens to tune lookahead: excess = effective CT groups - PT char count
+  const excessGroups = React.useMemo(() => {
+    const totalPtChars = ptRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
+    const effectiveGroups = Math.floor(effectiveCtTokens.length / (groupSize || 1));
+    return Math.max(0, effectiveGroups - totalPtChars);
+  }, [ptRows, effectiveCtTokens.length, groupSize]);
+
   // Base columns: use multi-key mapping for 'multiple' mode, shift mapping for 'single' mode
   const baseColumns: Column[][] = React.useMemo(() => {
     if (keysPerPTMode === 'multiple') {
       // Multi-key mode: build columns directly from multi-key locks (no shift mapping)
-      return buildMultiKeyColumns(ptRows, effectiveCtTokens, lockedKeys, selections, groupSize);
+      return buildMultiKeyColumns(ptRows, effectiveCtTokens, lockedKeys, selections, groupSize, excessGroups);
     } else {
       // Single-key mode: normalize to single-key and use shift-based mapping
       const normalizedLocks = normalizeLocks(lockedKeys);
@@ -51,7 +58,7 @@ export function useMapping(params: {
       }
       return buildShiftOnlyColumns(ptRows, effectiveCtTokens, normalizedLocks, normalizedSelections, groupSize);
     }
-  }, [keysPerPTMode, ptRows, effectiveCtTokens, lockedKeys, selections, groupSize]);
+  }, [keysPerPTMode, ptRows, effectiveCtTokens, lockedKeys, selections, groupSize, excessGroups]);
 
   // Manual per-PT token counts for fixed-length mode to support interactive shifting.
   // Null means "use baseColumns as-is"; counts are lazily initialized on first shift.

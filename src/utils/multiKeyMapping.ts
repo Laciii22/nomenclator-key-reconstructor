@@ -204,6 +204,7 @@ function appendRemainingTokens(
  * - Keep CT order; never scan-forward and inject deception just to hit selected token.
  * - Locked token that belongs to another PT char is a hard boundary (current cell stays empty).
  * - Otherwise consume sequentially; if current token does not match this char lock, mark tentative.
+ * - Lookahead is bounded by `maxLookaheadSkippedGroups`, which equals the excess CT token count.
  */
 export function buildMultiKeyColumns(
   ptRows: PTChar[][],
@@ -211,8 +212,8 @@ export function buildMultiKeyColumns(
   lockedKeys?: Record<string, string | string[]>,
   selections?: Record<string, string | string[] | null>,
   groupSize: number = 1,
+  maxLookaheadSkippedGroups: number = 0,
 ): Column[][] {
-  const MAX_LOOKAHEAD_SKIPPED_GROUPS = 1;
   const filteredRows = ptRows.map(r => r.filter(c => c.ch !== ''));
   const allLocked = mergeLockAndSelection(lockedKeys, selections);
   // Build token ownership map only from confirmed lockedKeys (not transient selections)
@@ -269,7 +270,7 @@ export function buildMultiKeyColumns(
         groupSize,
         ctTokens,
         tokenOwners,
-        MAX_LOOKAHEAD_SKIPPED_GROUPS,
+        maxLookaheadSkippedGroups,
       );
 
       if (lookahead.found && lookahead.tokensConsumed > 0) {
