@@ -405,8 +405,8 @@ const KeyTable: React.FC<KeyTableProps & {
                           <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
                         </button>
                       )}
-                      {/* Highlighter icon only for unlocked rows */}
-                      {onToggleHighlightOT && !isLocked ? (
+                      {/* Highlighter icon in single mode only for conflict rows; in multi mode for unlocked rows */}
+                      {onToggleHighlightOT && !isLocked && (keysPerPTMode === 'multiple' || isRowError) ? (
                         <button
                           className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
                           onClick={() => onToggleHighlightOT(row.pt)}

@@ -20,6 +20,12 @@ describe('Integration: homophone (multi-key) workflow', () => {
     return { ptRows, parsed, ctTokens, rowGroups };
   }
 
+  function deriveLookaheadFromExcess(ptRows: PTChar[][], ctTokenCount: number, groupSize = 1): number {
+    const ptCount = ptRows.reduce((sum, row) => sum + row.filter(c => c.ch !== '').length, 0);
+    const ctGroups = Math.floor(ctTokenCount / Math.max(1, groupSize));
+    return Math.max(0, ctGroups - ptCount);
+  }
+
   it('filters far-away token candidates by deception range in multi-key analysis', () => {
     const { ptRows, ctTokens, rowGroups } = setup();
 
@@ -44,7 +50,8 @@ describe('Integration: homophone (multi-key) workflow', () => {
     expect(analyzed.proposedLocks['H']).toEqual(['22', '33']);
     assertAnalysisInvariants(analyzed, ctTokens.length);
 
-    const columns = buildMultiKeyColumns(ptRows, ctTokens, locked, { O: ['66'] }, 1);
+    const lookahead = deriveLookaheadFromExcess(ptRows, ctTokens.length, 1);
+    const columns = buildMultiKeyColumns(ptRows, ctTokens, locked, { O: ['66'] }, 1, lookahead);
 
     expect(columns).toHaveLength(1);
 
@@ -60,7 +67,7 @@ describe('Integration: homophone (multi-key) workflow', () => {
     expect(columns[0][4].pt?.ch).toBe('H');
     expect(columns[0][4].ct).toEqual([4]);
 
-    // H local-lookahead skips 99 as deception and confirms 33.
+    // H local-lookahead skips 99 as deception and confirms 33
     expect(columns[0][3].pt).toBeNull();
     expect(columns[0][3].deception).toBe(true);
     expect(columns[0][3].ct).toEqual([3]);

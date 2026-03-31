@@ -10,6 +10,8 @@
 
 import React from 'react';
 import Modal from './Modal';
+import lockIcon from '../../assets/icons/padlock.png';
+import moveIcon from '../../assets/icons/highlighter.png';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -88,9 +90,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           <div className="space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 flex-shrink-0 bg-green-100 rounded flex items-center justify-center">
-                <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
-                </svg>
+                <img src={lockIcon} alt="" aria-hidden="true" className="w-4 h-4" />
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900">Lock/Unlock</h4>
@@ -100,9 +100,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 flex-shrink-0 bg-blue-100 rounded flex items-center justify-center">
-                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                </svg>
+                <img src={moveIcon} alt="" aria-hidden="true" className="w-4 h-4" />
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900">Drag & Drop</h4>

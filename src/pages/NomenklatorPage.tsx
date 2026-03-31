@@ -12,6 +12,9 @@ import CandidateSelectorMulti from '../components/controls/CandidateSelectorMult
 import FileImport from '../components/controls/FileImport';
 import { useNomenklator } from '../hooks/useNomenklator';
 import type { SelectionMap, DragData } from '../types/domain';
+import plusIcon from '../assets/icons/plus.png';
+import dangerIcon from '../assets/icons/danger.png';
+import questionIcon from '../assets/icons/question.png';
 
 const FrequencyModal = React.lazy(() => import('../components/common/FrequencyModal'));
 const HelpModal = React.lazy(() => import('../components/common/HelpModal'));
@@ -397,9 +400,9 @@ const NomenklatorPage: React.FC = () => {
               >
                 <span className="mt-0.5 flex-shrink-0">
                   {klamacStatus === 'ok' ? (
-                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  ) : (
-                    <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                    <img src={questionIcon} alt="" aria-hidden="true" className="w-4 h-4" />
+                ) : (
+                    <img src={dangerIcon} alt="" aria-hidden="true" className="w-4 h-4" />
                   )}
                 </span>
                 <span>{statusMessage}</span>
@@ -467,7 +470,7 @@ const NomenklatorPage: React.FC = () => {
                       className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
                       onClick={applySelection}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      <img src={plusIcon} alt="" aria-hidden="true" className="w-3.5 h-3.5" />
                       Apply
                     </button>
                   </div>
@@ -560,7 +563,7 @@ const NomenklatorPage: React.FC = () => {
               {mergeAllPrompt ? (
                 <div className="mb-2 text-sm border border-amber-200 rounded-lg p-3 bg-amber-50 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-amber-800">
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z"/></svg>
+                    <img src={questionIcon} alt="" aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
                     Found <strong>{mergeAllPrompt.remaining}</strong> more occurrence(s) of <span className="font-mono font-semibold">{mergeAllPrompt.pattern}</span>.
                   </div>
                   <div className="flex gap-2 flex-shrink-0">

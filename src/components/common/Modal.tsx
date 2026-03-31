@@ -9,6 +9,7 @@
  */
 
 import React, { useEffect } from 'react';
+import minusIcon from '../../assets/icons/minus.png';
 
 interface ModalProps {
   isOpen: boolean;
@@ -72,17 +73,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
             className="text-gray-400 hover:text-gray-600 transition-colors"
             aria-label="Close modal"
           >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <img src={minusIcon} alt="" aria-hidden="true" className="w-6 h-6 opacity-70" />
           </button>
         </div>
 

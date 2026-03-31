@@ -6,6 +6,8 @@
 
 import React from "react";
 import info from '../../assets/icons/question.png';
+import clearData from '../../assets/icons/clear-data.png';
+import frequency from '../../assets/icons/frequency.png';
 
 interface NavbarProps {
   onHelpClick?: () => void;
@@ -36,7 +38,7 @@ const Navbar: React.FC<NavbarProps> = ({ onHelpClick, onFrequencyClick, onClearP
                             aria-label="Clear saved data"
                             title="Clear all saved data from local storage. This cannot be undone. [ESC]"
                         >
-                            <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <img src={clearData} alt="" aria-hidden="true" className="w-4 h-4" />
                             <span className="text-sm font-medium">Clear data</span>
                         </button>
                     )}
@@ -47,7 +49,7 @@ const Navbar: React.FC<NavbarProps> = ({ onHelpClick, onFrequencyClick, onClearP
                             aria-label="Show token frequency"
                             title="Show token frequency [Space]"
                         >
-                            <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                            <img src={frequency} alt="" aria-hidden="true" className="w-4 h-4" />
                             <span className="text-sm font-medium">Frequency</span>
                         </button>
                     )}
