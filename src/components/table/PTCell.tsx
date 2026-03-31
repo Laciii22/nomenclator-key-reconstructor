@@ -218,7 +218,7 @@ const PTCell: React.FC<PTCellProps> = ({
   const isValidPtHover = isOver && isDraggingOT && canAcceptPtMergeDrop;
 
   const hasError = deception || (isEmptyRealPtCell && !isTentative) || isDuplicateKey;
-  const isHighlighted = Boolean(pt && highlightedPTChar === pt.ch);
+  const isHighlighted = Boolean(pt && highlightedPTChar === pt.ch && !lockedValue);
   const canShowFixedLengthActions = Boolean(
     isFixedLength 
     && !lockedValue 

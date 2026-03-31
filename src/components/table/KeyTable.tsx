@@ -214,10 +214,14 @@ const KeyTable: React.FC<KeyTableProps & {
     const meta = rowMetaByOT[highlightedPTChar];
     if (!meta) return;
 
+    // Highlight is never allowed for locked rows.
+    if (meta.isLocked) {
+      onToggleHighlightOT(highlightedPTChar);
+      return;
+    }
+
     if (keysPerPTMode === 'multiple') {
-      // In multi-key mode keep highlight sticky until user turns it off,
-      // or automatically clear once the highlighted PT gets locked.
-      if (meta.isLocked) onToggleHighlightOT(highlightedPTChar);
+      // In multi-key mode keep highlight sticky until user turns it off.
       return;
     }
 
