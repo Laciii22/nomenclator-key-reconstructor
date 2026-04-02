@@ -90,12 +90,21 @@ const PTCell: React.FC<PTCellProps> = ({
   } = useMappingCellContext();
 
   const isFixedLength = groupSize > 1;
+  const shiftIndex = typeof baseFlatIndex === 'number' ? baseFlatIndex : flatIndex;
+
+  const hasConfiguredPtLock = React.useMemo((): boolean => {
+    if (!pt) return false;
+    const lock = lockedKeys[pt.ch];
+    if (typeof lock === 'string') return lock.length > 0;
+    if (Array.isArray(lock)) return lock.length > 0;
+    return false;
+  }, [pt, lockedKeys]);
 
   // Derive shift permissions for THIS cell from the shared shiftMeta array
-  const canShiftLeft = (shiftMeta && typeof flatIndex === 'number')
-    ? (shiftMeta[flatIndex]?.canShiftLeft ?? false) : false;
-  const canShiftRight = (shiftMeta && typeof flatIndex === 'number')
-    ? (shiftMeta[flatIndex]?.canShiftRight ?? false) : false;
+  const canShiftLeft = (shiftMeta && typeof shiftIndex === 'number')
+    ? (shiftMeta[shiftIndex]?.canShiftLeft ?? false) : false;
+  const canShiftRight = (shiftMeta && typeof shiftIndex === 'number')
+    ? (shiftMeta[shiftIndex]?.canShiftRight ?? false) : false;
 
   // When we handle an action on pointer down, browsers may still fire a click
   // afterwards (or may cancel it). Use this flag to avoid double-triggering.
@@ -207,7 +216,7 @@ const PTCell: React.FC<PTCellProps> = ({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: pt ? `pt-${row}-${col}` : `pt-empty-${row}-${col}`,
     data: { type: 'pt', ptChar: pt?.ch, flatIndex, sourceRow: row, sourceCol: col },
-    disabled: !pt || Boolean(lockedValue),
+    disabled: !pt || hasConfiguredPtLock,
   });
 
   // Visual-only drop affordance for PT merging (real enforcement in resolveMergeFromEvent in MappingGrid)
@@ -221,9 +230,9 @@ const PTCell: React.FC<PTCellProps> = ({
   const isHighlighted = Boolean(pt && highlightedPTChar === pt.ch && !lockedValue);
   const canShowFixedLengthActions = Boolean(
     isFixedLength 
-    && !lockedValue 
-    && typeof flatIndex === 'number' 
-    && flatIndex >= 0
+    && !hasConfiguredPtLock
+    && typeof shiftIndex === 'number'
+    && shiftIndex >= 0
   );
 
   // Handle lock/unlock toggle.
@@ -256,10 +265,10 @@ const PTCell: React.FC<PTCellProps> = ({
   }, [flatIndex, onInsertAfterGroup]);
 
   const splitGroup = React.useCallback(() => {
-    if (lockedValue) return;
+    if (hasConfiguredPtLock) return;
     if (typeof flatPtIndex !== 'number' || flatPtIndex < 0) return;
     onSplitGroup?.(flatPtIndex);
-  }, [flatPtIndex, lockedValue, onSplitGroup]);
+  }, [flatPtIndex, hasConfiguredPtLock, onSplitGroup]);
 
   // Helper to render shift buttons for fixed-length mode
   const renderShiftButton = (
@@ -285,14 +294,14 @@ const PTCell: React.FC<PTCellProps> = ({
             e.stopPropagation();
             return;
           }
-          runPointerAction(e, () => onShift(flatIndex!));
+          runPointerAction(e, () => onShift(shiftIndex!));
         }}
         onClick={(e) => {
           e.stopPropagation();
           // Keyboard activation fallback.
           if (suppressNextClickRef.current) return;
           if (!canShift || !onShift) return;
-          onShift(flatIndex!);
+          onShift(shiftIndex!);
         }}
         disabled={!canShift}
         title={title}

@@ -14,7 +14,7 @@ import type { PTChar, CTToken } from '../types/domain';
 import { buildShiftOnlyColumns } from '../utils/shiftMapping';
 import { buildMultiKeyColumns } from '../utils/multiKeyMapping';
 import { normalizeLocks } from '../utils/frequency';
-import { canShiftLeft, canShiftRight, deriveCountsFromColumns, shiftLeft, shiftRight } from '../mapping/manualShift';
+import { deriveCountsFromColumns, shiftLeft, shiftRight } from '../mapping/manualShift';
 
 /**
  * Hook for computing and managing the PT→CT allocation grid.
@@ -158,26 +158,89 @@ export function useMapping(params: {
     return flat;
   }, [baseColumns]);
 
+  const lockedBaseCellIndices = React.useMemo(() => {
+    const locked = new Set<number>();
+    for (let i = 0; i < flatCols.length; i++) {
+      const cell = flatCols[i];
+      const ptCh = cell?.pt?.ch;
+      if (!ptCh) continue;
+      const lock = lockedKeys[ptCh];
+      if (typeof lock === 'string' && lock.length > 0) {
+        locked.add(i);
+        continue;
+      }
+      if (Array.isArray(lock) && lock.length > 0) {
+        locked.add(i);
+      }
+    }
+    return locked;
+  }, [flatCols, lockedKeys]);
+
+  const isFlatIndexLocked = React.useCallback((index: number): boolean => {
+    return lockedBaseCellIndices.has(index);
+  }, [lockedBaseCellIndices]);
+
+  const buildBaseCellTokenTexts = React.useCallback((
+    counts: number[],
+    insertedAfter: Set<number>,
+  ): string[] => {
+    const texts: string[] = new Array(flatCols.length).fill('');
+    let ptr = 0;
+    for (let i = 0; i < flatCols.length; i++) {
+      const count = Math.max(0, counts[i] ?? 0);
+      let txt = '';
+      for (let k = 0; k < count && ptr < effectiveCtTokens.length; k++) {
+        txt += effectiveCtTokens[ptr]?.text ?? '';
+        ptr++;
+      }
+      texts[i] = txt;
+      if (insertedAfter.has(i) && ptr < effectiveCtTokens.length) {
+        ptr += 1;
+      }
+    }
+    return texts;
+  }, [effectiveCtTokens, flatCols.length]);
+
+  const lockedTextsChanged = React.useCallback((
+    beforeCounts: number[],
+    beforeInserted: Set<number>,
+    afterCounts: number[],
+    afterInserted: Set<number>,
+  ): boolean => {
+    if (lockedBaseCellIndices.size === 0) return false;
+    const beforeTexts = buildBaseCellTokenTexts(beforeCounts, beforeInserted);
+    const afterTexts = buildBaseCellTokenTexts(afterCounts, afterInserted);
+    for (const idx of lockedBaseCellIndices) {
+      if ((beforeTexts[idx] ?? '') !== (afterTexts[idx] ?? '')) return true;
+    }
+    return false;
+  }, [buildBaseCellTokenTexts, lockedBaseCellIndices]);
+
   /** Check whether the neighbor at `neighborIndex` is a locked PT cell. */
   const isLockedNeighbor = React.useCallback((neighborIndex: number): boolean => {
     if (neighborIndex < 0 || neighborIndex >= flatCols.length) return false;
-    const cell = flatCols[neighborIndex];
-    if (!cell?.pt || typeof cell.pt !== 'object') return false;
-    const ptCh = cell.pt.ch;
-    return !!ptCh && Object.prototype.hasOwnProperty.call(lockedKeys, ptCh);
-  }, [flatCols, lockedKeys]);
+    return isFlatIndexLocked(neighborIndex);
+  }, [flatCols.length, isFlatIndexLocked]);
 
   const canShiftLeftAt = React.useCallback((index: number) => {
     const maxLen = groupSize || 1;
+    if (isFlatIndexLocked(index)) return false;
     if (isLockedNeighbor(index - 1)) return false;
-    return canShiftLeft(countsForUi, index, maxLen);
-  }, [countsForUi, groupSize, isLockedNeighbor]);
+    const next = shiftLeft(countsForUi, index, maxLen);
+    if (next === countsForUi) return false;
+    if (lockedTextsChanged(countsForUi, insertedNullAfter, next, insertedNullAfter)) return false;
+    return true;
+  }, [countsForUi, groupSize, insertedNullAfter, isFlatIndexLocked, isLockedNeighbor, lockedTextsChanged]);
 
   const canShiftRightAt = React.useCallback((index: number) => {
     const maxLen = groupSize || 1;
+    if (isFlatIndexLocked(index)) return false;
     if (isLockedNeighbor(index + 1)) return false;
-    return canShiftRight(countsForUi, index, maxLen);
-  }, [countsForUi, groupSize, isLockedNeighbor]);
+    const next = shiftRight(countsForUi, index, maxLen);
+    if (next === countsForUi) return false;
+    if (lockedTextsChanged(countsForUi, insertedNullAfter, next, insertedNullAfter)) return false;
+    return true;
+  }, [countsForUi, groupSize, insertedNullAfter, isFlatIndexLocked, isLockedNeighbor, lockedTextsChanged]);
 
   const shiftLeftAt = React.useCallback((index: number) => {
     if (ctParseMode !== 'fixedLength') return;
@@ -185,9 +248,11 @@ export function useMapping(params: {
     setManualPtCounts(prev => {
       const base = prev && prev.length ? prev : deriveCountsFromColumns(baseColumns, maxLen);
       const next = shiftLeft(base, index, maxLen);
-      return next === base ? prev : next;
+      if (next === base) return prev;
+      if (lockedTextsChanged(base, insertedNullAfter, next, insertedNullAfter)) return prev;
+      return next;
     });
-  }, [baseColumns, groupSize, ctParseMode]);
+  }, [baseColumns, groupSize, ctParseMode, lockedTextsChanged, insertedNullAfter]);
 
   const shiftRightAt = React.useCallback((index: number) => {
     if (ctParseMode !== 'fixedLength') return;
@@ -195,9 +260,11 @@ export function useMapping(params: {
     setManualPtCounts(prev => {
       const base = prev && prev.length ? prev : deriveCountsFromColumns(baseColumns, maxLen);
       const next = shiftRight(base, index, maxLen);
-      return next === base ? prev : next;
+      if (next === base) return prev;
+      if (lockedTextsChanged(base, insertedNullAfter, next, insertedNullAfter)) return prev;
+      return next;
     });
-  }, [baseColumns, groupSize, ctParseMode]);
+  }, [baseColumns, groupSize, ctParseMode, lockedTextsChanged, insertedNullAfter]);
 
   /**
    * Extract the last (direction='right') or first (direction='left') token from the cell at
@@ -207,23 +274,25 @@ export function useMapping(params: {
   const extractEdgeToken = React.useCallback((baseFlatIndex: number, direction: 'left' | 'right') => {
     if (ctParseMode !== 'fixedLength') return;
     const maxLen = groupSize || 1;
-    setManualPtCounts(prev => {
-      const base = prev && prev.length ? prev : deriveCountsFromColumns(baseColumns, maxLen);
-      if (baseFlatIndex < 0 || baseFlatIndex >= base.length) return prev;
-      if (base[baseFlatIndex] <= 0) return prev; // nothing to extract
-      const next = [...base];
-      next[baseFlatIndex] = next[baseFlatIndex] - 1;
-      return next;
-    });
-    setInsertedNullAfter(prev => {
-      const next = new Set(prev);
-      // For 'right': inject null AFTER source cell (= at sourceFlatIndex)
-      // For 'left':  inject null AFTER the cell immediately to the LEFT of source (= sourceFlatIndex - 1)
-      const insertAfter = direction === 'right' ? baseFlatIndex : baseFlatIndex - 1;
-      if (insertAfter >= 0) next.add(insertAfter);
-      return next;
-    });
-  }, [baseColumns, groupSize, ctParseMode]);
+    const base = manualPtCounts && manualPtCounts.length ? manualPtCounts : deriveCountsFromColumns(baseColumns, maxLen);
+    if (baseFlatIndex < 0 || baseFlatIndex >= base.length) return;
+    if (isFlatIndexLocked(baseFlatIndex)) return;
+    if (base[baseFlatIndex] <= 0) return; // nothing to extract
+
+    const nextCounts = [...base];
+    nextCounts[baseFlatIndex] = nextCounts[baseFlatIndex] - 1;
+
+    const nextInserted = new Set(insertedNullAfter);
+    // For 'right': inject null AFTER source cell (= at sourceFlatIndex)
+    // For 'left':  inject null AFTER the cell immediately to the LEFT of source (= sourceFlatIndex - 1)
+    const insertAfter = direction === 'right' ? baseFlatIndex : baseFlatIndex - 1;
+    if (insertAfter >= 0) nextInserted.add(insertAfter);
+
+    if (lockedTextsChanged(base, insertedNullAfter, nextCounts, nextInserted)) return;
+
+    setManualPtCounts(nextCounts);
+    setInsertedNullAfter(nextInserted);
+  }, [baseColumns, groupSize, ctParseMode, isFlatIndexLocked, manualPtCounts, insertedNullAfter, lockedTextsChanged]);
 
   /**
    * Absorb an injected null cell's token back into an adjacent PT cell.
@@ -232,19 +301,21 @@ export function useMapping(params: {
   const reabsorbNullToken = React.useCallback((insertedAfterBase: number, destBaseFlatIndex: number) => {
     if (ctParseMode !== 'fixedLength') return;
     const maxLen = groupSize || 1;
-    setInsertedNullAfter(prev => {
-      const next = new Set(prev);
-      next.delete(insertedAfterBase);
-      return next;
-    });
-    setManualPtCounts(prev => {
-      const base = prev && prev.length ? prev : deriveCountsFromColumns(baseColumns, maxLen);
-      if (destBaseFlatIndex < 0 || destBaseFlatIndex >= base.length) return prev;
-      const next = [...base];
-      next[destBaseFlatIndex] = next[destBaseFlatIndex] + 1;
-      return next;
-    });
-  }, [baseColumns, groupSize, ctParseMode]);
+    const base = manualPtCounts && manualPtCounts.length ? manualPtCounts : deriveCountsFromColumns(baseColumns, maxLen);
+    if (destBaseFlatIndex < 0 || destBaseFlatIndex >= base.length) return;
+    if (isFlatIndexLocked(destBaseFlatIndex)) return;
+
+    const nextCounts = [...base];
+    nextCounts[destBaseFlatIndex] = nextCounts[destBaseFlatIndex] + 1;
+
+    const nextInserted = new Set(insertedNullAfter);
+    nextInserted.delete(insertedAfterBase);
+
+    if (lockedTextsChanged(base, insertedNullAfter, nextCounts, nextInserted)) return;
+
+    setInsertedNullAfter(nextInserted);
+    setManualPtCounts(nextCounts);
+  }, [baseColumns, groupSize, ctParseMode, isFlatIndexLocked, manualPtCounts, insertedNullAfter, lockedTextsChanged]);
 
   /**
    * Higher-level helper: given the dragged CT token index and the strip direction,

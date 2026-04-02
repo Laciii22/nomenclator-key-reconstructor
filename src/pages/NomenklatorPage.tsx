@@ -206,11 +206,17 @@ const NomenklatorPage: React.FC = () => {
 
     // CT token dropped on a left/right edge strip → extract or reabsorb null cell
     if (src?.type === 'ct' && dst?.type === 'ct-edge') {
+        // Only act if the edge is actually active (visible orange strip).
+        // Otherwise ignore the drop — this prevents creating empty cells.
+        if (!dst.active) {
+          clearDragState();
+          return;
+        }
         if (activeCtIsFromNull && typeof activeNullInsertedAfterBaseFlatIndex === 'number') {
           reabsorbNullByDirection(activeNullInsertedAfterBaseFlatIndex, dst.direction!);
         } else if (typeof activeDragInfo.ctTokenIndex === 'number') {
           extractEdgeTokenByCtIndex(activeDragInfo.ctTokenIndex, dst.direction!);
-        } 
+        }
       clearDragState();
       return;
     }

@@ -10,7 +10,7 @@
 
 import React from 'react';
 import type { KeysPerPTMode } from '../types';
-import loadingIcon from '../../assets/icons/highlighter.png';
+import loadingIcon from '../../assets/icons/loading.png';
 
 const HelpModal = React.lazy(() => import('../common/HelpModal'));
 
