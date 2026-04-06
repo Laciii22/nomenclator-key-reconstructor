@@ -127,6 +127,7 @@ export function useNomenklator() {
     keysPerPTMode: KeysPerPTMode;
     customPtGroups: PTChar[] | null;
     bracketedIndices: number[];
+    fixedLengthTrackedBracketTexts: string[];
   } | null>(null);
 
   // Locks & selections
@@ -176,6 +177,7 @@ export function useNomenklator() {
   // Optional custom grouping of PT characters (supports merging adjacent PT cells)
   const [customPtGroups, setCustomPtGroups] = useState<PTChar[] | null>(null);
   const [mergeAllPrompt, setMergeAllPrompt] = useState<{ pattern: string; remaining: number } | null>(null);
+  const [fixedLengthTrackedBracketTexts, setFixedLengthTrackedBracketTexts] = useState<string[]>([]);
 
   const ptChars = useMemo(() => {
     if (customPtGroups && customPtGroups.length) return customPtGroups;
@@ -276,6 +278,21 @@ export function useNomenklator() {
     setCtRawSeparator,
     setCtRawFixed,
   } = parsing;
+
+  // Keep tracked bracket texts valid as CT token inventory changes.
+  React.useEffect(() => {
+    if (!fixedLengthTrackedBracketTexts.length) return;
+    const availableTexts = new Set<string>();
+    for (let i = 0; i < ctTokens.length; i++) {
+      const text = ctTokens[i]?.text;
+      if (typeof text === 'string' && text.length > 0) availableTexts.add(text);
+    }
+    setFixedLengthTrackedBracketTexts(prev => {
+      const next = prev.filter(text => availableTexts.has(text));
+      if (next.length === prev.length && next.every((v, i) => v === prev[i])) return prev;
+      return next;
+    });
+  }, [ctTokens, fixedLengthTrackedBracketTexts.length]);
 
   /**
    * Quick assign: manually assign PT pattern to CT token.
@@ -499,6 +516,46 @@ export function useNomenklator() {
     return order.map(text => ({ text, allBracketed: textMeta.get(text)!.allBracketed }));
   }, [analysisDone, bracketedIndices, columns, effectiveCtTokens, effToOrig, fixedLength, uniqueCTTokenTextsParse, ctParseMode, ctTokens]);
 
+  // In fixed-length grouped mode, auto-apply tracked deception texts to any
+  // newly visible groups with the same text (e.g. after split/reallocation).
+  React.useEffect(() => {
+    if (!analysisDone) return;
+    if (ctParseMode !== 'fixedLength') return;
+    if ((fixedLength || 1) <= 1) return;
+
+    const bracketedTexts = new Set(fixedLengthTrackedBracketTexts.filter(text => text.length > 0));
+    if (!bracketedTexts.size) return;
+
+    const indicesToAdd: number[] = [];
+    for (let r = 0; r < columns.length; r++) {
+      for (let c = 0; c < columns[r].length; c++) {
+        const col = columns[r][c];
+        if (!col.ct || col.ct.length === 0) continue;
+        let groupText = '';
+        for (const effIdx of col.ct) groupText += (effectiveCtTokens[effIdx]?.text ?? '');
+        if (!groupText || !bracketedTexts.has(groupText)) continue;
+        for (const effIdx of col.ct) {
+          const orig = effToOrig[effIdx];
+          if (typeof orig === 'number' && orig >= 0) indicesToAdd.push(orig);
+        }
+      }
+    }
+
+    if (!indicesToAdd.length) return;
+    setBracketedIndices(prev => {
+      const set = new Set(prev);
+      let changed = false;
+      for (const idx of indicesToAdd) {
+        if (!set.has(idx)) {
+          set.add(idx);
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return Array.from(set).sort((a, b) => a - b);
+    });
+  }, [analysisDone, columns, ctParseMode, effToOrig, effectiveCtTokens, fixedLength, fixedLengthTrackedBracketTexts, setBracketedIndices]);
+
   const toggleBracketGroupByText = useCallback((text: string) => {
     if (!text) return;
 
@@ -564,11 +621,28 @@ export function useNomenklator() {
       const set = new Set(prev);
       const unique = Array.from(new Set(indicesToToggle)).sort((a, b) => a - b);
       const all = unique.every(i => set.has(i));
-      if (all) unique.forEach(i => set.delete(i));
-      else unique.forEach(i => set.add(i));
+      if (all) {
+        unique.forEach(i => set.delete(i));
+        // In grouped fixed-length mode, a single-char deception label (e.g. "9")
+        // may have propagated to indices that are currently hidden inside larger
+        // groups. Remove those too so unchecking fully restores the token text.
+        if (text.length === 1) {
+          for (let i = 0; i < ctTokens.length; i++) {
+            if ((ctTokens[i]?.text ?? '') === text) set.delete(i);
+          }
+        }
+      } else {
+        unique.forEach(i => set.add(i));
+      }
+      setFixedLengthTrackedBracketTexts(prevTexts => {
+        const nextTexts = new Set(prevTexts);
+        if (all) nextTexts.delete(text);
+        else nextTexts.add(text);
+        return Array.from(nextTexts).sort();
+      });
       return Array.from(set).sort((a, b) => a - b);
     });
-  }, [analysisDone, columns, effToOrig, effectiveCtTokens, fixedLength, setBracketedIndices, toggleBracketGroupByTextParse, ctParseMode, bracketedIndices, ctTokens]);
+  }, [analysisDone, columns, effToOrig, effectiveCtTokens, fixedLength, setBracketedIndices, setFixedLengthTrackedBracketTexts, toggleBracketGroupByTextParse, ctParseMode, bracketedIndices, ctTokens]);
 
   // Wrap runAnalysis to capture pre-analysis state snapshot
   const runAnalysis = useCallback(() => {
@@ -583,6 +657,7 @@ export function useNomenklator() {
       keysPerPTMode,
       customPtGroups,
       bracketedIndices: parsing.bracketedIndices,
+      fixedLengthTrackedBracketTexts,
     };
     // Run the actual analysis
     runAnalysisCore();
@@ -613,6 +688,7 @@ export function useNomenklator() {
     setKeysPerPTMode(snapshot.keysPerPTMode);
     setCustomPtGroups(snapshot.customPtGroups);
     parsing.setBracketedIndices(snapshot.bracketedIndices);
+    setFixedLengthTrackedBracketTexts(snapshot.fixedLengthTrackedBracketTexts);
 
     // Clear all analysis-derived state
     setLockedKeys({});
@@ -638,6 +714,7 @@ export function useNomenklator() {
     parsing.setCtRawSeparator('');
     parsing.setCtRawFixed('');
     parsing.setBracketedIndices([]);
+    setFixedLengthTrackedBracketTexts([]);
     setKeysPerPTMode('single');
     setCustomPtGroups(null);
     setLockedKeys({});

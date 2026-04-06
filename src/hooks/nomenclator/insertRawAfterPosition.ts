@@ -27,6 +27,13 @@ export function computeInsertRawCharsAfterPosition(args: {
   // identity and indices even when inserting/replacing visible tokens.
   const originalTokens = ctTokens.map(t => t.text);
   const bracketedSet = new Set(bracketedIndices);
+  const bracketedTexts = new Set<string>();
+  for (const idx of bracketedSet) {
+    const tokenText = originalTokens[idx];
+    if (typeof tokenText === 'string' && tokenText.length > 0) {
+      bracketedTexts.add(tokenText);
+    }
+  }
   const effToOrig = buildEffectiveToOriginalIndexMap(ctTokens.length, bracketedIndices);
 
   // Build flat list of PT-assigned cells (skip deception/null columns)
@@ -42,7 +49,11 @@ export function computeInsertRawCharsAfterPosition(args: {
 
     for (let oldIndex = 0; oldIndex < originalTokens.length; oldIndex++) {
       if (oldIndex === insertPos) {
-        nextTokens.push(...items);
+        for (const item of items) {
+          const insertedAt = nextTokens.length;
+          nextTokens.push(item);
+          if (bracketedTexts.has(item)) nextBracketed.push(insertedAt);
+        }
       }
       if (removeSet.has(oldIndex)) continue;
       const newIndex = nextTokens.length;
@@ -50,7 +61,11 @@ export function computeInsertRawCharsAfterPosition(args: {
       if (bracketedSet.has(oldIndex)) nextBracketed.push(newIndex);
     }
     if (insertPos === originalTokens.length) {
-      nextTokens.push(...items);
+      for (const item of items) {
+        const insertedAt = nextTokens.length;
+        nextTokens.push(item);
+        if (bracketedTexts.has(item)) nextBracketed.push(insertedAt);
+      }
     }
     return { nextTokens, nextBracketed };
   };
