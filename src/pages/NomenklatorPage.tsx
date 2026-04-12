@@ -29,7 +29,6 @@ const HelpModal = React.lazy(() => import('../components/common/HelpModal'));
  * - Mapping + key tables
  */
 const NomenklatorPage: React.FC = () => {
-
   const { inputs, state, derived, actions } = useNomenklator();
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
   const [isFrequencyOpen, setIsFrequencyOpen] = React.useState(false);
@@ -82,6 +81,7 @@ const NomenklatorPage: React.FC = () => {
 
   const {
     runAnalysis,
+    markAnalysisStaleFromInput,
     onLockOT,
     onUnlockOT,
     onDragStart,
@@ -107,24 +107,100 @@ const NomenklatorPage: React.FC = () => {
     applySelectionsToMappingPreview,
   } = actions;
 
+  const [ptInputDraft, setPtInputDraft] = React.useState(ptRaw);
+  const [ctInputDraft, setCtInputDraft] = React.useState(ctRaw);
+  const ptTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const ptInputFocusedRef = React.useRef(false);
+  const ctInputFocusedRef = React.useRef(false);
+  const pendingPtSelectionRef = React.useRef<{ start: number; end: number; direction?: 'forward' | 'backward' | 'none' } | null>(null);
+  const [pendingRunAnalysis, setPendingRunAnalysis] = React.useState(false);
+
+  React.useEffect(() => {
+    if (ptInputFocusedRef.current) return;
+    setPtInputDraft(ptRaw);
+  }, [ptRaw]);
+
+  React.useEffect(() => {
+    if (ctInputFocusedRef.current) return;
+    setCtInputDraft(ctRaw);
+  }, [ctRaw]);
+
+  React.useLayoutEffect(() => {
+    if (!ptInputFocusedRef.current) return;
+    const pending = pendingPtSelectionRef.current;
+    const el = ptTextareaRef.current;
+    if (!pending || !el) return;
+    el.setSelectionRange(pending.start, pending.end, pending.direction);
+    pendingPtSelectionRef.current = null;
+  }, [ptInputDraft]);
+
+  const onPtFocus = React.useCallback(() => {
+    ptInputFocusedRef.current = true;
+  }, []);
+
+  const onPtBlur = React.useCallback(() => {
+    ptInputFocusedRef.current = false;
+    pendingPtSelectionRef.current = null;
+  }, []);
+
+  const onCtFocus = React.useCallback(() => {
+    ctInputFocusedRef.current = true;
+  }, []);
+
+  const onCtBlur = React.useCallback(() => {
+    ctInputFocusedRef.current = false;
+  }, []);
+
   const ptTextareaId = 'pt-raw';
   const ctTextareaId = 'ct-raw';
 
   const onPtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setPtRaw(e.target.value.toUpperCase());
-  }, [setPtRaw]);
+    markAnalysisStaleFromInput();
+    pendingPtSelectionRef.current = {
+      start: e.target.selectionStart,
+      end: e.target.selectionEnd,
+      direction: e.target.selectionDirection ?? 'none',
+    };
+    const next = e.target.value.toUpperCase();
+    setPtInputDraft(next);
+  }, [markAnalysisStaleFromInput]);
 
   const onCtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setCtRaw(e.target.value);
-  }, [setCtRaw]);
+    markAnalysisStaleFromInput();
+    const next = e.target.value;
+    setCtInputDraft(next);
+  }, [markAnalysisStaleFromInput]);
 
   const onPtFileLoad = React.useCallback((content: string) => {
-    setPtRaw(content.toUpperCase());
-  }, [setPtRaw]);
+    const next = content.toUpperCase();
+    markAnalysisStaleFromInput();
+    setPtInputDraft(next);
+  }, [markAnalysisStaleFromInput]);
 
   const onCtFileLoad = React.useCallback((content: string) => {
-    setCtRaw(content);
-  }, [setCtRaw]);
+    const next = content;
+    markAnalysisStaleFromInput();
+    setCtInputDraft(next);
+  }, [markAnalysisStaleFromInput]);
+
+  const canRunAnalysisFromDraft = React.useMemo(() => {
+    return ptInputDraft.replace(/\s/g, '').length > 0 && ctInputDraft.trim().length > 0;
+  }, [ctInputDraft, ptInputDraft]);
+
+  const onRunAnalysis = React.useCallback(() => {
+    if (!canRunAnalysisFromDraft || isAnalyzing) return;
+    setPtRaw(ptInputDraft);
+    setCtRaw(ctInputDraft);
+    setPendingRunAnalysis(true);
+  }, [canRunAnalysisFromDraft, ctInputDraft, isAnalyzing, ptInputDraft, setCtRaw, setPtRaw]);
+
+  React.useEffect(() => {
+    if (!pendingRunAnalysis) return;
+    if (ptRaw !== ptInputDraft) return;
+    if (ctRaw !== ctInputDraft) return;
+    setPendingRunAnalysis(false);
+    runAnalysis();
+  }, [ctInputDraft, ctRaw, pendingRunAnalysis, ptInputDraft, ptRaw, runAnalysis]);
 
   const onFixedLengthChange = React.useCallback((v: number) => {
     setFixedLength(Math.max(1, v));
@@ -370,12 +446,15 @@ const NomenklatorPage: React.FC = () => {
               <FileImport label="Import PT" onFileLoad={onPtFileLoad} />
             </div>
             <textarea
+              ref={ptTextareaRef}
               id={ptTextareaId}
               rows={3}
               className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
               placeholder="[HELLO]WORLD"
-              value={ptRaw}
+              value={ptInputDraft}
               onChange={onPtChange}
+              onFocus={onPtFocus}
+              onBlur={onPtBlur}
             />
 
             <div className="flex items-center justify-between mt-1">
@@ -390,8 +469,10 @@ const NomenklatorPage: React.FC = () => {
               rows={3}
               className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
               placeholder="11 34 12 12 56"
-              value={ctRaw}
+              value={ctInputDraft}
               onChange={onCtChange}
+              onFocus={onCtFocus}
+              onBlur={onCtBlur}
             />
 
             {statusMessage && (
@@ -434,8 +515,8 @@ const NomenklatorPage: React.FC = () => {
               onFixedLengthChange={onFixedLengthChange}
               keysPerPTMode={keysPerPTMode}
               onKeysPerPTModeChange={setKeysPerPTMode}
-              canRunAnalysis={!(ptChars.length === 0 || ctTokens.length === 0)}
-              onRunAnalysis={runAnalysis}
+              canRunAnalysis={canRunAnalysisFromDraft}
+              onRunAnalysis={onRunAnalysis}
               onClear={resetToPreAnalysis}
               isAnalyzing={isAnalyzing}
             />

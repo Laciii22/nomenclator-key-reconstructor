@@ -438,7 +438,7 @@ export function useNomenklator() {
     setSelections,
   });
 
-  const { candidatesByChar, analysisDone, isAnalyzing, runAnalysis: runAnalysisCore, refreshAnalysisPreserve } = analysis;
+  const { candidatesByChar, analysisDone, isAnalyzing, runAnalysis: runAnalysisCore, refreshAnalysisPreserve, setAnalysisDone } = analysis;
 
   const effToOrig = useMemo(() => {
     return buildEffectiveToOriginalIndexMap(ctTokens.length, bracketedIndices);
@@ -749,6 +749,14 @@ export function useNomenklator() {
     if (!analysisDone) return;
     debouncedRefresh();
   }, [analysisDone, debouncedRefresh]);
+
+  const markAnalysisStaleFromInput = useCallback(() => {
+    if (!analysisDone) return;
+    // Prevent expensive auto-refresh while user edits long raw inputs.
+    cancelRefreshDebounce();
+    setPendingAutoRefresh(false);
+    setAnalysisDone(false);
+  }, [analysisDone, cancelRefreshDebounce, setAnalysisDone]);
 
   useNomenklatorPersistence({
     settings,
@@ -1195,6 +1203,7 @@ export function useNomenklator() {
   /** Actions/handlers that mutate state; safe to pass to child components. */
   const actions = useMemo(() => ({
     runAnalysis,
+    markAnalysisStaleFromInput,
     onLockOT,
     onUnlockOT,
     onDragStart,
@@ -1224,6 +1233,7 @@ export function useNomenklator() {
     applySelectionsToMappingPreview,
   }), [
     applySelection,
+    markAnalysisStaleFromInput,
     chooseScoreOneSuggestions,
     clearAll,
     dismissMergeAllPrompt,
