@@ -230,7 +230,7 @@ const KeyTable: React.FC<KeyTableProps & {
     onToggleHighlightOT(highlightedPTChar);
   }, [rowMetaByOT, highlightedPTChar, onToggleHighlightOT, keysPerPTMode]);
 
-  if (sortedAggregated.length === 0) return <div className="text-sm text-gray-500">(no pairs)</div>;
+  if (sortedAggregated.length === 0) return <div className="text-xs text-gray-500">(no pairs)</div>;
 
   // Bulk locks and error/allLocked flags derived from rowMetaByOT
   const bulkLocks: Record<string, string | string[]> = {};
@@ -311,12 +311,12 @@ const KeyTable: React.FC<KeyTableProps & {
           )}
         </div>
       </div>
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead className="bg-gray-50">
           <tr>
-            <th className="text-left px-3 py-2 w-16">PT</th>
-            <th className="text-left px-3 py-2">CT</th>
-            <th className="text-left px-3 py-2 w-24">&nbsp;</th>
+            <th className="text-left px-2 py-1 w-12">PT</th>
+            <th className="text-left px-2 py-1">CT</th>
+            <th className="text-left px-2 py-1 w-20">&nbsp;</th>
           </tr>
         </thead>
         <tbody>
@@ -328,8 +328,8 @@ const KeyTable: React.FC<KeyTableProps & {
             const trClass = isRowError ? 'bg-red-50' : '';
             return (
               <tr key={row.pt} className={`border-t border-gray-100 ${trClass}`}>
-                <td className="px-3 py-2 font-mono whitespace-nowrap">{row.pt}</td>
-                <td className="px-3 py-2 font-mono">
+                <td className="px-2 py-1 font-mono whitespace-nowrap text-xs">{row.pt}</td>
+                <td className="px-2 py-1 font-mono text-xs">
                   {keysPerPTMode === 'multiple' && row.ctList.length > 0 ? (
                     <div>
                       <div className="flex flex-wrap gap-1">
@@ -375,22 +375,22 @@ const KeyTable: React.FC<KeyTableProps & {
                     </>
                   )}
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1 text-xs">
                   {onLockOT || onUnlockOT ? (
                     <>
-                      {isLocked ? (
+                        {isLocked ? (
                         <button
-                          className={`text-xs px-2 py-1 rounded ${colors.lockedBtn}`}
+                          className={`text-xs px-1 py-0.5 rounded ${colors.lockedBtn}`}
                           onClick={() => onUnlockOT && onUnlockOT(row.pt)}
                           title={`Unlock ${row.pt}`}
                           aria-label={`Unlock ${row.pt}`}
                           aria-pressed={true}
                         >
-                          <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
+                          <img src={padlock} alt="" aria-hidden="true" className="w-3 h-3" />
                         </button>
                       ) : (
                         <button
-                          className={`text-xs px-2 py-1 rounded ${colors.unlockedBtn}`}
+                          className={`text-xs px-1 py-0.5 rounded ${colors.unlockedBtn}`}
                           onClick={() => {
                             if (!onLockOT || row.ctList.length === 0) return;
                             if (keysPerPTMode === 'multiple') {
@@ -406,19 +406,19 @@ const KeyTable: React.FC<KeyTableProps & {
                           aria-label={isRowError ? `Cannot lock ${row.pt} while errors exist` : (row.ctList.length ? `Lock ${row.pt}` : `Nothing to lock for ${row.pt}`)}
                           aria-pressed={false}
                         >
-                          <img src={padlock} alt="" aria-hidden="true" className="w-4 h-4" />
+                          <img src={padlock} alt="" aria-hidden="true" className="w-3 h-3" />
                         </button>
                       )}
                       {/* Highlighter icon in single mode only for conflict rows; in multi mode for unlocked rows */}
                       {onToggleHighlightOT && !isLocked && (keysPerPTMode === 'multiple' || isRowError) ? (
                         <button
-                          className={`ml-2 inline-flex items-center justify-center w-7 h-7 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
+                          className={`ml-2 inline-flex items-center justify-center w-6 h-6 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
                           onClick={() => onToggleHighlightOT(row.pt)}
                           title={`Highlight PT ${row.pt}`}
                           aria-label={`Highlight PT ${row.pt}`}
                           aria-pressed={highlightedPTChar === row.pt}
                         >
-                          <img src={highlighter} alt="highlight" aria-hidden="true" className="w-4 h-4" />
+                          <img src={highlighter} alt="highlight" aria-hidden="true" className="w-3 h-3" />
                         </button>
                       ) : null}
                     </>

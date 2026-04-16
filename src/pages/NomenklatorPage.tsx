@@ -11,6 +11,8 @@ import CandidateSelectorSeparator from '../components/controls/CandidateSelector
 import CandidateSelectorMulti from '../components/controls/CandidateSelectorMulti';
 import FileImport from '../components/controls/FileImport';
 import { useNomenklator } from '../hooks/useNomenklator';
+import { useBusyState } from '../hooks/nomenklator/useBusyState';
+import { useDraftControls } from '../hooks/nomenklator/useDraftControls';
 import type { SelectionMap, DragData } from '../types/domain';
 import plusIcon from '../assets/icons/plus.png';
 import dangerIcon from '../assets/icons/danger.png';
@@ -107,104 +109,73 @@ const NomenklatorPage: React.FC = () => {
     applySelectionsToMappingPreview,
   } = actions;
 
-  const [ptInputDraft, setPtInputDraft] = React.useState(ptRaw);
-  const [ctInputDraft, setCtInputDraft] = React.useState(ctRaw);
-  const ptTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const ptInputFocusedRef = React.useRef(false);
-  const ctInputFocusedRef = React.useRef(false);
-  const pendingPtSelectionRef = React.useRef<{ start: number; end: number; direction?: 'forward' | 'backward' | 'none' } | null>(null);
-  const [pendingRunAnalysis, setPendingRunAnalysis] = React.useState(false);
+  const {
+    isGridBusy,
+    isAppBusy,
+    appBusyLabel,
+    runWithGridBusy,
+    runWithAppBusy,
+    setAppBusyLabel,
+  } = useBusyState({
+    minBusyMs: 220,
+  });
 
-  React.useEffect(() => {
-    if (ptInputFocusedRef.current) return;
-    setPtInputDraft(ptRaw);
-  }, [ptRaw]);
+  const {
+    ptTextareaId,
+    ctTextareaId,
+    ptTextareaRef,
+    ptInputDraft,
+    ctInputDraft,
+    ctParseModeDraft,
+    separatorDraft,
+    fixedLengthDraft,
+    keysPerPTModeDraft,
+    pendingRunAnalysis,
+    canRunAnalysisFromDraft,
+    onPtFocus,
+    onPtBlur,
+    onCtFocus,
+    onCtBlur,
+    onPtChange,
+    onCtChange,
+    onPtFileLoad,
+    onCtFileLoad,
+    onRunAnalysis,
+    onChangeParseMode,
+    onSeparatorChange,
+    onFixedLengthChangeWithBusy,
+    onKeysPerPTModeChange,
+    onResetToPreAnalysis,
+  } = useDraftControls({
+    ptRaw,
+    setPtRaw,
+    ctRaw,
+    setCtRaw,
+    ctParseMode,
+    setCtParseMode,
+    separator,
+    setSeparator,
+    fixedLength,
+    setFixedLength,
+    keysPerPTMode,
+    setKeysPerPTMode,
+    isAnalyzing,
+    markAnalysisStaleFromInput,
+    runAnalysis,
+    resetToPreAnalysis,
+    runWithAppBusy,
+    setAppBusyLabel,
+  });
 
-  React.useEffect(() => {
-    if (ctInputFocusedRef.current) return;
-    setCtInputDraft(ctRaw);
-  }, [ctRaw]);
-
-  React.useLayoutEffect(() => {
-    if (!ptInputFocusedRef.current) return;
-    const pending = pendingPtSelectionRef.current;
-    const el = ptTextareaRef.current;
-    if (!pending || !el) return;
-    el.setSelectionRange(pending.start, pending.end, pending.direction);
-    pendingPtSelectionRef.current = null;
-  }, [ptInputDraft]);
-
-  const onPtFocus = React.useCallback(() => {
-    ptInputFocusedRef.current = true;
-  }, []);
-
-  const onPtBlur = React.useCallback(() => {
-    ptInputFocusedRef.current = false;
-    pendingPtSelectionRef.current = null;
-  }, []);
-
-  const onCtFocus = React.useCallback(() => {
-    ctInputFocusedRef.current = true;
-  }, []);
-
-  const onCtBlur = React.useCallback(() => {
-    ctInputFocusedRef.current = false;
-  }, []);
-
-  const ptTextareaId = 'pt-raw';
-  const ctTextareaId = 'ct-raw';
-
-  const onPtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    markAnalysisStaleFromInput();
-    pendingPtSelectionRef.current = {
-      start: e.target.selectionStart,
-      end: e.target.selectionEnd,
-      direction: e.target.selectionDirection ?? 'none',
-    };
-    const next = e.target.value.toUpperCase();
-    setPtInputDraft(next);
-  }, [markAnalysisStaleFromInput]);
-
-  const onCtChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    markAnalysisStaleFromInput();
-    const next = e.target.value;
-    setCtInputDraft(next);
-  }, [markAnalysisStaleFromInput]);
-
-  const onPtFileLoad = React.useCallback((content: string) => {
-    const next = content.toUpperCase();
-    markAnalysisStaleFromInput();
-    setPtInputDraft(next);
-  }, [markAnalysisStaleFromInput]);
-
-  const onCtFileLoad = React.useCallback((content: string) => {
-    const next = content;
-    markAnalysisStaleFromInput();
-    setCtInputDraft(next);
-  }, [markAnalysisStaleFromInput]);
-
-  const canRunAnalysisFromDraft = React.useMemo(() => {
-    return ptInputDraft.replace(/\s/g, '').length > 0 && ctInputDraft.trim().length > 0;
-  }, [ctInputDraft, ptInputDraft]);
-
-  const onRunAnalysis = React.useCallback(() => {
-    if (!canRunAnalysisFromDraft || isAnalyzing) return;
-    setPtRaw(ptInputDraft);
-    setCtRaw(ctInputDraft);
-    setPendingRunAnalysis(true);
-  }, [canRunAnalysisFromDraft, ctInputDraft, isAnalyzing, ptInputDraft, setCtRaw, setPtRaw]);
-
-  React.useEffect(() => {
-    if (!pendingRunAnalysis) return;
-    if (ptRaw !== ptInputDraft) return;
-    if (ctRaw !== ctInputDraft) return;
-    setPendingRunAnalysis(false);
-    runAnalysis();
-  }, [ctInputDraft, ctRaw, pendingRunAnalysis, ptInputDraft, ptRaw, runAnalysis]);
-
-  const onFixedLengthChange = React.useCallback((v: number) => {
-    setFixedLength(Math.max(1, v));
-  }, [setFixedLength]);
+  const uiBusyLabel = isGridBusy
+    ? 'Updating mapping...'
+    : pendingRunAnalysis
+      ? 'Preparing analysis...'
+      : isAnalyzing
+        ? 'Analyzing...'
+        : isAppBusy
+          ? (appBusyLabel ?? 'Applying changes...')
+          : null;
 
   const onClearAll = React.useCallback(() => {
     // Only clear suggestions (selections and locks), not entire app state
@@ -227,6 +198,38 @@ const NomenklatorPage: React.FC = () => {
   }, [runAnalysis, setLockedKeys, setSelections]);
 
   const [activeDrag, setActiveDrag] = React.useState<Active | null>(null);
+
+  const onMergeAllWithBusy = React.useCallback((pattern: string) => {
+    runWithGridBusy(() => mergeAllOccurrences(pattern));
+  }, [mergeAllOccurrences, runWithGridBusy]);
+
+  const onEditTokenWithBusy = React.useCallback((tokenIndex: number, newText: string) => {
+    runWithGridBusy(() => editCtToken(tokenIndex, newText));
+  }, [editCtToken, runWithGridBusy]);
+
+  const onInsertRawCharsAfterPositionWithBusy = React.useCallback((positionIndex: number, text: string, replace?: boolean) => {
+    runWithGridBusy(() => insertRawCharsAfterPosition(positionIndex, text, replace));
+  }, [insertRawCharsAfterPosition, runWithGridBusy]);
+
+  const onSplitPTAtWithBusy = React.useCallback((flatIndex: number) => {
+    runWithGridBusy(() => splitPTAt(flatIndex));
+  }, [runWithGridBusy, splitPTAt]);
+
+  const onShiftGroupRightWithBusy = React.useCallback((flatIndex: number) => {
+    runWithGridBusy(() => shiftGroupRight(flatIndex));
+  }, [runWithGridBusy, shiftGroupRight]);
+
+  const onShiftGroupLeftWithBusy = React.useCallback((flatIndex: number) => {
+    runWithGridBusy(() => shiftGroupLeft(flatIndex));
+  }, [runWithGridBusy, shiftGroupLeft]);
+
+  const onExtractEdgeTokenByCtIndexWithBusy = React.useCallback((ctIndex: number, direction: 'left' | 'right') => {
+    runWithGridBusy(() => extractEdgeTokenByCtIndex(ctIndex, direction));
+  }, [extractEdgeTokenByCtIndex, runWithGridBusy]);
+
+  const onReabsorbNullByDirectionWithBusy = React.useCallback((baseFlatIndex: number, direction: 'left' | 'right') => {
+    runWithGridBusy(() => reabsorbNullByDirection(baseFlatIndex, direction));
+  }, [reabsorbNullByDirection, runWithGridBusy]);
 
   const activeDragInfo = React.useMemo(() => {
     const data = (activeDrag?.data?.current ?? {}) as DragData;
@@ -289,9 +292,9 @@ const NomenklatorPage: React.FC = () => {
           return;
         }
         if (activeCtIsFromNull && typeof activeNullInsertedAfterBaseFlatIndex === 'number') {
-          reabsorbNullByDirection(activeNullInsertedAfterBaseFlatIndex, dst.direction!);
+          onReabsorbNullByDirectionWithBusy(activeNullInsertedAfterBaseFlatIndex, dst.direction!);
         } else if (typeof activeDragInfo.ctTokenIndex === 'number') {
-          extractEdgeTokenByCtIndex(activeDragInfo.ctTokenIndex, dst.direction!);
+          onExtractEdgeTokenByCtIndexWithBusy(activeDragInfo.ctTokenIndex, dst.direction!);
         }
       clearDragState();
       return;
@@ -304,9 +307,9 @@ const NomenklatorPage: React.FC = () => {
       return;
     }
 
-    onDragEnd(evt);
+    runWithGridBusy(() => onDragEnd(evt));
     clearDragState();
-  }, [clearDragState, onDragEnd, activeCtIsFromNull, activeNullInsertedAfterBaseFlatIndex, activeDragInfo.ctTokenIndex, reabsorbNullByDirection, extractEdgeTokenByCtIndex]);
+  }, [clearDragState, onDragEnd, activeCtIsFromNull, activeNullInsertedAfterBaseFlatIndex, activeDragInfo.ctTokenIndex, onReabsorbNullByDirectionWithBusy, onExtractEdgeTokenByCtIndexWithBusy, runWithGridBusy]);
 
   const handleDragCancel = React.useCallback(() => {
     onDragCancel();
@@ -434,6 +437,12 @@ const NomenklatorPage: React.FC = () => {
             </div>
           );
         })()}
+        {uiBusyLabel && (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" aria-hidden="true" />
+            {uiBusyLabel}
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           <div className="space-y-4 lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <p className="text-xs text-gray-500 -mt-1 mb-1">Enter the plain text and cipher text, then configure parsing and run the analysis.</p>
@@ -507,18 +516,19 @@ const NomenklatorPage: React.FC = () => {
             />
 
             <ParseControls
-              ctParseMode={ctParseMode}
-              onChangeMode={setCtParseMode}
-              separator={separator}
-              onSeparatorChange={setSeparator}
-              fixedLength={fixedLength}
-              onFixedLengthChange={onFixedLengthChange}
-              keysPerPTMode={keysPerPTMode}
-              onKeysPerPTModeChange={setKeysPerPTMode}
+              ctParseMode={ctParseModeDraft}
+              onChangeMode={onChangeParseMode}
+              separator={separatorDraft}
+              onSeparatorChange={onSeparatorChange}
+              fixedLength={fixedLengthDraft}
+              onFixedLengthChange={onFixedLengthChangeWithBusy}
+              keysPerPTMode={keysPerPTModeDraft}
+              onKeysPerPTModeChange={onKeysPerPTModeChange}
               canRunAnalysis={canRunAnalysisFromDraft}
               onRunAnalysis={onRunAnalysis}
-              onClear={resetToPreAnalysis}
-              isAnalyzing={isAnalyzing}
+              onClear={onResetToPreAnalysis}
+              isAnalyzing={isAnalyzing || pendingRunAnalysis}
+              isBusy={isAppBusy}
             />
 
 
@@ -659,8 +669,11 @@ const NomenklatorPage: React.FC = () => {
                       onClick={dismissMergeAllPrompt}
                     >Dismiss</button>
                     <button
-                      className="text-xs px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium"
-                      onClick={() => mergeAllOccurrences(mergeAllPrompt?.pattern ?? '')}
+                      className={`text-xs px-2.5 py-1 rounded-md text-white font-medium ${
+                        isGridBusy ? 'bg-amber-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'
+                      }`}
+                      onClick={() => onMergeAllWithBusy(mergeAllPrompt?.pattern ?? '')}
+                      disabled={isGridBusy}
                     >Merge all</button>
                   </div>
                 </div>
@@ -671,34 +684,44 @@ const NomenklatorPage: React.FC = () => {
                 <span className="text-xs text-gray-400 italic">Drag PT characters to merge , drag CT tokens to swap</span>
               </div>
 
-              <MappingTable
-                ptRows={ptRows}
-                ctTokens={effectiveCtTokens}
-                onLockOT={onLockOT}
-                onUnlockOT={onUnlockOT}
-                lockedKeys={lockedKeys}
-                hasDeceptionWarning={klamacStatus === 'needsNull'}
-                onEditToken={editCtToken}
-                groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
-                onInsertRawCharsAfterPosition={insertRawCharsAfterPosition}
-                onSplitGroup={splitPTAt}
-                canInsertRaw={true}
-                canSplitGroup={true}
-                highlightedPTChar={highlightedPTChar}
-                columns={columns}
-                bracketedIndices={bracketedIndices}
-                shiftMeta={shiftMeta}
-                onShiftGroupRight={shiftGroupRight}
-                onShiftGroupLeft={shiftGroupLeft}
-                activeDragType={activeDragInfo.type}
-                activePtSourceRow={activeDragInfo.ptSourceRow}
-                activePtSourceCol={activeDragInfo.ptSourceCol}
-                activeCtTokenIndex={activeDragInfo.ctTokenIndex}
-                keysPerPTMode={keysPerPTMode}
-                activeCtIsFromNull={activeCtIsFromNull}
-                activeNullInsertedAfterBaseFlatIndex={activeNullInsertedAfterBaseFlatIndex}
-                activeCtSourceCellCount={activeCtSourceCellCount}
-              />
+              <div className="relative">
+                <MappingTable
+                  ptRows={ptRows}
+                  ctTokens={effectiveCtTokens}
+                  onLockOT={onLockOT}
+                  onUnlockOT={onUnlockOT}
+                  lockedKeys={lockedKeys}
+                  hasDeceptionWarning={klamacStatus === 'needsNull'}
+                  onEditToken={onEditTokenWithBusy}
+                  groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
+                  onInsertRawCharsAfterPosition={onInsertRawCharsAfterPositionWithBusy}
+                  onSplitGroup={onSplitPTAtWithBusy}
+                  canInsertRaw={true}
+                  canSplitGroup={true}
+                  highlightedPTChar={highlightedPTChar}
+                  columns={columns}
+                  bracketedIndices={bracketedIndices}
+                  shiftMeta={shiftMeta}
+                  onShiftGroupRight={onShiftGroupRightWithBusy}
+                  onShiftGroupLeft={onShiftGroupLeftWithBusy}
+                  activeDragType={activeDragInfo.type}
+                  activePtSourceRow={activeDragInfo.ptSourceRow}
+                  activePtSourceCol={activeDragInfo.ptSourceCol}
+                  activeCtTokenIndex={activeDragInfo.ctTokenIndex}
+                  keysPerPTMode={keysPerPTMode}
+                  activeCtIsFromNull={activeCtIsFromNull}
+                  activeNullInsertedAfterBaseFlatIndex={activeNullInsertedAfterBaseFlatIndex}
+                  activeCtSourceCellCount={activeCtSourceCellCount}
+                />
+                {isGridBusy && (
+                  <div className="absolute inset-0 z-10 bg-white/65 backdrop-blur-[1px] rounded-md flex items-center justify-center pointer-events-none">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-blue-200 bg-white text-blue-700 text-xs font-medium shadow-sm">
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" aria-hidden="true" />
+                      Updating mapping...
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
       </div>
 
