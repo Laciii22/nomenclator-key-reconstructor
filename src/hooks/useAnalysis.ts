@@ -30,6 +30,12 @@ function getAnalysisWorker(): Worker {
   return analysisWorker;
 }
 
+function terminateAnalysisWorker() {
+  if (!analysisWorker) return;
+  analysisWorker.terminate();
+  analysisWorker = null;
+}
+
 // Module-level counter: each analysis request gets a unique ID.
 // The message handler checks this to discard stale responses when a newer
 // request was fired before the previous worker reply arrived.
@@ -60,7 +66,11 @@ export function useAnalysis(params: {
 
   /** Returns the singleton production worker, or a test-injected instance. */
   const getWorker = React.useCallback(
-    () => (_workerFactory ? _workerFactory() : getAnalysisWorker()),
+    (forceRestart = false) => {
+      if (_workerFactory) return _workerFactory();
+      if (forceRestart) terminateAnalysisWorker();
+      return getAnalysisWorker();
+    },
     // _workerFactory is expected to be a stable reference from the caller
     [_workerFactory],
   );
@@ -83,10 +93,7 @@ export function useAnalysis(params: {
       activeRequestCleanupRef.current = null;
       isMountedRef.current = false;
       latestRequestId += 1;
-      if (analysisWorker) {
-        analysisWorker.terminate();
-        analysisWorker = null;
-      }
+      terminateAnalysisWorker();
     };
   }, []);
 
@@ -147,7 +154,9 @@ export function useAnalysis(params: {
       const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
       const baseCounts = alloc.groups.map(r => r.map(v => v));
 
-      const worker = getWorker();
+      // For production worker, restart on each new request to stop superseded
+      // in-flight computations immediately and reclaim worker CPU.
+      const worker = getWorker(true);
       const requestId = ++latestRequestId;
       let settled = false;
       let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
@@ -227,6 +236,7 @@ export function useAnalysis(params: {
 
       timeoutId = window.setTimeout(() => {
         if (requestId !== latestRequestId) return;
+        if (!_workerFactory) terminateAnalysisWorker();
         settle('Analysis timed out. Please try again.');
       }, ANALYSIS_TIMEOUT_MS);
 

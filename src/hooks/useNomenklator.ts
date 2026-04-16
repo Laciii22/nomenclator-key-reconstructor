@@ -57,6 +57,17 @@ function selectionMapsEqual(a: SelectionMap, b: SelectionMap): boolean {
   return true;
 }
 
+type UniqueTokenTextMeta = { text: string; allBracketed: boolean };
+
+function uniqueTokenTextMetaEqual(a: UniqueTokenTextMeta[], b: UniqueTokenTextMeta[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].text !== b[i].text) return false;
+    if (a[i].allBracketed !== b[i].allBracketed) return false;
+  }
+  return true;
+}
+
 type NomenklatorSelectionState = {
   lockedKeys: Record<string, string | string[]>;
   selections: SelectionMap;
@@ -443,6 +454,7 @@ export function useNomenklator() {
   const effToOrig = useMemo(() => {
     return buildEffectiveToOriginalIndexMap(ctTokens.length, bracketedIndices);
   }, [ctTokens.length, bracketedIndices]);
+  const uniqueCTTokenTextsFixedRef = useRef<UniqueTokenTextMeta[] | null>(null);
 
   // Fixed-length: build unique CT groups ordered by original CT index.
   // Includes current shifted groups and bracketed runs; computes `allBracketed`.
@@ -513,7 +525,11 @@ export function useNomenklator() {
       }
     }
 
-    return order.map(text => ({ text, allBracketed: textMeta.get(text)!.allBracketed }));
+    const next = order.map(text => ({ text, allBracketed: textMeta.get(text)!.allBracketed }));
+    const prev = uniqueCTTokenTextsFixedRef.current;
+    if (prev && uniqueTokenTextMetaEqual(prev, next)) return prev;
+    uniqueCTTokenTextsFixedRef.current = next;
+    return next;
   }, [analysisDone, bracketedIndices, columns, effectiveCtTokens, effToOrig, fixedLength, uniqueCTTokenTextsParse, ctParseMode, ctTokens]);
 
   // In fixed-length grouped mode, auto-apply tracked deception texts to any
