@@ -75,7 +75,10 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				} else {
 					fpiRow.push(-1);
 				}
-				for (const idx of col.ct) owned.add(idx);
+				for (const idx of col.ct) {
+					if (idx < 0 || idx >= ctTokens.length) continue;
+					owned.add(idx);
+				}
 			}
 			fi.push(fiRow);
 			fpi.push(fpiRow);
@@ -100,6 +103,10 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				}
 
 				const start = col.ct[0];
+				if (start < 0 || start >= ctTokens.length) {
+					map.set(key, false);
+					continue;
+				}
 				const cellCtSet = new Set(col.ct);
 				let canExpand = true;
 				for (let k = 1; k < groupSize; k++) {

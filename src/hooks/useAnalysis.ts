@@ -74,10 +74,13 @@ export function useAnalysis(params: {
   const [analysisDone, setAnalysisDone] = React.useState(false);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
   const isMountedRef = React.useRef(true);
+  const activeRequestCleanupRef = React.useRef<null | (() => void)>(null);
 
   React.useEffect(() => {
     isMountedRef.current = true;
     return () => {
+      activeRequestCleanupRef.current?.();
+      activeRequestCleanupRef.current = null;
       isMountedRef.current = false;
       latestRequestId += 1;
       if (analysisWorker) {
@@ -136,6 +139,9 @@ export function useAnalysis(params: {
       onResult: (sorted: Record<string, Candidate[]>) => void,
       onError?: (message: string) => void,
     ) => {
+      activeRequestCleanupRef.current?.();
+      activeRequestCleanupRef.current = null;
+
       const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
       const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
       const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
@@ -144,13 +150,24 @@ export function useAnalysis(params: {
       const worker = getWorker();
       const requestId = ++latestRequestId;
       let settled = false;
+      let timeoutId: ReturnType<typeof window.setTimeout> | null = null;
+
+      const cleanup = () => {
+        if (timeoutId != null) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        worker.removeEventListener('message', handleMessage);
+        worker.removeEventListener('error', handleWorkerError);
+        if (activeRequestCleanupRef.current === cleanup) {
+          activeRequestCleanupRef.current = null;
+        }
+      };
 
       const settle = (errorMessage?: string) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timeoutId);
-        worker.removeEventListener('message', handleMessage);
-        worker.removeEventListener('error', handleWorkerError);
+        cleanup();
         if (errorMessage) onError?.(errorMessage);
       };
 
@@ -208,10 +225,12 @@ export function useAnalysis(params: {
         }
       };
 
-      const timeoutId = window.setTimeout(() => {
+      timeoutId = window.setTimeout(() => {
         if (requestId !== latestRequestId) return;
         settle('Analysis timed out. Please try again.');
       }, ANALYSIS_TIMEOUT_MS);
+
+      activeRequestCleanupRef.current = cleanup;
 
       worker.addEventListener('message', handleMessage);
       worker.addEventListener('error', handleWorkerError);

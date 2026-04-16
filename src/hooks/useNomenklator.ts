@@ -109,7 +109,7 @@ function selectionStateReducer(
  * stable when passing handlers into large table components.
  */
 export function useNomenklator() {
-  const [settings, setSettings] = useLocalSettings({ keysPerPTMode: 'single' });
+  const [settings, setSettings, storageWarning] = useLocalSettings({ keysPerPTMode: 'single' });
   const hydrated = useRef(false);
 
   // Inputs & modes
@@ -732,6 +732,7 @@ export function useNomenklator() {
     klamacStatusFromParse,
     statusMessageFromParse,
     bracketWarningFromParse,
+    storageWarning,
     analysisDone,
     ptChars,
     ctTokens,

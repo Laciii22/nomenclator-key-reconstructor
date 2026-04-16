@@ -13,6 +13,7 @@ interface UseNomenklatorStatusParams {
   ctParseMode: 'separator' | 'fixedLength';
   fixedLength: number;
   bracketedIndices: number[];
+  storageWarning?: string | null;
 }
 
 interface NomenklatorStatus {
@@ -37,6 +38,7 @@ export function useNomenklatorStatus(params: UseNomenklatorStatusParams): Nomenk
     effectiveCtTokens,
     ctParseMode,
     fixedLength,
+    storageWarning,
   } = params;
 
   const klamacAndMessage = useMemo((): { klamacStatus: NomenklatorStatus['klamacStatus']; statusMessage: string | null } => {
@@ -92,8 +94,8 @@ export function useNomenklatorStatus(params: UseNomenklatorStatusParams): Nomenk
   ]);
 
   return {
-    klamacStatus: klamacAndMessage.klamacStatus,
-    statusMessage: klamacAndMessage.statusMessage,
+    klamacStatus: storageWarning ? 'invalid' : klamacAndMessage.klamacStatus,
+    statusMessage: storageWarning ?? klamacAndMessage.statusMessage,
     bracketWarning: bracketWarningFromParse,
   };
 }

@@ -21,6 +21,21 @@ export type CtParseMode = 'separator' | 'fixedLength';
 /** Status of PT/CT alignment validation */
 export type KlamacStatus = 'none' | 'needsNull' | 'ok' | 'invalid';
 
+function normalizeFixedLength(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.floor(value));
+}
+
+function normalizeBracketedIndices(indices: number[], max: number): number[] {
+  const set = new Set<number>();
+  for (const idx of indices) {
+    if (!Number.isFinite(idx)) continue;
+    const normalized = Math.floor(idx);
+    if (normalized >= 0 && normalized < max) set.add(normalized);
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
 /**
  * Hook for managing CT token parsing and validation.
  */
@@ -48,7 +63,15 @@ export function useParsing(params: {
   }, []);
 
   const [separator, setSeparator] = React.useState<string>(':');
-  const [fixedLength, setFixedLength] = React.useState<number>(1);
+  const [fixedLength, setFixedLengthState] = React.useState<number>(1);
+  const setFixedLength = React.useCallback<React.Dispatch<React.SetStateAction<number>>>((value) => {
+    setFixedLengthState(prev => {
+      const next = typeof value === 'function'
+        ? (value as (p: number) => number)(prev)
+        : value;
+      return normalizeFixedLength(next);
+    });
+  }, []);
 
   const groupSize = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
 
@@ -69,7 +92,15 @@ export function useParsing(params: {
 
   const ctTokens = parseRes.tokens as CTToken[];
 
-  const [bracketedIndices, setBracketedIndices] = React.useState<number[]>([]);
+  const [bracketedIndices, setBracketedIndicesState] = React.useState<number[]>([]);
+  const setBracketedIndices = React.useCallback<React.Dispatch<React.SetStateAction<number[]>>>((value) => {
+    setBracketedIndicesState(prev => {
+      const next = typeof value === 'function'
+        ? (value as (p: number[]) => number[])(prev)
+        : value;
+      return normalizeBracketedIndices(next, ctTokens.length);
+    });
+  }, [ctTokens.length]);
 
   const effectiveCtTokens = React.useMemo(() => {
     if (!bracketedIndices.length) return ctTokens;
@@ -81,10 +112,10 @@ export function useParsing(params: {
   const [bracketWarning, setBracketWarning] = React.useState<string | null>(null);
   React.useEffect(() => {
     setBracketWarning(null);
-    setBracketedIndices(prev => {
+    setBracketedIndicesState(prev => {
       if (!prev.length) return prev;
       const max = ctTokens.length;
-      const filtered = prev.filter(i => i >= 0 && i < max);
+      const filtered = normalizeBracketedIndices(prev, max);
       if (filtered.length !== prev.length) setBracketWarning('Some deception brackets no longer exist after parse change — removed.');
       return filtered;
     });
