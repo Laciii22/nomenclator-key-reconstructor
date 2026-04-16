@@ -75,59 +75,93 @@ export interface AnalysisWorkerRequest {
 }
 
 export interface AnalysisWorkerResponse {
-  type: 'analyze-result' | 'score-candidates-result';
+  type: 'analyze-result' | 'score-candidates-result' | 'error';
   requestId: number;
-  candidatesByChar: Record<string, Candidate[]>;
+  candidatesByChar?: Record<string, Candidate[]>;
+  message?: string;
 }
 
 self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
   const { type, requestId } = e.data;
-  
-  if (type === 'analyze') {
-    const { ptRows, ctTokens, rowGroups, keysPerPTMode, groupSize, lockedKeys } = e.data;
-    if (!ptRows || !ctTokens || !rowGroups || !keysPerPTMode || !groupSize) return;
 
-    const result = analyze(ptRows, ctTokens, rowGroups, { keysPerPTMode, groupSize }, lockedKeys);
-    
+  try {
+    if (type === 'analyze') {
+      const { ptRows, ctTokens, rowGroups, keysPerPTMode, groupSize, lockedKeys } = e.data;
+      if (!ptRows || !ctTokens || !rowGroups || !keysPerPTMode || !groupSize) {
+        const response: AnalysisWorkerResponse = {
+          type: 'error',
+          requestId,
+          message: 'Invalid analyze payload.',
+        };
+        self.postMessage(response);
+        return;
+      }
+
+      const result = analyze(ptRows, ctTokens, rowGroups, { keysPerPTMode, groupSize }, lockedKeys);
+
+      const response: AnalysisWorkerResponse = {
+        type: 'analyze-result',
+        requestId,
+        candidatesByChar: result.candidatesByChar,
+      };
+
+      self.postMessage(response);
+      return;
+    }
+
+    if (type === 'score-candidates') {
+      const {
+        candidatesByChar,
+        ptRows,
+        ctParseMode,
+        fixedLength,
+        effectiveCtTokens,
+        columns,
+        keysPerPTMode,
+        gridTokenSet,
+      } = e.data;
+
+      if (!candidatesByChar || !ptRows || !ctParseMode || !effectiveCtTokens || !columns || !keysPerPTMode) {
+        const response: AnalysisWorkerResponse = {
+          type: 'error',
+          requestId,
+          message: 'Invalid scoring payload.',
+        };
+        self.postMessage(response);
+        return;
+      }
+
+      const scored = scoreCandidates({
+        candidatesByChar,
+        ptRows,
+        ctParseMode,
+        fixedLength: fixedLength || 1,
+        effectiveCtTokens,
+        columns,
+        keysPerPTMode,
+        gridTokenSet: gridTokenSet || [],
+      });
+
+      const response: AnalysisWorkerResponse = {
+        type: 'score-candidates-result',
+        requestId,
+        candidatesByChar: scored,
+      };
+      self.postMessage(response);
+      return;
+    }
+
     const response: AnalysisWorkerResponse = {
-      type: 'analyze-result',
+      type: 'error',
       requestId,
-      candidatesByChar: result.candidatesByChar,
+      message: `Unknown request type: ${String(type)}`,
     };
-    
     self.postMessage(response);
-    return;
-  }
-
-  if (type === 'score-candidates') {
-    const {
-      candidatesByChar,
-      ptRows,
-      ctParseMode,
-      fixedLength,
-      effectiveCtTokens,
-      columns,
-      keysPerPTMode,
-      gridTokenSet,
-    } = e.data;
-
-    if (!candidatesByChar || !ptRows || !ctParseMode || !effectiveCtTokens || !columns || !keysPerPTMode) return;
-
-    const scored = scoreCandidates({
-      candidatesByChar,
-      ptRows,
-      ctParseMode,
-      fixedLength: fixedLength || 1,
-      effectiveCtTokens,
-      columns,
-      keysPerPTMode,
-      gridTokenSet: gridTokenSet || [],
-    });
-
+  } catch (error) {
     const response: AnalysisWorkerResponse = {
-      type: 'score-candidates-result',
+      type: 'error',
       requestId,
-      candidatesByChar: scored,
+      message: error instanceof Error ? error.message : 'Worker analysis failed.',
     };
     self.postMessage(response);
   }

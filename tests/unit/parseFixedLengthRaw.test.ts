@@ -97,6 +97,13 @@ describe('parseFixedRaw', () => {
         expect(res.klamacStatus).toBe('ok');
         });
 
+        it('ignores multiline whitespace (CRLF/tabs) in fixed mode', () => {
+        const res = parseFixedRaw('11\r\n22\n33\t44', 2, 4);
+        expect(res.tokens).toHaveLength(8);
+        expect(res.tokens.map(t => t.text)).toEqual(['1','1','2','2','3','3','4','4']);
+        expect(res.klamacStatus).toBe('ok');
+        });
+
         it('reports invalid when PT count is greater than CT groups', () => {
         const res = parseFixedRaw('1122', 2, 3); // 4 tokens -> 2 groups, PT=3 > groups
         expect(res.tokens).toHaveLength(4);

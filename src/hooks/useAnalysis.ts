@@ -34,6 +34,7 @@ function getAnalysisWorker(): Worker {
 // The message handler checks this to discard stale responses when a newer
 // request was fired before the previous worker reply arrived.
 let latestRequestId = 0;
+const ANALYSIS_TIMEOUT_MS = 30000;
 
 function sortCandidates(map: Record<string, Candidate[]>): Record<string, Candidate[]> {
   const sorted: Record<string, Candidate[]> = {};
@@ -72,9 +73,12 @@ export function useAnalysis(params: {
   const [candidatesByChar, setCandidatesByChar] = React.useState<Record<string, Candidate[]>>({});
   const [analysisDone, setAnalysisDone] = React.useState(false);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
+  const isMountedRef = React.useRef(true);
 
   React.useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       latestRequestId += 1;
       if (analysisWorker) {
         analysisWorker.terminate();
@@ -128,7 +132,10 @@ export function useAnalysis(params: {
    * and calls `onResult` with the final sorted candidate map.
    */
   const dispatchAnalysisRequest = React.useCallback(
-    (onResult: (sorted: Record<string, Candidate[]>) => void) => {
+    (
+      onResult: (sorted: Record<string, Candidate[]>) => void,
+      onError?: (message: string) => void,
+    ) => {
       const gs = ctParseMode === 'fixedLength' ? (fixedLength || 1) : 1;
       const logicalTokens = buildLogicalTokens(effectiveCtTokens, gs);
       const alloc = computeRowAlloc(ptRows as PTChar[][], logicalTokens);
@@ -136,11 +143,39 @@ export function useAnalysis(params: {
 
       const worker = getWorker();
       const requestId = ++latestRequestId;
+      let settled = false;
+
+      const settle = (errorMessage?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        worker.removeEventListener('message', handleMessage);
+        worker.removeEventListener('error', handleWorkerError);
+        if (errorMessage) onError?.(errorMessage);
+      };
+
+      const handleWorkerError = () => {
+        if (requestId !== latestRequestId) return;
+        settle('Analysis worker error. Please try again.');
+      };
 
       const handleMessage = (e: MessageEvent<AnalysisWorkerResponse>) => {
-        if (requestId !== latestRequestId || e.data.requestId !== requestId) return;
+        if (e.data.requestId !== requestId) return;
+        if (requestId !== latestRequestId) {
+          settle();
+          return;
+        }
+
+        if (e.data.type === 'error') {
+          settle(e.data.message || 'Analysis failed.');
+          return;
+        }
 
         if (e.data.type === 'analyze-result') {
+          if (!e.data.candidatesByChar) {
+            settle('Analysis response was missing candidates.');
+            return;
+          }
           const augmented = augmentCandidatesWithCurrentMapping(e.data.candidatesByChar);
           const scoreRequest: AnalysisWorkerRequest = {
             type: 'score-candidates',
@@ -154,18 +189,32 @@ export function useAnalysis(params: {
             keysPerPTMode,
             gridTokenSet: Array.from(gridTokenSet),
           };
-          worker.postMessage(scoreRequest);
+          try {
+            worker.postMessage(scoreRequest);
+          } catch {
+            settle('Failed to score analysis results.');
+          }
           return;
         }
 
         if (e.data.type === 'score-candidates-result') {
-          worker.removeEventListener('message', handleMessage);
+          if (!e.data.candidatesByChar) {
+            settle('Scoring response was missing candidates.');
+            return;
+          }
+          settle();
           const sorted = sortCandidates(e.data.candidatesByChar);
           onResult(sorted);
         }
       };
 
+      const timeoutId = window.setTimeout(() => {
+        if (requestId !== latestRequestId) return;
+        settle('Analysis timed out. Please try again.');
+      }, ANALYSIS_TIMEOUT_MS);
+
       worker.addEventListener('message', handleMessage);
+      worker.addEventListener('error', handleWorkerError);
 
       const request: AnalysisWorkerRequest = {
         type: 'analyze',
@@ -178,7 +227,11 @@ export function useAnalysis(params: {
         lockedKeys,
       };
 
-      worker.postMessage(request);
+      try {
+        worker.postMessage(request);
+      } catch {
+        settle('Failed to start analysis.');
+      }
     },
     [augmentCandidatesWithCurrentMapping, columns, effectiveCtTokens, fixedLength, keysPerPTMode, lockedKeys, ptRows, ctParseMode, getWorker, gridTokenSet],
   );
@@ -186,16 +239,24 @@ export function useAnalysis(params: {
   const runAnalysis = React.useCallback(() => {
     setIsAnalyzing(true);
     
-    dispatchAnalysisRequest((sorted) => {
-      setCandidatesByChar(sorted);
-      setSelections(prev => (Object.keys(prev).length ? {} : prev));
-      setAnalysisDone(true);
-      setIsAnalyzing(false);
-    });
+    dispatchAnalysisRequest(
+      (sorted) => {
+        if (!isMountedRef.current) return;
+        setCandidatesByChar(sorted);
+        setSelections(prev => (Object.keys(prev).length ? {} : prev));
+        setAnalysisDone(true);
+        setIsAnalyzing(false);
+      },
+      () => {
+        if (!isMountedRef.current) return;
+        setIsAnalyzing(false);
+      }
+    );
   }, [dispatchAnalysisRequest, setSelections]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
     dispatchAnalysisRequest((sorted) => {
+      if (!isMountedRef.current) return;
       setCandidatesByChar(sorted);
       setSelections(prev => {
         const next: SelectionMap = {};

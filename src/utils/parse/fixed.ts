@@ -20,12 +20,12 @@ export function parseFixedRaw(raw: string, groupSize: number, ptCount: number) {
   if (!s) return { tokens: [] as CTToken[], klamacStatus: 'none' as const, statusMessage: null as string | null };
   const size = groupSize > 0 ? groupSize : 1;
 
-  // Filter out spaces from the input (but keep other characters as-is).
+  // Filter out all whitespace from the input (spaces, tabs, CRLF newlines).
   // Build tokens directly to avoid allocating intermediate arrays on each keystroke.
   const tokens: CTToken[] = [];
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
-    if (ch === ' ') continue;
+    if (/\s/.test(ch)) continue;
     tokens.push({ id: `zt_${tokens.length}`, text: ch });
   }
 
