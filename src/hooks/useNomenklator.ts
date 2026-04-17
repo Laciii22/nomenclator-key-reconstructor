@@ -68,6 +68,16 @@ function uniqueTokenTextMetaEqual(a: UniqueTokenTextMeta[], b: UniqueTokenTextMe
   return true;
 }
 
+function serializePtGroupsToRaw(groups: PTChar[]): string {
+  return groups
+    .map(({ ch }) => {
+      const normalized = ch.replace(/\s/g, '').toUpperCase();
+      if (!normalized) return '';
+      return normalized.length > 1 ? `[${normalized}]` : normalized;
+    })
+    .join('');
+}
+
 type NomenklatorSelectionState = {
   lockedKeys: Record<string, string | string[]>;
   selections: SelectionMap;
@@ -1052,7 +1062,7 @@ export function useNomenklator() {
     const flat: PTChar[] = getFlatPTGroups();
     if (index < 0 || index >= flat.length) return;
 
-    const normalized = newText.replace(/\s/g, '');
+    const normalized = newText.replace(/\s/g, '').toUpperCase();
     const next = flat.slice();
 
     if (!normalized) {
@@ -1062,8 +1072,9 @@ export function useNomenklator() {
     }
 
     setCustomPtGroups(next);
+    setPtRaw(serializePtGroupsToRaw(next));
     setMergeAllPrompt(null);
-  }, [getFlatPTGroups]);
+  }, [getFlatPTGroups, setPtRaw]);
 
   const onDragStart = useCallback(() => {
     isDraggingRef.current = true;
