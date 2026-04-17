@@ -93,6 +93,7 @@ const NomenklatorPage: React.FC = () => {
     chooseScoreOneSuggestions,
     applySelection,
     editCtToken,
+    editPTAt,
     insertRawCharsAfterPosition,
     splitPTAt,
     shiftGroupRight,
@@ -210,6 +211,10 @@ const NomenklatorPage: React.FC = () => {
   const onInsertRawCharsAfterPositionWithBusy = React.useCallback((positionIndex: number, text: string, replace?: boolean) => {
     runWithGridBusy(() => insertRawCharsAfterPosition(positionIndex, text, replace));
   }, [insertRawCharsAfterPosition, runWithGridBusy]);
+
+  const onEditPTAtWithBusy = React.useCallback((flatPtIndex: number, newText: string) => {
+    runWithGridBusy(() => editPTAt(flatPtIndex, newText));
+  }, [editPTAt, runWithGridBusy]);
 
   const onSplitPTAtWithBusy = React.useCallback((flatIndex: number) => {
     runWithGridBusy(() => splitPTAt(flatIndex));
@@ -693,6 +698,7 @@ const NomenklatorPage: React.FC = () => {
                   lockedKeys={lockedKeys}
                   hasDeceptionWarning={klamacStatus === 'needsNull'}
                   onEditToken={onEditTokenWithBusy}
+                  onEditPTAt={onEditPTAtWithBusy}
                   groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
                   onInsertRawCharsAfterPosition={onInsertRawCharsAfterPositionWithBusy}
                   onSplitGroup={onSplitPTAtWithBusy}

@@ -424,9 +424,9 @@ const PTCell: React.FC<PTCellProps> = ({
             if (suppressNextClickRef.current) return;
             onInsertAfterGroup?.(flatIndex!);
           }}
-          title="Add raw CT token to this group"
+          title="Edit PT and CT for this cell"
         >
-          <img src={plusIcon} alt="edit CT token" className="w-3 h-3" />
+          <img src={plusIcon} alt="edit PT and CT" className="w-3 h-3" />
         </button>
       )}
       {/* In separator mode show a + to edit the token, or insert when empty */}
@@ -441,9 +441,9 @@ const PTCell: React.FC<PTCellProps> = ({
             if (suppressNextClickRef.current) return;
             editOrInsert();
           }}
-          title={displayedTokens.length === 0 ? 'Insert CT token for this PT' : 'Edit raw CT token for this PT'}
+          title={displayedTokens.length === 0 ? 'Insert PT and CT for this cell' : 'Edit PT and CT for this cell'}
         >
-          <img src={plusIcon} alt="edit CT token" className="w-3 h-3" />
+          <img src={plusIcon} alt="edit PT and CT" className="w-3 h-3" />
         </button>
       )}
       {pt && keysPerPTMode !== 'multiple' && (

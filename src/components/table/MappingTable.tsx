@@ -30,7 +30,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { ptRows, ctTokens, lockedKeys, selections = EMPTY_SELECTIONS, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
+	const { ptRows, ctTokens, lockedKeys, selections = EMPTY_SELECTIONS, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, onEditPTAt, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -236,8 +236,10 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	// State for the non-blocking insert/edit modal (replaces window.prompt in the Cell callback)
 	const [insertPrompt, setInsertPrompt] = React.useState<{
-		current: string;
-		label: string;
+		currentCT: string;
+		currentPT: string;
+		ctLabel: string;
+		ptLabel: string;
 		ptOnlyIndex: number;
 	} | null>(null);
 
@@ -316,10 +318,12 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 						if (!canInsertRaw || fi < 0) return;
 						const target = flatColumns[fi];
 						if (!target || !target.ptCh) return;
-						const current = target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
-						const label = groupSize > 1 ? 'Edit raw chars for this group (no spaces):' : 'Insert/edit token for this PT (no spaces):';
+						const currentCT = target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
+						const currentPT = target.ptCh;
+						const ctLabel = groupSize > 1 ? 'CT raw chars for this group (no spaces):' : 'CT token for this PT (no spaces):';
+						const ptLabel = 'PT text for this cell (leave empty to remove PT cell):';
 						const ptOnlyIndex = ptOnlyIndexByFlat[fi] ?? 0;
-						setInsertPrompt({ current, label, ptOnlyIndex });
+						setInsertPrompt({ currentCT, currentPT, ctLabel, ptLabel, ptOnlyIndex });
 					}}
 				/>
 			</div>
@@ -369,12 +373,15 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			</div>
 			<PromptModal
 				isOpen={insertPrompt !== null}
-				title="Edit CT Token"
-				label={insertPrompt?.label ?? ''}
-				initialValue={insertPrompt?.current ?? ''}
-				onConfirm={(value) => {
-					if (insertPrompt && onInsertRawCharsAfterPosition) {
-						onInsertRawCharsAfterPosition(insertPrompt.ptOnlyIndex, value, true);
+				title="Edit PT and CT Cell"
+				label={insertPrompt?.ptLabel ?? ''}
+				initialValue={insertPrompt?.currentPT ?? ''}
+				secondaryLabel={insertPrompt?.ctLabel ?? ''}
+				secondaryInitialValue={insertPrompt?.currentCT ?? ''}
+				onConfirm={(ptValue, ctValue) => {
+					if (insertPrompt) {
+						onEditPTAt?.(insertPrompt.ptOnlyIndex, ptValue ?? '');
+						onInsertRawCharsAfterPosition?.(insertPrompt.ptOnlyIndex, ctValue ?? '', true);
 					}
 					setInsertPrompt(null);
 				}}

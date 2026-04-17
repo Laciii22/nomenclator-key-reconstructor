@@ -58,6 +58,8 @@ export type MappingTableProps = {
   hasDeceptionWarning?: boolean;
   /** Callback when user edits a CT token inline */
   onEditToken?: (tokenIndex: number, newText: string) => void;
+  /** Callback when user edits/removes a PT cell text by flat PT index */
+  onEditPTAt?: (flatPtIndex: number, newText: string) => void;
   /** Current manual selections */
   selections?: Record<string, string | string[] | null>;
   /** Currently highlighted PT character */

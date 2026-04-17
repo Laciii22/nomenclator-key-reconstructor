@@ -1046,6 +1046,25 @@ export function useNomenklator() {
     setCustomPtGroups(next);
   }, [customPtGroups, ptChars]);
 
+  // Edit or remove a PT group at flat PT index.
+  // Empty input removes the PT group (cell) from the custom grouping.
+  const editPTAt = useCallback((index: number, newText: string) => {
+    const flat: PTChar[] = getFlatPTGroups();
+    if (index < 0 || index >= flat.length) return;
+
+    const normalized = newText.replace(/\s/g, '');
+    const next = flat.slice();
+
+    if (!normalized) {
+      next.splice(index, 1);
+    } else {
+      next[index] = { ...next[index], ch: normalized };
+    }
+
+    setCustomPtGroups(next);
+    setMergeAllPrompt(null);
+  }, [getFlatPTGroups]);
+
   const onDragStart = useCallback(() => {
     isDraggingRef.current = true;
     // Dragging performs multiple state updates quickly; pausing debounced refreshes
@@ -1240,6 +1259,7 @@ export function useNomenklator() {
     reabsorbNullByDirection,
     joinPTAt,
     splitPTAt,
+    editPTAt,
     mergeAllOccurrences,
     dismissMergeAllPrompt,
     toggleHighlightForOT,
@@ -1272,6 +1292,7 @@ export function useNomenklator() {
     extractEdgeTokenByCtIndex,
     reabsorbNullByDirection,
     splitPTAt,
+    editPTAt,
     toggleBracketGroupByText,
     toggleHighlightForOT,
     quickAssign,

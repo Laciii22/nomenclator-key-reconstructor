@@ -6,10 +6,14 @@ interface PromptModalProps {
   title: string;
   /** Label shown above the text input */
   label: string;
+  /** Optional second input label (for dual-field edits) */
+  secondaryLabel?: string;
   /** Pre-filled text (re-applied every time the modal opens) */
   initialValue?: string;
+  /** Pre-filled text for the optional secondary input */
+  secondaryInitialValue?: string;
   /** Called with the current input when the user clicks OK or presses Enter */
-  onConfirm: (value: string) => void;
+  onConfirm: (value: string, secondaryValue?: string) => void;
   /** Called when the user clicks Cancel, the backdrop, or presses Escape */
   onCancel: () => void;
 }
@@ -28,11 +32,14 @@ const PromptModal: React.FC<PromptModalProps> = ({
   isOpen,
   title,
   label,
+  secondaryLabel,
   initialValue = '',
+  secondaryInitialValue = '',
   onConfirm,
   onCancel,
 }) => {
   const [value, setValue] = useState(initialValue);
+  const [secondaryValue, setSecondaryValue] = useState(secondaryInitialValue);
   const inputRef = useRef<HTMLInputElement>(null);
   const openedAtRef = useRef<number>(0);
 
@@ -41,9 +48,10 @@ const PromptModal: React.FC<PromptModalProps> = ({
     if (isOpen) {
       openedAtRef.current = Date.now();
       setValue(initialValue);
+      setSecondaryValue(secondaryInitialValue);
       requestAnimationFrame(() => inputRef.current?.select());
     }
-  }, [isOpen, initialValue]);
+  }, [isOpen, initialValue, secondaryInitialValue]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Ignore the synthetic/ghost click that can follow pointer-driven opening.
@@ -61,12 +69,12 @@ const PromptModal: React.FC<PromptModalProps> = ({
         onCancel();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        onConfirm(value);
+        onConfirm(value, secondaryLabel ? secondaryValue : undefined);
       }
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [isOpen, value, onConfirm, onCancel]);
+  }, [isOpen, value, secondaryValue, secondaryLabel, onConfirm, onCancel]);
 
   if (!isOpen) return null;
 
@@ -100,6 +108,23 @@ const PromptModal: React.FC<PromptModalProps> = ({
           className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2"
           autoFocus
         />
+        {secondaryLabel ? (
+          <>
+            <label
+              className="block text-sm text-gray-600"
+              htmlFor="prompt-modal-secondary-input"
+            >
+              {secondaryLabel}
+            </label>
+            <input
+              id="prompt-modal-secondary-input"
+              type="text"
+              value={secondaryValue}
+              onChange={(e) => setSecondaryValue(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2"
+            />
+          </>
+        ) : null}
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -110,7 +135,7 @@ const PromptModal: React.FC<PromptModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(value)}
+            onClick={() => onConfirm(value, secondaryLabel ? secondaryValue : undefined)}
             className="px-3 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700"
           >
             OK
