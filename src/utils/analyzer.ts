@@ -63,6 +63,11 @@ export type AnalysisResult = {
 
 /** Column-like structure for fixed-mode scoring. */
 type ColumnLike = { pt: { ch: string } | null; ct: number[] }[][];
+const ANALYZE_YIELD_EVERY = 200;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
 
 /**
  * Precomputed grid context for batch fixed-mode scoring.
@@ -335,6 +340,54 @@ function buildCandidatesForAnalysis(
   return candidatesByChar;
 }
 
+async function buildCandidatesForAnalysisYielding(
+  ctTokens: readonly CTToken[],
+  charPositions: Readonly<Record<string, readonly number[]>>,
+  keysPerPTMode: KeysPerPTMode,
+): Promise<Record<string, Candidate[]>> {
+  const uniqueTokens = Array.from(new Set(ctTokens.map(t => t.text)));
+  const freq = countTokenFrequency(ctTokens);
+
+  const totalPTChars = Object.values(charPositions).reduce(
+    (sum, positions) => sum + positions.length, 0,
+  );
+  const deceptionCount = ctTokens.length - totalPTChars;
+
+  const tokenPositionMap = keysPerPTMode === 'multiple'
+    ? buildTokenPositionMap(ctTokens)
+    : null;
+
+  const candidatesByChar: Record<string, Candidate[]> = {};
+  let processed = 0;
+
+  for (const ch of Object.keys(charPositions)) {
+    const cellPositions = charPositions[ch];
+    const cellCount = cellPositions.length;
+
+    const validTokens = tokenPositionMap
+      ? filterTokensByRange(tokenPositionMap, uniqueTokens, cellPositions, deceptionCount)
+      : uniqueTokens;
+
+    const candidates: Candidate[] = [];
+    for (const tok of validTokens) {
+      const tokenCount = freq.get(tok) || 0;
+      candidates.push({
+        token: tok,
+        length: 1,
+        support: tokenCount,
+        occurrences: cellCount,
+        score: computeCandidateScore(cellCount, tokenCount, keysPerPTMode),
+      });
+
+      processed++;
+      if (processed % ANALYZE_YIELD_EVERY === 0) await yieldToEventLoop();
+    }
+    candidatesByChar[ch] = candidates;
+  }
+
+  return candidatesByChar;
+}
+
 /** Build proposed row groups honoring locked keys. */
 function buildProposedRowGroups(
   rowGroupsIn: readonly number[][],
@@ -392,6 +445,42 @@ export function analyze(
 
   const charPositions = buildCharPositionMap(flatOT);
   const candidatesByChar = buildCandidatesForAnalysis(ctTokens, charPositions, _options.keysPerPTMode);
+  const proposed = buildProposedRowGroups(rowGroups, flatOT, normalizedLocks);
+
+  return {
+    proposedLocks: { ...(lockedKeys || {}) },
+    proposedRowGroups: proposed,
+    candidatesByChar,
+  };
+}
+
+export async function analyzeIncremental(
+  ptRows: PTChar[][],
+  ctTokens: CTToken[],
+  rowGroups: number[][],
+  _options: AnalysisOptions,
+  lockedKeys?: Record<string, string | string[]>,
+): Promise<AnalysisResult> {
+  const flatOT = flattenPtChars(ptRows);
+  const normalizedLocks = normalizeLocks(lockedKeys);
+
+  const workingGroups = rowGroups.map(r => [...r]);
+  if (Object.keys(normalizedLocks).length > 0) {
+    const lockedLen: Record<string, number> = {};
+    for (const ch of Object.keys(normalizedLocks)) lockedLen[ch] = 1;
+
+    const cells = flattenGroups(workingGroups);
+    let total = 0;
+    for (const cell of cells) total += cell.count;
+
+    applyLockedLengths(workingGroups, flatOT, lockedLen);
+    balanceGroups(workingGroups, total, flatOT, lockedLen);
+  }
+
+  await yieldToEventLoop();
+
+  const charPositions = buildCharPositionMap(flatOT);
+  const candidatesByChar = await buildCandidatesForAnalysisYielding(ctTokens, charPositions, _options.keysPerPTMode);
   const proposed = buildProposedRowGroups(rowGroups, flatOT, normalizedLocks);
 
   return {

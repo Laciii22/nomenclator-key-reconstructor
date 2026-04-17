@@ -78,6 +78,54 @@ function sanitizeSettings(rawSettings: unknown, defaults: LocalSettings): LocalS
   };
 }
 
+function arraysEqual(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function stringArraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function lockedKeysEqual(a: LockedKeys, b: LockedKeys): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (!(k in b)) return false;
+    const av = a[k];
+    const bv = b[k];
+    if (Array.isArray(av) || Array.isArray(bv)) {
+      if (!Array.isArray(av) || !Array.isArray(bv)) return false;
+      if (!stringArraysEqual(av, bv)) return false;
+      continue;
+    }
+    if (av !== bv) return false;
+  }
+  return true;
+}
+
+function localSettingsEqual(a: LocalSettings, b: LocalSettings): boolean {
+  return (
+    a.fixedPerPTEnabled === b.fixedPerPTEnabled
+    && a.fixedPerPTSize === b.fixedPerPTSize
+    && a.maxTokensCapEnabled === b.maxTokensCapEnabled
+    && a.maxTokensPerCell === b.maxTokensPerCell
+    && a.keysPerPTMode === b.keysPerPTMode
+    && a.ptRaw === b.ptRaw
+    && a.ctRaw === b.ctRaw
+    && arraysEqual(a.bracketedIndices, b.bracketedIndices)
+    && lockedKeysEqual(a.lockedKeys, b.lockedKeys)
+  );
+}
+
 function extractStoredPayload(parsed: unknown): unknown {
   if (!isRecord(parsed)) return parsed;
   const version = parsed.version;
@@ -144,10 +192,10 @@ export function useLocalSettings(initial?: Partial<LocalSettings>) {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== KEY) return;
+      if (e.oldValue === e.newValue) return;
       setSettings(prev => {
         const next = loadFromStorage(prev);
-        const same = JSON.stringify(prev) === JSON.stringify(next);
-        return same ? prev : next;
+        return localSettingsEqual(prev, next) ? prev : next;
       });
     };
 

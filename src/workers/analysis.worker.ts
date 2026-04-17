@@ -4,11 +4,16 @@
  */
 
 import type { PTChar, CTToken } from '../types/domain';
-import { analyze } from '../utils/analyzer';
+import { analyzeIncremental } from '../utils/analyzer';
 import type { Candidate } from '../utils/analyzer';
 import { buildFixedModeGridContext, fixedModeScore, separatorModeScore } from '../utils/analyzer';
 
 type ColumnLike = { pt: { ch: string } | null; ct: number[] }[][];
+const SCORE_YIELD_EVERY = 200;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
 
 function sortCandidates(map: Record<string, Candidate[]>): Record<string, Candidate[]> {
   const sorted: Record<string, Candidate[]> = {};
@@ -18,7 +23,7 @@ function sortCandidates(map: Record<string, Candidate[]>): Record<string, Candid
   return sorted;
 }
 
-function scoreCandidates(params: {
+async function scoreCandidates(params: {
   candidatesByChar: Record<string, Candidate[]>;
   ptRows: PTChar[][];
   ctParseMode: 'separator' | 'fixedLength';
@@ -27,16 +32,21 @@ function scoreCandidates(params: {
   columns: ColumnLike;
   keysPerPTMode: 'single' | 'multiple';
   gridTokenSet: string[];
-}): Record<string, Candidate[]> {
+}): Promise<Record<string, Candidate[]>> {
   const { candidatesByChar, ptRows, ctParseMode, fixedLength, effectiveCtTokens, columns, keysPerPTMode, gridTokenSet } = params;
 
   if (ctParseMode !== 'fixedLength') {
     const out: Record<string, Candidate[]> = {};
+    let processed = 0;
     for (const [ch, list] of Object.entries(candidatesByChar)) {
-      out[ch] = list.map(c => {
+      const scoredList: Candidate[] = [];
+      for (const c of list) {
         const scored = separatorModeScore({ token: c.token, ptChar: ch, ptRows, effectiveCtTokens });
-        return { ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score };
-      });
+        scoredList.push({ ...c, support: scored.support, occurrences: scored.occurrences, score: scored.score });
+        processed++;
+        if (processed % SCORE_YIELD_EVERY === 0) await yieldToEventLoop();
+      }
+      out[ch] = scoredList;
     }
     return sortCandidates(out);
   }
@@ -45,12 +55,16 @@ function scoreCandidates(params: {
   const tokenSet = new Set<string>(gridTokenSet);
   const gridCtx = buildFixedModeGridContext(columns, effectiveCtTokens);
   const out: Record<string, Candidate[]> = {};
+  let processed = 0;
 
   for (const [ch, list] of Object.entries(candidatesByChar)) {
-    const scored = list.map(c => {
+    const scored: Candidate[] = [];
+    for (const c of list) {
       const next = fixedModeScore({ token: c.token, ptChar: ch, columns, effectiveCtTokens, groupSize: gs, keysPerPTMode, _gridCtx: gridCtx });
-      return { ...c, support: next.support, occurrences: next.occurrences, score: next.score };
-    });
+      scored.push({ ...c, support: next.support, occurrences: next.occurrences, score: next.score });
+      processed++;
+      if (processed % SCORE_YIELD_EVERY === 0) await yieldToEventLoop();
+    }
     out[ch] = scored.filter(c => c.score > 0 || tokenSet.has(c.token));
   }
 
@@ -81,7 +95,7 @@ export interface AnalysisWorkerResponse {
   message?: string;
 }
 
-self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
+async function handleMessage(e: MessageEvent<AnalysisWorkerRequest>) {
   const { type, requestId } = e.data;
 
   try {
@@ -97,7 +111,7 @@ self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
         return;
       }
 
-      const result = analyze(ptRows, ctTokens, rowGroups, { keysPerPTMode, groupSize }, lockedKeys);
+      const result = await analyzeIncremental(ptRows, ctTokens, rowGroups, { keysPerPTMode, groupSize }, lockedKeys);
 
       const response: AnalysisWorkerResponse = {
         type: 'analyze-result',
@@ -131,7 +145,7 @@ self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
         return;
       }
 
-      const scored = scoreCandidates({
+      const scored = await scoreCandidates({
         candidatesByChar,
         ptRows,
         ctParseMode,
@@ -165,4 +179,8 @@ self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
     };
     self.postMessage(response);
   }
+}
+
+self.onmessage = (e: MessageEvent<AnalysisWorkerRequest>) => {
+  void handleMessage(e);
 };

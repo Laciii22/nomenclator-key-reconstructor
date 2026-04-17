@@ -54,10 +54,9 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 		return buildShiftOnlyColumns(ptRows, ctTokens, normalizedLocks, normalizedSelections, groupSize, bracketedIndices);
 	}, [columns, ptRows, ctTokens, lockedKeys, selections, groupSize, bracketedIndices]);
 
-	// Flat index of all cells (including deception), flat PT-only index, and owned CT
-	// indices — all derived from `rows` — computed in a single traversal to avoid
-	// iterating the grid three separate times when rows change.
-	const { flatIndices, flatPtIndices, allOwnedIndices } = useMemo(() => {
+	// Build grid metadata in one shared derivation to avoid repeated full-grid scans
+	// across indexing, expansion checks, and duplicate detection.
+	const { flatIndices, flatPtIndices, allowExpandMap, duplicatePTChars } = useMemo(() => {
 		let allCounter = 0;
 		let ptCounter = 0;
 		const fi: number[][] = [];
@@ -84,63 +83,47 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			fpi.push(fpiRow);
 		}
 
-		return { flatIndices: fi, flatPtIndices: fpi, allOwnedIndices: owned };
-	}, [rows]);
-
-	// Pre-compute allowExpandFromStart for all cells to avoid O(n²) in render
-	const allowExpandMap = useMemo(() => {
-		if (groupSize <= 1) return new Map<string, boolean>();
-
 		const map = new Map<string, boolean>();
+		const tokenToOTs = new Map<string, Set<string>>();
 		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
 			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
 				const col = rows[rIdx][cIdx];
 				const key = `${rIdx}-${cIdx}`;
+				let canExpand = false;
 
-				if (!col.ct || col.ct.length === 0 || col.ct.length >= groupSize) {
-					map.set(key, false);
-					continue;
-				}
-
-				const start = col.ct[0];
-				if (start < 0 || start >= ctTokens.length) {
-					map.set(key, false);
-					continue;
-				}
-				const cellCtSet = new Set(col.ct);
-				let canExpand = true;
-				for (let k = 1; k < groupSize; k++) {
-					const idx = start + k;
-					if (allOwnedIndices.has(idx) && !cellCtSet.has(idx)) {
-						canExpand = false;
-						break;
+				if (groupSize > 1) {
+					if (!col.ct || col.ct.length === 0 || col.ct.length >= groupSize) {
+						map.set(key, false);
+					} else {
+						const start = col.ct[0];
+						if (start < 0 || start >= ctTokens.length) {
+							map.set(key, false);
+						} else {
+							const cellCtSet = new Set(col.ct);
+							canExpand = true;
+							for (let k = 1; k < groupSize; k++) {
+								const idx = start + k;
+								if (owned.has(idx) && !cellCtSet.has(idx)) {
+									canExpand = false;
+									break;
+								}
+								if (idx >= ctTokens.length) {
+									canExpand = false;
+									break;
+								}
+							}
+							map.set(key, canExpand);
+						}
 					}
-					if (idx >= ctTokens.length) {
-						canExpand = false;
-						break;
-					}
 				}
-				map.set(key, canExpand);
-			}
-		}
-		return map;
-	}, [rows, groupSize, ctTokens.length, allOwnedIndices]);
 
-	// Duplicate detection is based on *rendered* group text (not raw indices) so it matches
-	// what users see and reason about when spotting collisions.
-	const duplicatePTChars = React.useMemo(() => {
-		const tokenToOTs = new Map<string, Set<string>>();
+				if (!col.pt || col.deception || !col.ct || col.ct.length === 0) continue;
 
-		for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-			for (let cIdx = 0; cIdx < rows[rIdx].length; cIdx++) {
-				const col = rows[rIdx][cIdx];
-				if (!col.pt) continue;
-				if (col.deception) continue;
-				if (!col.ct || col.ct.length === 0) continue;
-
-				// Match PTCell rendering rules: expand only when len==1 and allowExpandFromStart.
 				const displayedIndices = expandDisplayedIndices(
-					col.ct, groupSize, allowExpandMap.get(`${rIdx}-${cIdx}`) ?? false, ctTokens.length
+					col.ct,
+					groupSize,
+					groupSize > 1 ? canExpand : false,
+					ctTokens.length,
 				);
 
 				let groupText = '';
@@ -160,8 +143,14 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 			if (ots.size <= 1) continue;
 			for (const pt of ots) dup.add(pt);
 		}
-		return dup;
-	}, [groupSize, rows, ctTokens, allowExpandMap]);
+
+		return {
+			flatIndices: fi,
+			flatPtIndices: fpi,
+			allowExpandMap: map,
+			duplicatePTChars: dup,
+		};
+	}, [rows, groupSize, ctTokens]);
 
 	// Use a single fixed-width grid so subsequent PT rows can visually continue
 	// filling any remaining space on the last line (layout-only).
