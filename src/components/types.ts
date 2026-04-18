@@ -60,6 +60,8 @@ export type MappingTableProps = {
   onEditToken?: (tokenIndex: number, newText: string) => void;
   /** Callback when user edits/removes a PT cell text by flat PT index */
   onEditPTAt?: (flatPtIndex: number, newText: string) => void;
+  /** Callback when user inserts a new PT cell text at flat PT index */
+  onInsertPTAt?: (flatPtIndex: number, newText: string) => void;
   /** Current manual selections */
   selections?: Record<string, string | string[] | null>;
   /** Currently highlighted PT character */

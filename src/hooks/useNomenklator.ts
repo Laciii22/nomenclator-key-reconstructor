@@ -1076,6 +1076,22 @@ export function useNomenklator() {
     setMergeAllPrompt(null);
   }, [getFlatPTGroups, setPtRaw]);
 
+  // Insert a new PT group at the requested flat PT index.
+  // Used when converting a null/deception placeholder into a normal PT cell.
+  const insertPTAt = useCallback((index: number, newText: string) => {
+    const normalized = newText.replace(/\s/g, '').toUpperCase();
+    if (!normalized) return;
+
+    const flat: PTChar[] = getFlatPTGroups();
+    const clamped = Math.max(0, Math.min(index, flat.length));
+    const next = flat.slice();
+    next.splice(clamped, 0, { id: `pt_insert_${Date.now()}_${clamped}`, ch: normalized });
+
+    setCustomPtGroups(next);
+    setPtRaw(serializePtGroupsToRaw(next));
+    setMergeAllPrompt(null);
+  }, [getFlatPTGroups, setPtRaw]);
+
   const onDragStart = useCallback(() => {
     isDraggingRef.current = true;
     // Dragging performs multiple state updates quickly; pausing debounced refreshes
@@ -1271,6 +1287,7 @@ export function useNomenklator() {
     joinPTAt,
     splitPTAt,
     editPTAt,
+    insertPTAt,
     mergeAllOccurrences,
     dismissMergeAllPrompt,
     toggleHighlightForOT,
@@ -1304,6 +1321,7 @@ export function useNomenklator() {
     reabsorbNullByDirection,
     splitPTAt,
     editPTAt,
+    insertPTAt,
     toggleBracketGroupByText,
     toggleHighlightForOT,
     quickAssign,

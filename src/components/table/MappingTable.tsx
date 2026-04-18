@@ -30,7 +30,7 @@ type MappingTableExtraProps = {
  * share a single mapping computation across multiple views.
  */
 function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
-	const { ptRows, ctTokens, lockedKeys, selections = EMPTY_SELECTIONS, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, onEditPTAt, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
+	const { ptRows, ctTokens, lockedKeys, selections = EMPTY_SELECTIONS, hasDeceptionWarning, onLockOT, onUnlockOT, onEditToken, onEditPTAt, onInsertPTAt, groupSize = 1, onInsertRawCharsAfterPosition, onSplitGroup, canInsertRaw = false, canSplitGroup = true, columns, shiftMeta, onShiftGroupLeft, onShiftGroupRight, activeDragType, activePtSourceRow, activePtSourceCol, activeCtTokenIndex, keysPerPTMode = 'single', bracketedIndices = [], activeCtIsFromNull = false, activeNullInsertedAfterBaseFlatIndex = null, activeCtSourceCellCount } = props;
 
 	const rows = useMemo(() => {
 		if (columns && columns.length) return columns;
@@ -236,11 +236,12 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 	// State for the non-blocking insert/edit modal (replaces window.prompt in the Cell callback)
 	const [insertPrompt, setInsertPrompt] = React.useState<{
-		currentCT: string;
+		currentCT?: string;
 		currentPT: string;
-		ctLabel: string;
+		ctLabel?: string;
 		ptLabel: string;
 		ptOnlyIndex: number;
+		isNullTarget: boolean;
 	} | null>(null);
 
 	// Stable context value shared across all PTCell instances rendered by this grid.
@@ -317,13 +318,18 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 					onInsertAfterGroup={(fi) => {
 						if (!canInsertRaw || fi < 0) return;
 						const target = flatColumns[fi];
-						if (!target || !target.ptCh) return;
+						if (!target) return;
+						const isNullTarget = target.ptCh == null;
 						const currentCT = target.indices.length ? target.indices.map(i => ctTokens[i]?.text || '').join('') : '';
-						const currentPT = target.ptCh;
-						const ctLabel = groupSize > 1 ? 'CT raw chars for this group (no spaces):' : 'CT token for this PT (no spaces):';
-						const ptLabel = 'PT text for this cell (leave empty to remove PT cell):';
+						const currentPT = target.ptCh ?? '';
+						const ctLabel = isNullTarget
+							? undefined
+							: (groupSize > 1 ? 'CT raw chars for this group (no spaces):' : 'CT token for this PT (no spaces):');
+						const ptLabel = isNullTarget
+							? 'PT text for this null cell (required to convert null to PT cell):'
+							: 'PT text for this cell (leave empty to remove PT cell):';
 						const ptOnlyIndex = ptOnlyIndexByFlat[fi] ?? 0;
-						setInsertPrompt({ currentCT, currentPT, ctLabel, ptLabel, ptOnlyIndex });
+						setInsertPrompt({ currentCT, currentPT, ctLabel, ptLabel, ptOnlyIndex, isNullTarget });
 					}}
 				/>
 			</div>
@@ -376,12 +382,19 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 				title="Edit PT and CT Cell"
 				label={insertPrompt?.ptLabel ?? ''}
 				initialValue={insertPrompt?.currentPT ?? ''}
-				secondaryLabel={insertPrompt?.ctLabel ?? ''}
+				secondaryLabel={insertPrompt?.ctLabel}
 				secondaryInitialValue={insertPrompt?.currentCT ?? ''}
 				onConfirm={(ptValue, ctValue) => {
 					if (insertPrompt) {
-						onEditPTAt?.(insertPrompt.ptOnlyIndex, ptValue ?? '');
-						onInsertRawCharsAfterPosition?.(insertPrompt.ptOnlyIndex, ctValue ?? '', true);
+						const nextPt = ptValue ?? '';
+						if (insertPrompt.isNullTarget) {
+							if (nextPt.trim()) {
+								onInsertPTAt?.(insertPrompt.ptOnlyIndex, nextPt);
+							}
+						} else {
+							onEditPTAt?.(insertPrompt.ptOnlyIndex, nextPt);
+							onInsertRawCharsAfterPosition?.(insertPrompt.ptOnlyIndex, ctValue ?? '', true);
+						}
 					}
 					setInsertPrompt(null);
 				}}

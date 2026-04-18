@@ -13,6 +13,7 @@ import {
   extendCandidateListWithLocked,
   sortCandidatesByScore,
   getCurrentSelectorValue,
+  getPTCharBadgeClasses,
   getSelectorInputClasses
 } from './candidateSelectorCommon';
 import type { PTChar, CTToken } from '../../types/domain';
@@ -104,6 +105,12 @@ const CandidateSelectorDropdown: React.FC<CandidateSelectorDropdownProps> = ({
 
           return (
             <div key={ch} className="flex items-center gap-3">
+              <span
+                className={`min-w-6 text-center px-1 py-0.5 rounded text-xs font-mono font-semibold ${getPTCharBadgeClasses(Boolean(lockedVal))}`}
+                title={`PT: ${ch}`}
+              >
+                {ch}
+              </span>
               <select
                 className={`${getSelectorInputClasses(disabledSelect)} ${showSuggestion ? 'ring-1 ring-amber-300 bg-amber-50' : ''}`}
                 value={currentValue}

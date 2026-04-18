@@ -34,6 +34,8 @@ const NomenklatorPage: React.FC = () => {
   const { inputs, state, derived, actions } = useNomenklator();
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
   const [isFrequencyOpen, setIsFrequencyOpen] = React.useState(false);
+  const [isMappingPreviewUpdatedFlash, setIsMappingPreviewUpdatedFlash] = React.useState(false);
+  const mappingPreviewFlashTimerRef = React.useRef<number | null>(null);
 
   const {
     ptRaw,
@@ -94,6 +96,7 @@ const NomenklatorPage: React.FC = () => {
     applySelection,
     editCtToken,
     editPTAt,
+    insertPTAt,
     insertRawCharsAfterPosition,
     splitPTAt,
     shiftGroupRight,
@@ -216,6 +219,10 @@ const NomenklatorPage: React.FC = () => {
     runWithGridBusy(() => editPTAt(flatPtIndex, newText));
   }, [editPTAt, runWithGridBusy]);
 
+  const onInsertPTAtWithBusy = React.useCallback((flatPtIndex: number, newText: string) => {
+    runWithGridBusy(() => insertPTAt(flatPtIndex, newText));
+  }, [insertPTAt, runWithGridBusy]);
+
   const onSplitPTAtWithBusy = React.useCallback((flatIndex: number) => {
     runWithGridBusy(() => splitPTAt(flatIndex));
   }, [runWithGridBusy, splitPTAt]);
@@ -235,6 +242,28 @@ const NomenklatorPage: React.FC = () => {
   const onReabsorbNullByDirectionWithBusy = React.useCallback((baseFlatIndex: number, direction: 'left' | 'right') => {
     runWithGridBusy(() => reabsorbNullByDirection(baseFlatIndex, direction));
   }, [reabsorbNullByDirection, runWithGridBusy]);
+
+  const onUpdateMappingPreview = React.useCallback(() => {
+    if (!hasPendingMappingPreviewUpdate) return;
+    applySelectionsToMappingPreview();
+
+    setIsMappingPreviewUpdatedFlash(true);
+    if (mappingPreviewFlashTimerRef.current !== null) {
+      window.clearTimeout(mappingPreviewFlashTimerRef.current);
+    }
+    mappingPreviewFlashTimerRef.current = window.setTimeout(() => {
+      setIsMappingPreviewUpdatedFlash(false);
+      mappingPreviewFlashTimerRef.current = null;
+    }, 1200);
+  }, [applySelectionsToMappingPreview, hasPendingMappingPreviewUpdate]);
+
+  React.useEffect(() => {
+    return () => {
+      if (mappingPreviewFlashTimerRef.current !== null) {
+        window.clearTimeout(mappingPreviewFlashTimerRef.current);
+      }
+    };
+  }, []);
 
   const activeDragInfo = React.useMemo(() => {
     const data = (activeDrag?.data?.current ?? {}) as DragData;
@@ -545,15 +574,20 @@ const NomenklatorPage: React.FC = () => {
                       {shouldDeferSelectionMappingPreview && (
                         <button
                           className={`text-xs px-2.5 py-1 rounded-md border ${
+                            isMappingPreviewUpdatedFlash
+                              ? 'border-green-500 bg-green-100 text-green-900 ring-1 ring-green-300 font-semibold'
+                              :
                             hasPendingMappingPreviewUpdate
                               ? 'border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-900 ring-1 ring-amber-300 font-semibold'
                               : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
                           }`}
-                          onClick={applySelectionsToMappingPreview}
+                          onClick={onUpdateMappingPreview}
                           disabled={!hasPendingMappingPreviewUpdate}
                           title="Update Mapping Grid from current suggestions"
                         >
-                          {hasPendingMappingPreviewUpdate ? 'Update mapping preview (pending)' : 'Update mapping preview'}
+                          {isMappingPreviewUpdatedFlash
+                            ? 'Mapping preview updated'
+                            : (hasPendingMappingPreviewUpdate ? 'Update mapping preview (pending)' : 'Update mapping preview')}
                         </button>
                       )}
                       <button
@@ -699,6 +733,7 @@ const NomenklatorPage: React.FC = () => {
                   hasDeceptionWarning={klamacStatus === 'needsNull'}
                   onEditToken={onEditTokenWithBusy}
                   onEditPTAt={onEditPTAtWithBusy}
+                  onInsertPTAt={onInsertPTAtWithBusy}
                   groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
                   onInsertRawCharsAfterPosition={onInsertRawCharsAfterPositionWithBusy}
                   onSplitGroup={onSplitPTAtWithBusy}
