@@ -360,7 +360,7 @@ const NomenklatorPage: React.FC = () => {
         return;
       }
 
-      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      if (e.key === 'F' || e.key === 'f') {
         e.preventDefault();
         setIsFrequencyOpen(prev => !prev);
         return;
@@ -546,14 +546,14 @@ const NomenklatorPage: React.FC = () => {
                         <button
                           className={`text-xs px-2.5 py-1 rounded-md border ${
                             hasPendingMappingPreviewUpdate
-                              ? 'border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800'
+                              ? 'border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-900 ring-1 ring-amber-300 font-semibold'
                               : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
                           }`}
                           onClick={applySelectionsToMappingPreview}
                           disabled={!hasPendingMappingPreviewUpdate}
                           title="Update Mapping Grid from current suggestions"
                         >
-                          Update mapping preview
+                          {hasPendingMappingPreviewUpdate ? 'Update mapping preview (pending)' : 'Update mapping preview'}
                         </button>
                       )}
                       <button

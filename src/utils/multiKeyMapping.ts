@@ -98,6 +98,7 @@ function allocateLockedWithLocalLookahead(
   groupSize: number,
   ctTokens: CTToken[],
   tokenOwners: Map<string, Set<string>>,
+  remainingPtByChar: Map<string, number>,
   maxSkippedGroups: number,
 ): { columns: Column[]; tokensConsumed: number; found: boolean } {
   const cols: Column[] = [];
@@ -106,7 +107,7 @@ function allocateLockedWithLocalLookahead(
 
   while (ptr < ctTokens.length) {
     const seq = buildTokenSequence(ctTokens, ptr, groupSize);
-    if (isHardLockedForOtherChar(seq, ptChar.ch, tokenOwners)) {
+    if (isHardLockedForOtherChar(seq, ptChar.ch, tokenOwners, remainingPtByChar)) {
       break;
     }
 
@@ -162,6 +163,7 @@ function isHardLockedForOtherChar(
   currentSeq: string | null,
   ptChar: string,
   tokenOwners: Map<string, Set<string>>,
+  remainingPtByChar: Map<string, number>,
 ): boolean {
   if (!currentSeq) return false;
 
@@ -170,7 +172,7 @@ function isHardLockedForOtherChar(
 
   // If any owner is not this PT char, this slot must stay for that char.
   for (const owner of owners) {
-    if (owner !== ptChar) return true;
+    if (owner !== ptChar && (remainingPtByChar.get(owner) ?? 0) > 0) return true;
   }
 
   return false;
@@ -216,12 +218,30 @@ export function buildMultiKeyColumns(
 ): Column[][] {
   const filteredRows = ptRows.map(r => r.filter(c => c.ch !== ''));
   const allLocked = mergeLockAndSelection(lockedKeys, selections);
-  // Build token ownership map only from confirmed lockedKeys (not transient selections)
-  const confirmedLocked: Record<string, string[]> = {};
-  for (const [ch, val] of Object.entries(lockedKeys || {})) {
-    confirmedLocked[ch] = Array.isArray(val) ? val : val ? [val] : [];
+
+  const ptCountByChar = new Map<string, number>();
+  for (const rowChars of filteredRows) {
+    for (const ptChar of rowChars) {
+      ptCountByChar.set(ptChar.ch, (ptCountByChar.get(ptChar.ch) ?? 0) + 1);
+    }
   }
-  const tokenOwners = buildTokenOwnersMap(confirmedLocked);
+
+  const ctSeqCount = new Map<string, number>();
+  for (let ptr = 0; ptr < ctTokens.length; ptr += Math.max(1, groupSize)) {
+    const seq = buildTokenSequence(ctTokens, ptr, groupSize);
+    if (!seq) continue;
+    ctSeqCount.set(seq, (ctSeqCount.get(seq) ?? 0) + 1);
+  }
+
+  // Include applied selections as owners so reserved tokens are not consumed by
+  // preceding non-owner PT cells in equal-occurrence scenarios.
+  const tokenOwners = buildTokenOwnersMap(allLocked);
+  const remainingPtByChar = new Map<string, number>();
+  for (const rowChars of filteredRows) {
+    for (const ptChar of rowChars) {
+      remainingPtByChar.set(ptChar.ch, (remainingPtByChar.get(ptChar.ch) ?? 0) + 1);
+    }
+  }
   
   const result: Column[][] = [];
   let tokenPtr = 0;
@@ -231,7 +251,16 @@ export function buildMultiKeyColumns(
     
     for (const ptChar of rowChars) {
       const ch = ptChar.ch;
+      remainingPtByChar.set(ch, Math.max(0, (remainingPtByChar.get(ch) ?? 0) - 1));
       const lockedTokens = allLocked[ch] || [];
+      const currentSeq = buildTokenSequence(ctTokens, tokenPtr, groupSize);
+      const hardLockedForOther = isHardLockedForOtherChar(currentSeq, ch, tokenOwners, remainingPtByChar);
+
+      if (hardLockedForOther) {
+        // Keep token pointer in place. This CT group is reserved for another PT char.
+        rowCols.push({ pt: ptChar, ct: [] });
+        continue;
+      }
       
       if (lockedTokens.length === 0) {
         const { column, tokensConsumed } = allocateNormalCell(ptChar, tokenPtr, groupSize, ctTokens);
@@ -240,11 +269,66 @@ export function buildMultiKeyColumns(
         continue;
       }
 
-      const currentSeq = buildTokenSequence(ctTokens, tokenPtr, groupSize);
-      const hardLockedForOther = isHardLockedForOtherChar(currentSeq, ch, tokenOwners);
+      if (lockedTokens.length === 1) {
+        const target = lockedTokens[0];
+        const exactCountPairing = (ptCountByChar.get(ch) ?? 0) === (ctSeqCount.get(target) ?? 0);
+        const { column, tokensConsumed } = allocateNormalCell(ptChar, tokenPtr, groupSize, ctTokens);
 
-      if (hardLockedForOther) {
-        // Keep token pointer in place. This CT group belongs to another locked PT char.
+        if (column.ct.length === 0) {
+          rowCols.push({ pt: ptChar, ct: [] });
+          continue;
+        }
+
+        if (currentSeq === target) {
+          rowCols.push(column);
+          tokenPtr += tokensConsumed;
+          continue;
+        }
+
+        if (exactCountPairing) {
+          // Equal PT/CT counts: deterministically shift to next matching occurrence.
+          // This preserves 1st->1st, 2nd->2nd pairing without swapping cells.
+          const exactShift = allocateLockedWithLocalLookahead(
+            ptChar,
+            lockedTokens,
+            tokenPtr,
+            groupSize,
+            ctTokens,
+            tokenOwners,
+            remainingPtByChar,
+            Number.MAX_SAFE_INTEGER,
+          );
+
+          if (exactShift.found && exactShift.tokensConsumed > 0) {
+            rowCols.push(...exactShift.columns);
+            tokenPtr += exactShift.tokensConsumed;
+            continue;
+          }
+
+          // If no match is reachable before a hard-lock boundary, keep empty.
+          rowCols.push({ pt: ptChar, ct: [] });
+          continue;
+        }
+
+        // For strict single-token mapping, attempt bounded shift toward match.
+        // This keeps deterministic behavior while avoiding forced tentative consumption.
+        const lookahead = allocateLockedWithLocalLookahead(
+          ptChar,
+          lockedTokens,
+          tokenPtr,
+          groupSize,
+          ctTokens,
+          tokenOwners,
+          remainingPtByChar,
+          maxLookaheadSkippedGroups,
+        );
+
+        if (lookahead.found && lookahead.tokensConsumed > 0) {
+          rowCols.push(...lookahead.columns);
+          tokenPtr += lookahead.tokensConsumed;
+          continue;
+        }
+
         rowCols.push({ pt: ptChar, ct: [] });
         continue;
       }
@@ -270,6 +354,7 @@ export function buildMultiKeyColumns(
         groupSize,
         ctTokens,
         tokenOwners,
+        remainingPtByChar,
         maxLookaheadSkippedGroups,
       );
 
