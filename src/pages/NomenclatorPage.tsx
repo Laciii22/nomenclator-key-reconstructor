@@ -361,7 +361,8 @@ const NomenclatorPage: React.FC = () => {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   );
-  // Simple CSS-based KeyTable height is used instead of JS resize observer.
+  // Layout: Suggestions and KeyTable will be sibling grid items so CSS can
+  // keep their heights in sync. JS ResizeObserver removed in favor of CSS.
 
   const onClearPersistenceClick = React.useCallback(() => {
     if (window.confirm('Are you sure you want to clear all saved data? This cannot be undone.')) {
@@ -483,45 +484,51 @@ const NomenclatorPage: React.FC = () => {
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start lg:items-stretch">
-          <div className="space-y-4 lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="space-y-4 lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <p className="text-xs text-gray-500 -mt-1 mb-1">Enter the plain text and cipher text, then configure parsing and run the analysis.</p>
 
-            <div className="flex items-center justify-between">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700" htmlFor={ptTextareaId}>Plain text (PT)</label>
-                <p className="text-xs text-gray-400"> Use <span className="font-mono">[brackets]</span> for multi-char tokens, e.g. <span className="font-mono">[HELLO]WORLD</span></p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700" htmlFor={ptTextareaId}>Plain text (PT)</label>
+                    <p className="text-xs text-gray-400"> Use <span className="font-mono">[brackets]</span> for multi-char tokens, e.g. <span className="font-mono">[HELLO]WORLD</span></p>
+                  </div>
+                  <FileImport label="Import PT" onFileLoad={onPtFileLoad} />
+                </div>
+                <textarea
+                  ref={ptTextareaRef}
+                  id={ptTextareaId}
+                  rows={6}
+                  className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
+                  placeholder="[HELLO]WORLD"
+                  value={ptInputDraft}
+                  onChange={onPtChange}
+                  onFocus={onPtFocus}
+                  onBlur={onPtBlur}
+                />
               </div>
-              <FileImport label="Import PT" onFileLoad={onPtFileLoad} />
-            </div>
-            <textarea
-              ref={ptTextareaRef}
-              id={ptTextareaId}
-              rows={3}
-              className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
-              placeholder="[HELLO]WORLD"
-              value={ptInputDraft}
-              onChange={onPtChange}
-              onFocus={onPtFocus}
-              onBlur={onPtBlur}
-            />
 
-            <div className="flex items-center justify-between mt-1">
               <div>
-                <label className="block text-sm font-semibold text-gray-700" htmlFor={ctTextareaId}>Cipher text (CT)</label>
-                <p className="text-xs text-gray-400">Tokens separated by space, or a single continuous string, e.g. <span className="font-mono">11:22:33:33:44</span></p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700" htmlFor={ctTextareaId}>Cipher text (CT)</label>
+                    <p className="text-xs text-gray-400">Tokens separated by space, or a single continuous string, e.g. <span className="font-mono">11:22:33:33:44</span></p>
+                  </div>
+                  <FileImport label="Import CT" onFileLoad={onCtFileLoad} />
+                </div>
+                <textarea
+                  id={ctTextareaId}
+                  rows={6}
+                  className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
+                  placeholder="11 34 12 12 56"
+                  value={ctInputDraft}
+                  onChange={onCtChange}
+                  onFocus={onCtFocus}
+                  onBlur={onCtBlur}
+                />
               </div>
-              <FileImport label="Import CT" onFileLoad={onCtFileLoad} />
             </div>
-            <textarea
-              id={ctTextareaId}
-              rows={3}
-              className="w-full font-mono text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 placeholder-gray-300"
-              placeholder="11 34 12 12 56"
-              value={ctInputDraft}
-              onChange={onCtChange}
-              onFocus={onCtFocus}
-              onBlur={onCtBlur}
-            />
 
             {statusMessage && (
               <div
@@ -571,125 +578,134 @@ const NomenclatorPage: React.FC = () => {
             />
 
 
-                {Object.keys(candidatesByChar).length > 0 && (
-              <div className="border border-blue-100 bg-blue-50 rounded-lg p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-blue-800">Suggestions</h3>
-                  <div className="flex gap-2">
-                      {shouldDeferSelectionMappingPreview && (
-                        <button
-                          className={`text-xs px-2.5 py-1 rounded-md border ${
-                            isMappingPreviewUpdatedFlash
-                              ? 'border-green-500 bg-green-100 text-green-900 ring-1 ring-green-300 font-semibold'
-                              :
-                            hasPendingMappingPreviewUpdate
-                              ? 'border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-900 ring-1 ring-amber-300 font-semibold'
-                              : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
-                          }`}
-                          onClick={onUpdateMappingPreview}
-                          disabled={!hasPendingMappingPreviewUpdate}
-                          title="Update Mapping Grid from current suggestions"
-                        >
-                          Update Mapping Preview
-                        </button>
-                      )}
-                      <button
-                        className="text-xs px-2.5 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 text-gray-600"
-                        onClick={onClearAll}
-                        title="Clear all suggestions (locks and selections only)"
-                      >
-                        Clear all
-                      </button>
-
-                      <button
-                        className="text-xs px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
-                        onClick={chooseScoreOneSuggestions}
-                      >Preview</button>
-                    <button
-                      className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
-                      onClick={applySelection}
-                    >
-                      <img src={plusIcon} alt="" aria-hidden="true" className="w-3.5 h-3.5" />
-                      Apply
-                    </button>
-                  </div>
-                </div>
-                {selectionError && (
-                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2">
-                    {selectionError}
-                  </div>
-                )}
-                
-                <div className="text-xs text-gray-500 mb-2">
-                  Mode: {keysPerPTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
-                </div>
-                {shouldDeferSelectionMappingPreview && (
-                  <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
-                    PT has more than 200 characters. Changes in Suggestions are applied to Mapping Grid only after you click Update mapping preview.
-                  </div>
-                )}
-                
-                {keysPerPTMode === 'multiple' ? (
-                  <CandidateSelectorMulti
-                    candidatesByChar={candidatesByChar}
-                    lockedKeys={lockedKeys}
-                    selections={selections}
-                    setSelections={setSelections}
-                    ptRows={ptRows}
-                    effectiveCtTokens={effectiveCtTokens}
-                    reservedTokens={reservedTokens}
-                    sharedColumns={columns}
-                  />
-                ) : ctParseMode === 'fixedLength' ? (
-                  <CandidateSelectorFixed
-                    candidatesByChar={candidatesByChar}
-                    lockedKeys={lockedKeys as Record<string, string>}
-                    selections={selections}
-                    setSelections={setSelections}
-                    ptRows={ptRows}
-                    effectiveCtTokens={effectiveCtTokens}
-                    fixedLength={fixedLength}
-                    reservedTokens={reservedTokens}
-                    sharedColumns={columns}
-                  />
-                ) : (
-                  <CandidateSelectorSeparator
-                    candidatesByChar={candidatesByChar}
-                    lockedKeys={lockedKeys as Record<string, string>}
-                    selections={selections}
-                    setSelections={setSelections}
-                    ptRows={ptRows}
-                    effectiveCtTokens={effectiveCtTokens}
-                    reservedTokens={reservedTokens}
-                    sharedColumns={columns}
-                  />
-                )}
-              </div>
-            )}
-
           </div>
 
-          <div className="space-y-2 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex h-[36rem] lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto flex-col min-h-0">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Key Table</h3>
-            <KeyTable
-              ptRows={ptRows}
-              ctTokens={effectiveCtTokens}
-              keysPerPTMode={keysPerPTMode}
-              lockedKeys={lockedKeys}
-              selections={selections}
-              onLockOT={onLockOT}
-              onUnlockOT={onUnlockOT}
-              ctParseMode={ctParseMode}
-              groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
-              columns={columns}
-              highlightedPTChar={highlightedPTChar}
-              onToggleHighlightOT={toggleHighlightForOT}
-              onLockAll={onLockAll}
-              onQuickAssign={quickAssign}
-              onExecuteQuickAssign={executeQuickAssign}
-              bracketedIndices={bracketedIndices}
-              uniqueCTTokenTexts={uniqueCTTokenTexts}
-            />
+          <div className="lg:col-span-3">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-col lg:flex-row gap-0 lg:gap-6 min-h-0 max-h-[1000px] lg:divide-x-2 lg:divide-gray-300">
+              <div className="flex-1 overflow-y-auto pr-6 min-h-0">
+                {Object.keys(candidatesByChar).length > 0 ? (
+                  <div className="bg-blue-50 rounded-lg p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-blue-800">Suggestions</h3>
+                      <div className="flex gap-2">
+                        {shouldDeferSelectionMappingPreview && (
+                          <button
+                            className={`text-xs px-2.5 py-1 rounded-md border ${
+                              isMappingPreviewUpdatedFlash
+                                ? 'border-green-500 bg-green-100 text-green-900 ring-1 ring-green-300 font-semibold'
+                                : hasPendingMappingPreviewUpdate
+                                  ? 'border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-900 ring-1 ring-amber-300 font-semibold'
+                                  : 'border-gray-300 bg-white text-gray-400 cursor-not-allowed'
+                            }`}
+                            onClick={onUpdateMappingPreview}
+                            disabled={!hasPendingMappingPreviewUpdate}
+                            title="Update Mapping Grid from current suggestions"
+                          >
+                            Update Mapping Preview
+                          </button>
+                        )}
+                        <button
+                          className="text-xs px-2.5 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 text-gray-600"
+                          onClick={onClearAll}
+                          title="Clear all suggestions (locks and selections only)"
+                        >
+                          Clear all
+                        </button>
+
+                        <button
+                          className="text-xs px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
+                          onClick={chooseScoreOneSuggestions}
+                        >Preview</button>
+                        <button
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                          onClick={applySelection}
+                        >
+                          <img src={plusIcon} alt="" aria-hidden="true" className="w-3.5 h-3.5" />
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                    {selectionError && (
+                      <div className="text-xs text-red-700 bg-red-50 rounded p-2 border border-red-200">
+                        {selectionError}
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-500 mb-2">
+                      Mode: {keysPerPTMode === 'multiple' ? 'Multi-key (homophones)' : 'Single-key'}
+                    </div>
+                    {shouldDeferSelectionMappingPreview && (
+                      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+                        PT has more than 200 characters. Changes in Suggestions are applied to Mapping Grid only after you click Update mapping preview.
+                      </div>
+                    )}
+
+                    {keysPerPTMode === 'multiple' ? (
+                      <CandidateSelectorMulti
+                        candidatesByChar={candidatesByChar}
+                        lockedKeys={lockedKeys}
+                        selections={selections}
+                        setSelections={setSelections}
+                        ptRows={ptRows}
+                        effectiveCtTokens={effectiveCtTokens}
+                        reservedTokens={reservedTokens}
+                        sharedColumns={columns}
+                      />
+                    ) : ctParseMode === 'fixedLength' ? (
+                      <CandidateSelectorFixed
+                        candidatesByChar={candidatesByChar}
+                        lockedKeys={lockedKeys as Record<string, string>}
+                        selections={selections}
+                        setSelections={setSelections}
+                        ptRows={ptRows}
+                        effectiveCtTokens={effectiveCtTokens}
+                        fixedLength={fixedLength}
+                        reservedTokens={reservedTokens}
+                        sharedColumns={columns}
+                      />
+                    ) : (
+                      <CandidateSelectorSeparator
+                        candidatesByChar={candidatesByChar}
+                        lockedKeys={lockedKeys as Record<string, string>}
+                        selections={selections}
+                        setSelections={setSelections}
+                        ptRows={ptRows}
+                        effectiveCtTokens={effectiveCtTokens}
+                        reservedTokens={reservedTokens}
+                        sharedColumns={columns}
+                      />
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="w-full lg:w-80 flex-shrink-0 overflow-y-auto pl-6">
+                <div className="space-y-2 p-2">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Key Table</h3>
+                  <div className="bg-gray-50 border border-gray-100 rounded lg:shadow-sm">
+                    <KeyTable
+                      ptRows={ptRows}
+                      ctTokens={effectiveCtTokens}
+                      keysPerPTMode={keysPerPTMode}
+                      lockedKeys={lockedKeys}
+                      selections={selections}
+                      onLockOT={onLockOT}
+                      onUnlockOT={onUnlockOT}
+                      ctParseMode={ctParseMode}
+                      groupSize={ctParseMode === 'fixedLength' ? fixedLength : 1}
+                      columns={columns}
+                      highlightedPTChar={highlightedPTChar}
+                      onToggleHighlightOT={toggleHighlightForOT}
+                      onLockAll={onLockAll}
+                      onQuickAssign={quickAssign}
+                      onExecuteQuickAssign={executeQuickAssign}
+                      bracketedIndices={bracketedIndices}
+                      uniqueCTTokenTexts={uniqueCTTokenTexts}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

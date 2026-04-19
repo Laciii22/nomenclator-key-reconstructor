@@ -77,7 +77,8 @@ interface CandidateSelectorMultiProps {
   sharedColumns: Column[][];
 }
 
-const OUTER_HEIGHT = 384; // max-h-96
+// CandidateSelectorMulti will fill its parent; avoid imposing its own outer
+// rounded border/background so it visually blends with the Suggestions pane.
 
 function getColumnCount(containerWidth: number): number {
   if (containerWidth >= 1080) return 4;
@@ -433,8 +434,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
   return (
     <div
       ref={containerRef}
-      className="max-h-96 overflow-x-hidden overflow-y-auto rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100 p-3"
-      style={{ height: OUTER_HEIGHT }}
+      className="overflow-x-hidden overflow-y-auto p-0 min-h-0"
     >
       <div
         className="grid gap-3"

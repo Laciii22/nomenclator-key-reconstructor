@@ -82,109 +82,110 @@ const ParseControls: React.FC<ParseControlsProps> = ({
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <label htmlFor="ctParseMode" className="whitespace-nowrap text-gray-600 font-medium">CT format:</label>
-            <select
-              id="ctParseMode"
-              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 truncate max-w-[14rem]"
-              value={ctParseMode}
-              onChange={(e) => onChangeMode(e.target.value as 'separator' | 'fixedLength')}
-              disabled={isBusy || isAnalyzing}
-            >
-              <option value="separator">Separated by character</option>
-              <option value="fixedLength">Fixed length</option>
-            </select>
-          </div>
-
-          {ctParseMode === 'separator' && (
+        <div className="flex flex-col lg:flex-row lg:items-start gap-3 text-sm">
+          <div className="flex-1 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <label htmlFor="separator" className="whitespace-nowrap text-gray-600">Separator:</label>
-              <input
-                id="separator"
-                type="text"
-                maxLength={1}
-                className="border border-gray-300 rounded-md px-2 py-1 text-sm w-12 text-center bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={separator}
-                onChange={(e) => onSeparatorChange(e.target.value)}
+              <label htmlFor="ctParseMode" className="whitespace-nowrap text-gray-600 font-medium">CT format:</label>
+              <select
+                id="ctParseMode"
+                className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 truncate max-w-[14rem]"
+                value={ctParseMode}
+                onChange={(e) => onChangeMode(e.target.value as 'separator' | 'fixedLength')}
                 disabled={isBusy || isAnalyzing}
-              />
+              >
+                <option value="separator">Separated by character</option>
+                <option value="fixedLength">Fixed length</option>
+              </select>
             </div>
-          )}
-          {ctParseMode === 'fixedLength' && (
-            <div className="flex items-center gap-2">
-              <label htmlFor="fixedLength" className="whitespace-nowrap text-gray-600">Token length:</label>
-              <input
-                id="fixedLength"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                className="border border-gray-300 rounded-md px-2 py-1 text-sm w-16 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={fixedLengthInput}
-                onFocus={() => setIsFixedLengthFocused(true)}
-                onBlur={() => {
-                  setIsFixedLengthFocused(false);
-                  commitFixedLengthInput();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    commitFixedLengthInput();
-                    (e.currentTarget as HTMLInputElement).blur();
-                  }
-                  if (e.key === 'Escape') {
-                    setFixedLengthInput(String(fixedLength));
-                    (e.currentTarget as HTMLInputElement).blur();
-                  }
-                }}
-                onWheel={(e) => {
-                  // Prevent accidental number-input changes while scrolling.
-                  (e.currentTarget as HTMLInputElement).blur();
-                }}
-                onChange={(e) => handleFixedLengthChange(e.target.value)}
-                disabled={isBusy || isAnalyzing}
-              />
-            </div>
-          )}
 
-          <div className="flex items-center gap-2">
-            <label htmlFor="keysPerOT" className="whitespace-nowrap text-gray-600 font-medium">Keys per PT char:</label>
-            <select
-              id="keysPerOT"
-              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 truncate max-w-[12rem]"
-              value={keysPerPTMode}
-              onChange={(e) => {
-                onKeysPerPTModeChange(e.target.value as KeysPerPTMode);
-              }}
-              disabled={isBusy || isAnalyzing}
-            >
-              <option value="single">Single (1:1)</option>
-              <option value="multiple">Multiple (homophones)</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 pt-1 border-t border-gray-200">
-          <button
-            className="inline-flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors"
-            onClick={onClear}
-            disabled={isBusy || isAnalyzing}
-          >
-            Reset
-          </button>
-          <button
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-sm"
-            onClick={onRunAnalysis}
-            disabled={!canRunAnalysis || isAnalyzing || isBusy}
-            title={isAnalyzing ? "Analysis in progress..." : isBusy ? "Applying configuration..." : !canRunAnalysis ? "Enter PT and CT text first" : "Run frequency analysis"}
-          >
-            {(isAnalyzing || isBusy) && (
-              <img src={loadingIcon} alt="" aria-hidden="true" className="animate-spin h-4 w-4" />
+            {ctParseMode === 'separator' && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="separator" className="whitespace-nowrap text-gray-600">Separator:</label>
+                <input
+                  id="separator"
+                  type="text"
+                  maxLength={1}
+                  className="border border-gray-300 rounded-md px-2 py-1 text-sm w-12 text-center bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={separator}
+                  onChange={(e) => onSeparatorChange(e.target.value)}
+                  disabled={isBusy || isAnalyzing}
+                />
+              </div>
             )}
-            {isAnalyzing ? 'Analyzing...' : isBusy ? 'Applying...' : 'Run analysis'}
-          </button>
-          {!canRunAnalysis && (
-            <span className="text-xs text-gray-400 italic">Enter PT and CT text above first</span>
-          )}
+            {ctParseMode === 'fixedLength' && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="fixedLength" className="whitespace-nowrap text-gray-600">Token length:</label>
+                <input
+                  id="fixedLength"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className="border border-gray-300 rounded-md px-2 py-1 text-sm w-16 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={fixedLengthInput}
+                  onFocus={() => setIsFixedLengthFocused(true)}
+                  onBlur={() => {
+                    setIsFixedLengthFocused(false);
+                    commitFixedLengthInput();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitFixedLengthInput();
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                    if (e.key === 'Escape') {
+                      setFixedLengthInput(String(fixedLength));
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                  }}
+                  onWheel={(e) => {
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }}
+                  onChange={(e) => handleFixedLengthChange(e.target.value)}
+                  disabled={isBusy || isAnalyzing}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="keysPerOT" className="whitespace-nowrap text-gray-600 font-medium">Keys per PT char:</label>
+              <select
+                id="keysPerOT"
+                className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 truncate max-w-[12rem]"
+                value={keysPerPTMode}
+                onChange={(e) => {
+                  onKeysPerPTModeChange(e.target.value as KeysPerPTMode);
+                }}
+                disabled={isBusy || isAnalyzing}
+              >
+                <option value="single">Single (1:1)</option>
+                <option value="multiple">Multiple (homophones)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-0 lg:pt-0 lg:pl-4 lg:border-l lg:border-gray-200">
+            <button
+              className="inline-flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors"
+              onClick={onClear}
+              disabled={isBusy || isAnalyzing}
+            >
+              Reset
+            </button>
+            <button
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-sm"
+              onClick={onRunAnalysis}
+              disabled={!canRunAnalysis || isAnalyzing || isBusy}
+              title={isAnalyzing ? "Analysis in progress..." : isBusy ? "Applying configuration..." : !canRunAnalysis ? "Enter PT and CT text first" : "Run frequency analysis"}
+            >
+              {(isAnalyzing || isBusy) && (
+                <img src={loadingIcon} alt="" aria-hidden="true" className="animate-spin h-4 w-4" />
+              )}
+              {isAnalyzing ? 'Analyzing...' : isBusy ? 'Applying...' : 'Run analysis'}
+            </button>
+            {!canRunAnalysis && (
+              <span className="text-xs text-gray-400 italic">Enter PT and CT text above first</span>
+            )}
+          </div>
         </div>
       </div>
 
