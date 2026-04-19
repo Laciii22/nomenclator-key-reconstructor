@@ -13,6 +13,7 @@ import FileImport from '../components/controls/FileImport';
 import { useNomenclator } from '../hooks/useNomenclator';
 import { useBusyState } from '../hooks/nomenclator/useBusyState';
 import { useDraftControls } from '../hooks/nomenclator/useDraftControls';
+import { useNomenclatorModals } from '../hooks/useNomenclatorModals';
 import type { SelectionMap, DragData } from '../types/domain';
 import plusIcon from '../assets/icons/plus.png';
 import dangerIcon from '../assets/icons/danger.png';
@@ -32,10 +33,15 @@ const HelpModal = React.lazy(() => import('../components/common/HelpModal'));
  */
 const NomenclatorPage: React.FC = () => {
   const { inputs, state, derived, actions } = useNomenclator();
-  const [isHelpOpen, setIsHelpOpen] = React.useState(false);
-  const [isFrequencyOpen, setIsFrequencyOpen] = React.useState(false);
-  const [isMappingPreviewUpdatedFlash, setIsMappingPreviewUpdatedFlash] = React.useState(false);
-  const mappingPreviewFlashTimerRef = React.useRef<number | null>(null);
+  const {
+    isHelpOpen,
+    setIsHelpOpen,
+    isFrequencyOpen,
+    setIsFrequencyOpen,
+    isMappingPreviewUpdatedFlash,
+    setIsMappingPreviewUpdatedFlash,
+    mappingPreviewFlashTimerRef,
+  } = useNomenclatorModals();
 
   const {
     ptRaw,
@@ -363,9 +369,7 @@ const NomenclatorPage: React.FC = () => {
   }, [clearAll]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
-  // ESC  → clear saved data (with confirmation)
-  // Shift → toggle Frequency modal
-  // H    → toggle Help modal
+  //H help, F frequency, ESC clear cache.
   React.useEffect(() => {
     const isInteractiveElement = (el: Element | null): boolean => {
       if (!el) return false;

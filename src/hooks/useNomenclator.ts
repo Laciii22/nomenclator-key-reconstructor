@@ -23,6 +23,7 @@ import {
 } from './nomenclator/ptGrouping';
 import { computeInsertRawCharsAfterPosition } from './nomenclator/insertRawAfterPosition';
 import { normalizeLocks } from '../utils/frequency';
+import { selectionStateReducer, serializePtGroupsToRaw, uniqueTokenTextMetaEqual, type UniqueTokenTextMeta } from './useNomenclator.helpers';
 
 /**
  * Responsive breakpoints for PT grid layout.
@@ -55,67 +56,6 @@ function selectionMapsEqual(a: SelectionMap, b: SelectionMap): boolean {
     }
   }
   return true;
-}
-
-type UniqueTokenTextMeta = { text: string; allBracketed: boolean };
-
-function uniqueTokenTextMetaEqual(a: UniqueTokenTextMeta[], b: UniqueTokenTextMeta[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].text !== b[i].text) return false;
-    if (a[i].allBracketed !== b[i].allBracketed) return false;
-  }
-  return true;
-}
-
-function serializePtGroupsToRaw(groups: PTChar[]): string {
-  return groups
-    .map(({ ch }) => {
-      const normalized = ch.replace(/\s/g, '').toUpperCase();
-      if (!normalized) return '';
-      return normalized.length > 1 ? `[${normalized}]` : normalized;
-    })
-    .join('');
-}
-
-type NomenclatorSelectionState = {
-  lockedKeys: Record<string, string | string[]>;
-  selections: SelectionMap;
-  appliedSelectionsForMapping: SelectionMap;
-};
-
-type NomenclatorSelectionAction =
-  | { type: 'setLockedKeys'; value: React.SetStateAction<Record<string, string | string[]>> }
-  | { type: 'setSelections'; value: React.SetStateAction<SelectionMap> }
-  | { type: 'setAppliedSelectionsForMapping'; value: React.SetStateAction<SelectionMap> }
-  | { type: 'applySelectionLocks'; newLocks: Record<string, string | string[]> };
-
-function resolveSetStateAction<T>(value: React.SetStateAction<T>, prev: T): T {
-  return typeof value === 'function'
-    ? (value as (prev: T) => T)(prev)
-    : value;
-}
-
-function selectionStateReducer(
-  state: NomenclatorSelectionState,
-  action: NomenclatorSelectionAction,
-): NomenclatorSelectionState {
-  if (action.type === 'setLockedKeys') {
-    return { ...state, lockedKeys: resolveSetStateAction(action.value, state.lockedKeys) };
-  }
-  if (action.type === 'setSelections') {
-    return { ...state, selections: resolveSetStateAction(action.value, state.selections) };
-  }
-  if (action.type === 'setAppliedSelectionsForMapping') {
-    return { ...state, appliedSelectionsForMapping: resolveSetStateAction(action.value, state.appliedSelectionsForMapping) };
-  }
-
-  if (Object.keys(action.newLocks).length === 0) return state;
-  return {
-    lockedKeys: { ...state.lockedKeys, ...action.newLocks },
-    selections: {},
-    appliedSelectionsForMapping: {},
-  };
 }
 
 /**
