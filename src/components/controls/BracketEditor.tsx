@@ -82,7 +82,7 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
           return (
             <button
               key={text}
-              className={`text-xs font-mono px-2 py-1 rounded-md border select-none transition-colors ${
+              className={`text-xs font-mono px-2 py-1 rounded-md border select-none transition-colors min-w-0 ${
                 isLocked
                   ? 'bg-green-100 border-green-300 text-green-700 cursor-not-allowed opacity-60'
                   : allBracketed
@@ -91,9 +91,9 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
               }`}
               onClick={() => { if (!isLocked) onToggleText(text); }}
               disabled={isLocked}
-              title={isLocked ? 'Locked token — cannot be marked as deception' : allBracketed ? 'Click to restore all occurrences of this token' : 'Click to exclude all occurrences of this token from analysis'}
+              title={text}
             >
-              {allBracketed ? `[${text}]` : text}
+              <span className="inline-block max-w-[18rem] truncate">{allBracketed ? `[${text}]` : text}</span>
             </button>
           );
         })}

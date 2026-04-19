@@ -140,7 +140,9 @@ const FrequencyModal: React.FC<FrequencyModalProps> = ({ isOpen, onClose, ptChar
                 const pct = total > 0 ? (count / total) * 100 : 0;
                 return (
                   <tr key={token} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-1.5 pr-4 font-mono font-semibold text-gray-900">{token}</td>
+                      <td className="py-1.5 pr-4">
+                        <span className="inline-block max-w-[18rem] truncate font-mono font-semibold text-gray-900" title={token}>{token}</span>
+                      </td>
                     <td className="py-1.5 pr-4 text-right tabular-nums text-gray-700">{count}</td>
                     <td className="py-1.5 pr-4 text-right tabular-nums text-gray-500 text-xs">
                       {count}/{total}

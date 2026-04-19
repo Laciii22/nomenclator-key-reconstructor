@@ -403,7 +403,7 @@ const CandidateSelectorMulti: React.FC<CandidateSelectorMultiProps> = ({
                 onChange={() => handleToggleToken(model.ch, token)}
               />
               <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="font-mono font-medium text-slate-800">
+                <span className="font-mono font-medium text-slate-800 min-w-0 truncate">
                   {token}{isSuggestedToken ? ' (suggested)' : ''}
                 </span>
                 <span className="shrink-0 text-xs text-slate-500" title="Score / Support / Occurrences">

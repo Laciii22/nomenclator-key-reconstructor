@@ -361,6 +361,7 @@ const NomenclatorPage: React.FC = () => {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
     useSensor(KeyboardSensor)
   );
+  // Simple CSS-based KeyTable height is used instead of JS resize observer.
 
   const onClearPersistenceClick = React.useCallback(() => {
     if (window.confirm('Are you sure you want to clear all saved data? This cannot be undone.')) {
@@ -481,7 +482,7 @@ const NomenclatorPage: React.FC = () => {
             {uiBusyLabel}
           </div>
         )}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start lg:items-stretch">
           <div className="space-y-4 lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <p className="text-xs text-gray-500 -mt-1 mb-1">Enter the plain text and cipher text, then configure parsing and run the analysis.</p>
 
@@ -570,7 +571,7 @@ const NomenclatorPage: React.FC = () => {
             />
 
 
-            {Object.keys(candidatesByChar).length > 0 && (
+                {Object.keys(candidatesByChar).length > 0 && (
               <div className="border border-blue-100 bg-blue-50 rounded-lg p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-blue-800">Suggestions</h3>
@@ -668,7 +669,7 @@ const NomenclatorPage: React.FC = () => {
 
           </div>
 
-          <div className="space-y-2 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex h-[36rem] flex-col min-h-0 overflow-hidden">
+          <div className="space-y-2 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex h-[36rem] lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto flex-col min-h-0">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Key Table</h3>
             <KeyTable
               ptRows={ptRows}
@@ -702,7 +703,7 @@ const NomenclatorPage: React.FC = () => {
                 <div className="mb-2 text-sm border border-amber-200 rounded-lg p-3 bg-amber-50 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-amber-800">
                     <img src={questionIcon} alt="" aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
-                    Found <strong>{mergeAllPrompt.remaining}</strong> more occurrence(s) of <span className="font-mono font-semibold">{mergeAllPrompt.pattern}</span>.
+                    Found <strong>{mergeAllPrompt.remaining}</strong> more occurrence(s) of <span className="inline-block max-w-[18rem] truncate font-mono font-semibold" title={mergeAllPrompt.pattern}>{mergeAllPrompt.pattern}</span>.
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <button
@@ -775,7 +776,7 @@ const NomenclatorPage: React.FC = () => {
             if (data?.type === 'ct') {
               const text = String(data?.token?.text ?? '');
               return (
-                <span className="inline-block text-xs px-0.5 rounded font-mono border bg-white shadow-sm cursor-grabbing select-none">
+                <span className="inline-block text-xs px-0.5 rounded font-mono border bg-white shadow-sm cursor-grabbing select-none max-w-[18rem] truncate" title={text}>
                   {text}
                 </span>
               );
@@ -783,7 +784,7 @@ const NomenclatorPage: React.FC = () => {
             if (data?.type === 'pt') {
               const ch = String(data?.ptChar ?? '');
               return (
-                <span className="inline-block px-1 rounded font-mono text-md font-bold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm cursor-grabbing select-none">
+                <span className="inline-block px-1 rounded font-mono text-md font-bold bg-yellow-100 text-yellow-800 border border-yellow-300 shadow-sm cursor-grabbing select-none max-w-[8rem] truncate" title={ch}>
                   {ch}
                 </span>
               );

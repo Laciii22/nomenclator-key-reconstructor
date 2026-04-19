@@ -69,7 +69,8 @@ export function getPTCharBadgeClasses(isLocked: boolean): string {
  * Get CSS classes for selector input based on disabled state.
  */
 export function getSelectorInputClasses(isDisabled: boolean): string {
-  return `border border-gray-300 rounded p-1 text-sm flex-1 ${
+  // Allow selector to shrink inside flex containers and truncate long values.
+  return `border border-gray-300 rounded p-1 text-sm flex-1 min-w-0 truncate ${
     isDisabled ? 'bg-green-50 cursor-not-allowed' : ''
   }`;
 }

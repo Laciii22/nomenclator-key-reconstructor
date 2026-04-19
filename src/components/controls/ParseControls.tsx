@@ -87,7 +87,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
             <label htmlFor="ctParseMode" className="whitespace-nowrap text-gray-600 font-medium">CT format:</label>
             <select
               id="ctParseMode"
-              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 truncate max-w-[14rem]"
               value={ctParseMode}
               onChange={(e) => onChangeMode(e.target.value as 'separator' | 'fixedLength')}
               disabled={isBusy || isAnalyzing}
@@ -150,7 +150,7 @@ const ParseControls: React.FC<ParseControlsProps> = ({
             <label htmlFor="keysPerOT" className="whitespace-nowrap text-gray-600 font-medium">Keys per PT char:</label>
             <select
               id="keysPerOT"
-              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 truncate max-w-[12rem]"
               value={keysPerPTMode}
               onChange={(e) => {
                 onKeysPerPTModeChange(e.target.value as KeysPerPTMode);

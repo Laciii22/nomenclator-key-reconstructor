@@ -330,7 +330,7 @@ const KeyTable: React.FC<KeyTableProps & {
               return (
                 <tr key={row.pt} className={`border-t border-gray-100 ${trClass}`}>
                   <td className="px-2 py-1 font-mono whitespace-nowrap text-xs">{row.pt}</td>
-                  <td className="px-2 py-1 font-mono text-xs">
+                  <td className="px-2 py-1 font-mono text-xs min-w-0">
                     {keysPerPTMode === 'multiple' && row.ctList.length > 0 ? (
                       <div>
                         <div className="flex flex-wrap gap-1">
@@ -345,8 +345,8 @@ const KeyTable: React.FC<KeyTableProps & {
                                   }`}
                                 title={isLockedToken ? 'Locked' : undefined}
                               >
-                                {ct}
-                                {isLockedToken && <img src={padlock} alt="Locked" className="w-2 h-2" />}
+                                <span className="max-w-[12rem] inline-block truncate">{ct}</span>
+                                {isLockedToken && <img src={padlock} alt="Locked" className="w-2 h-2 ml-1" />}
                               </span>
                             );
                           })}
@@ -367,7 +367,7 @@ const KeyTable: React.FC<KeyTableProps & {
                       </div>
                     ) : (
                       <>
-                        <span className="whitespace-nowrap">{(row.ctList.length ? row.ctList.join(' ') : '—') || '—'}</span>
+                        <span className="inline-block truncate max-w-full">{(row.ctList.length ? row.ctList.join(' ') : '—') || '—'}</span>
                         {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
                         {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
                         {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
@@ -437,7 +437,9 @@ const KeyTable: React.FC<KeyTableProps & {
             <div className="text-sm font-medium text-purple-800 mb-2">Nulls (deception tokens)</div>
             <div className="flex flex-wrap gap-2">
               {deceptionList.map((t) => (
-                <span key={t} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800 border border-purple-200 font-mono">{t}</span>
+                <span key={t} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800 border border-purple-200 font-mono">
+                  <span className="max-w-[12rem] inline-block truncate">{t}</span>
+                </span>
               ))}
             </div>
           </div>
