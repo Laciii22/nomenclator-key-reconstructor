@@ -2,7 +2,7 @@
 import type { CTToken } from '../types/domain';
 import type { PTChar } from '../types/domain';
 
-interface UseNomenklatorStatusParams {
+interface UseNomenclatorStatusParams {
   klamacStatusFromParse: 'none' | 'needsNull' | 'ok' | 'invalid';
   statusMessageFromParse: string | null;
   bracketWarningFromParse: string | null;
@@ -16,7 +16,7 @@ interface UseNomenklatorStatusParams {
   storageWarning?: string | null;
 }
 
-interface NomenklatorStatus {
+interface NomenclatorStatus {
   klamacStatus: 'none' | 'needsNull' | 'ok' | 'invalid';
   statusMessage: string | null;
   bracketWarning: string | null;
@@ -27,7 +27,7 @@ interface NomenklatorStatus {
  * from parse results and post-analysis data, with no side-effects.
  * Superseded values from parse are overridden once analysis completes.
  */
-export function useNomenklatorStatus(params: UseNomenklatorStatusParams): NomenklatorStatus {
+export function useNomenclatorStatus(params: UseNomenclatorStatusParams): NomenclatorStatus {
   const {
     klamacStatusFromParse,
     statusMessageFromParse,
@@ -41,7 +41,7 @@ export function useNomenklatorStatus(params: UseNomenklatorStatusParams): Nomenk
     storageWarning,
   } = params;
 
-  const klamacAndMessage = useMemo((): { klamacStatus: NomenklatorStatus['klamacStatus']; statusMessage: string | null } => {
+  const klamacAndMessage = useMemo((): { klamacStatus: NomenclatorStatus['klamacStatus']; statusMessage: string | null } => {
     const PT = ptChars.length;
 
     // No data yet — nothing to report

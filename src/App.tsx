@@ -6,14 +6,14 @@
  */
 
 import './App.css';
-import NomenklatorPage from './pages/NomenklatorPage';
+import NomenclatorPage from './pages/NomenclatorPage';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<NomenklatorPage />} />
+        <Route path="/" element={<NomenclatorPage />} />
       </Routes>
     </BrowserRouter>
   );

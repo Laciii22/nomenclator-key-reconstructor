@@ -10,9 +10,9 @@ import CandidateSelectorFixed from '../components/controls/CandidateSelectorFixe
 import CandidateSelectorSeparator from '../components/controls/CandidateSelectorSeparator';
 import CandidateSelectorMulti from '../components/controls/CandidateSelectorMulti';
 import FileImport from '../components/controls/FileImport';
-import { useNomenklator } from '../hooks/useNomenklator';
-import { useBusyState } from '../hooks/nomenklator/useBusyState';
-import { useDraftControls } from '../hooks/nomenklator/useDraftControls';
+import { useNomenclator } from '../hooks/useNomenclator';
+import { useBusyState } from '../hooks/nomenclator/useBusyState';
+import { useDraftControls } from '../hooks/nomenclator/useDraftControls';
 import type { SelectionMap, DragData } from '../types/domain';
 import plusIcon from '../assets/icons/plus.png';
 import dangerIcon from '../assets/icons/danger.png';
@@ -30,8 +30,8 @@ const HelpModal = React.lazy(() => import('../components/common/HelpModal'));
  * - Suggestions/selection helpers
  * - Mapping + key tables
  */
-const NomenklatorPage: React.FC = () => {
-  const { inputs, state, derived, actions } = useNomenklator();
+const NomenclatorPage: React.FC = () => {
+  const { inputs, state, derived, actions } = useNomenclator();
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
   const [isFrequencyOpen, setIsFrequencyOpen] = React.useState(false);
   const [isMappingPreviewUpdatedFlash, setIsMappingPreviewUpdatedFlash] = React.useState(false);
@@ -794,4 +794,4 @@ const NomenklatorPage: React.FC = () => {
   );
 };
 
-export default NomenklatorPage;
+export default NomenclatorPage;

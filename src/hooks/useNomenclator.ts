@@ -10,8 +10,8 @@ import { useParsing } from './useParsing';
 import { useMapping } from './useMapping';
 import { useAnalysis } from './useAnalysis';
 import { useDebouncedCallback } from './useDebouncedCallback';
-import { useNomenklatorPersistence } from './useNomenklatorPersistence';
-import { useNomenklatorStatus } from './useNomenklatorStatus';
+import { useNomenclatorPersistence } from './useNomenclatorPersistence';
+import { useNomenclatorStatus } from './useNomenclatorStatus';
 import { useViewportWidth } from './useViewportWidth';
 import { buildEffectiveToOriginalIndexMap } from './nomenclator/ctIndexMaps';
 import { tokenIndexIsLockedInColumns } from './nomenclator/dndRules';
@@ -78,13 +78,13 @@ function serializePtGroupsToRaw(groups: PTChar[]): string {
     .join('');
 }
 
-type NomenklatorSelectionState = {
+type NomenclatorSelectionState = {
   lockedKeys: Record<string, string | string[]>;
   selections: SelectionMap;
   appliedSelectionsForMapping: SelectionMap;
 };
 
-type NomenklatorSelectionAction =
+type NomenclatorSelectionAction =
   | { type: 'setLockedKeys'; value: React.SetStateAction<Record<string, string | string[]>> }
   | { type: 'setSelections'; value: React.SetStateAction<SelectionMap> }
   | { type: 'setAppliedSelectionsForMapping'; value: React.SetStateAction<SelectionMap> }
@@ -97,9 +97,9 @@ function resolveSetStateAction<T>(value: React.SetStateAction<T>, prev: T): T {
 }
 
 function selectionStateReducer(
-  state: NomenklatorSelectionState,
-  action: NomenklatorSelectionAction,
-): NomenklatorSelectionState {
+  state: NomenclatorSelectionState,
+  action: NomenclatorSelectionAction,
+): NomenclatorSelectionState {
   if (action.type === 'setLockedKeys') {
     return { ...state, lockedKeys: resolveSetStateAction(action.value, state.lockedKeys) };
   }
@@ -129,7 +129,7 @@ function selectionStateReducer(
  * easier for the page to destructure only what it uses, and helps keep prop references
  * stable when passing handlers into large table components.
  */
-export function useNomenklator() {
+export function useNomenclator() {
   const [settings, setSettings, storageWarning] = useLocalSettings({ keysPerPTMode: 'single' });
   const hydrated = useRef(false);
 
@@ -754,7 +754,7 @@ export function useNomenklator() {
   }, [parsing, setPtRaw, setKeysPerPTMode, setCustomPtGroups, setLockedKeys, setSelections, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
 
   // Derived status: pure computation, no effect-based state sync.
-  const { klamacStatus, statusMessage, bracketWarning } = useNomenklatorStatus({
+  const { klamacStatus, statusMessage, bracketWarning } = useNomenclatorStatus({
     klamacStatusFromParse,
     statusMessageFromParse,
     bracketWarningFromParse,
@@ -785,7 +785,7 @@ export function useNomenklator() {
     setAnalysisDone(false);
   }, [analysisDone, cancelRefreshDebounce, setAnalysisDone]);
 
-  useNomenklatorPersistence({
+  useNomenclatorPersistence({
     settings,
     setSettings,
     hydratedRef: hydrated,

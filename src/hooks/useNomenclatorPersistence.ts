@@ -3,7 +3,7 @@ import type { KeysPerPTMode } from '../types/domain';
 import type { LocalSettings } from './useLocalSettings';
 import type { PTChar } from '../types/domain';
 
-export function useNomenklatorPersistence(params: {
+export function useNomenclatorPersistence(params: {
   settings: LocalSettings;
   setSettings: React.Dispatch<React.SetStateAction<LocalSettings>>;
   hydratedRef: React.RefObject<boolean>;

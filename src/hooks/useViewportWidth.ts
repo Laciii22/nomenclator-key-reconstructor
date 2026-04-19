@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 /**
  * Returns the current `window.innerWidth`, updated with a debounce on resize.
  *
- * Extracted from useNomenklator so the resize listener lifecycle is isolated,
+ * Extracted from useNomenclator so the resize listener lifecycle is isolated,
  * testable (SSR-safe: returns 1200 when `window` is undefined), and reusable.
  *
  */
