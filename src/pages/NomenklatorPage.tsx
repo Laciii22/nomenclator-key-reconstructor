@@ -585,9 +585,7 @@ const NomenklatorPage: React.FC = () => {
                           disabled={!hasPendingMappingPreviewUpdate}
                           title="Update Mapping Grid from current suggestions"
                         >
-                          {isMappingPreviewUpdatedFlash
-                            ? 'Mapping preview updated'
-                            : (hasPendingMappingPreviewUpdate ? 'Update mapping preview (pending)' : 'Update mapping preview')}
+                          Update Mapping Preview
                         </button>
                       )}
                       <button
@@ -666,7 +664,7 @@ const NomenklatorPage: React.FC = () => {
 
           </div>
 
-          <div className="space-y-2 bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="space-y-2 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex h-[36rem] flex-col min-h-0 overflow-hidden">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Key Table</h3>
             <KeyTable
               ptRows={ptRows}

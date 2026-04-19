@@ -246,7 +246,7 @@ const KeyTable: React.FC<KeyTableProps & {
   }
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 rounded-lg overflow-hidden flex flex-1 flex-col min-h-0">
       {/* Quick Assign Section */}
       {onQuickAssign && (
         <div className="px-3 py-3 bg-gray-50 border-b border-gray-200">
@@ -311,136 +311,138 @@ const KeyTable: React.FC<KeyTableProps & {
           )}
         </div>
       </div>
-      <table className="w-full text-xs">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="text-left px-2 py-1 w-12">PT</th>
-            <th className="text-left px-2 py-1">CT</th>
-            <th className="text-left px-2 py-1 w-20">&nbsp;</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedAggregated.map((row) => {
-            const { isError: isRowError, lockedTokens, isLocked, lockedMismatch, isViolationSingle, hasEmptyCell, hasDuplicateChosenKey, hasInvalidLength } = rowMetaByOT[row.pt] ?? {
-              isError: false, lockedTokens: [], isLocked: false, lockedMismatch: false,
-              isViolationSingle: false, hasEmptyCell: false, hasDuplicateChosenKey: false, hasInvalidLength: false,
-            };
-            const trClass = isRowError ? 'bg-red-50' : '';
-            return (
-              <tr key={row.pt} className={`border-t border-gray-100 ${trClass}`}>
-                <td className="px-2 py-1 font-mono whitespace-nowrap text-xs">{row.pt}</td>
-                <td className="px-2 py-1 font-mono text-xs">
-                  {keysPerPTMode === 'multiple' && row.ctList.length > 0 ? (
-                    <div>
-                      <div className="flex flex-wrap gap-1">
-                        {row.ctList.map((ct, idx) => {
-                          const isLockedToken = lockedTokens.includes(ct);
-                          return (
-                            <span
-                              key={idx}
-                              className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs ${isLockedToken
-                                  ? 'bg-green-100 text-green-800 border border-green-300'
-                                  : 'bg-gray-100 text-gray-800 border border-gray-300'
-                                }`}
-                              title={isLockedToken ? 'Locked' : undefined}
-                            >
-                              {ct}
-                              {isLockedToken && <img src={padlock} alt="Locked" className="w-2 h-2" />}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            <tr>
+              <th className="text-left px-2 py-1 w-12">PT</th>
+              <th className="text-left px-2 py-1">CT</th>
+              <th className="text-left px-2 py-1 w-20">&nbsp;</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedAggregated.map((row) => {
+              const { isError: isRowError, lockedTokens, isLocked, lockedMismatch, isViolationSingle, hasEmptyCell, hasDuplicateChosenKey, hasInvalidLength } = rowMetaByOT[row.pt] ?? {
+                isError: false, lockedTokens: [], isLocked: false, lockedMismatch: false,
+                isViolationSingle: false, hasEmptyCell: false, hasDuplicateChosenKey: false, hasInvalidLength: false,
+              };
+              const trClass = isRowError ? 'bg-red-50' : '';
+              return (
+                <tr key={row.pt} className={`border-t border-gray-100 ${trClass}`}>
+                  <td className="px-2 py-1 font-mono whitespace-nowrap text-xs">{row.pt}</td>
+                  <td className="px-2 py-1 font-mono text-xs">
+                    {keysPerPTMode === 'multiple' && row.ctList.length > 0 ? (
+                      <div>
+                        <div className="flex flex-wrap gap-1">
+                          {row.ctList.map((ct, idx) => {
+                            const isLockedToken = lockedTokens.includes(ct);
+                            return (
+                              <span
+                                key={idx}
+                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs ${isLockedToken
+                                    ? 'bg-green-100 text-green-800 border border-green-300'
+                                    : 'bg-gray-100 text-gray-800 border border-gray-300'
+                                  }`}
+                                title={isLockedToken ? 'Locked' : undefined}
+                              >
+                                {ct}
+                                {isLockedToken && <img src={padlock} alt="Locked" className="w-2 h-2" />}
+                              </span>
+                            );
+                          })}
+                          {row.ctList.length > 1 && (
+                            <span className="text-xs text-gray-500 self-center">
+                              ({row.ctList.length} homophones)
                             </span>
-                          );
-                        })}
-                        {row.ctList.length > 1 && (
-                          <span className="text-xs text-gray-500 self-center">
-                            ({row.ctList.length} homophones)
-                          </span>
+                          )}
+                        </div>
+                        {/* Error messages for multi-key mode */}
+                        {(lockedMismatch || hasEmptyCell || hasInvalidLength) && (
+                          <div className="mt-1 text-xs text-red-600">
+                            {lockedMismatch && <div>(lock mismatch)</div>}
+                            {hasEmptyCell && <div>(missing)</div>}
+                            {hasInvalidLength && <div>(invalid length)</div>}
+                          </div>
                         )}
                       </div>
-                      {/* Error messages for multi-key mode */}
-                      {(lockedMismatch || hasEmptyCell || hasInvalidLength) && (
-                        <div className="mt-1 text-xs text-red-600">
-                          {lockedMismatch && <div>(lock mismatch)</div>}
-                          {hasEmptyCell && <div>(missing)</div>}
-                          {hasInvalidLength && <div>(invalid length)</div>}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <span className="whitespace-nowrap">{(row.ctList.length ? row.ctList.join(' ') : '—') || '—'}</span>
-                      {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
-                      {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
-                      {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
-                      {hasDuplicateChosenKey && <span className="ml-2 text-red-600">(duplicate)</span>}
-                      {hasInvalidLength && <span className="ml-2 text-red-600">(invalid length)</span>}
-                    </>
-                  )}
-                </td>
-                <td className="px-2 py-1 text-xs">
-                  {onLockOT || onUnlockOT ? (
-                    <>
-                        {isLocked ? (
-                        <button
-                          className={`text-xs px-1 py-0.5 rounded ${colors.lockedBtn}`}
-                          onClick={() => onUnlockOT && onUnlockOT(row.pt)}
-                          title={`Unlock ${row.pt}`}
-                          aria-label={`Unlock ${row.pt}`}
-                          aria-pressed={true}
-                        >
-                          <img src={padlock} alt="" aria-hidden="true" className="w-3 h-3" />
-                        </button>
-                      ) : (
-                        <button
-                          className={`text-xs px-1 py-0.5 rounded ${colors.unlockedBtn}`}
-                          onClick={() => {
-                            if (!onLockOT || row.ctList.length === 0) return;
-                            if (keysPerPTMode === 'multiple') {
-                              // Lock all tokens for this character
-                              row.ctList.forEach(ct => onLockOT(row.pt, ct));
-                            } else {
-                              // Lock first token only
-                              onLockOT(row.pt, row.ctList[0]);
-                            }
-                          }}
-                          disabled={isRowError || row.ctList.length === 0}
-                          title={isRowError ? 'Fix the red error state first' : (row.ctList.length ? `Lock ${row.pt}` : 'Nothing to lock')}
-                          aria-label={isRowError ? `Cannot lock ${row.pt} while errors exist` : (row.ctList.length ? `Lock ${row.pt}` : `Nothing to lock for ${row.pt}`)}
-                          aria-pressed={false}
-                        >
-                          <img src={padlock} alt="" aria-hidden="true" className="w-3 h-3" />
-                        </button>
-                      )}
-                      {/* Highlighter icon in single mode only for conflict rows; in multi mode for unlocked rows */}
-                      {onToggleHighlightOT && !isLocked && (keysPerPTMode === 'multiple' || isRowError) ? (
-                        <button
-                          className={`ml-2 inline-flex items-center justify-center w-6 h-6 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
-                          onClick={() => onToggleHighlightOT(row.pt)}
-                          title={`Highlight PT ${row.pt}`}
-                          aria-label={`Highlight PT ${row.pt}`}
-                          aria-pressed={highlightedPTChar === row.pt}
-                        >
-                          <img src={highlighter} alt="highlight" aria-hidden="true" className="w-3 h-3" />
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                    ) : (
+                      <>
+                        <span className="whitespace-nowrap">{(row.ctList.length ? row.ctList.join(' ') : '—') || '—'}</span>
+                        {isViolationSingle && <span className="ml-2 text-red-600">(multiple keys)</span>}
+                        {lockedMismatch && <span className="ml-2 text-red-600">(lock mismatch)</span>}
+                        {hasEmptyCell && <span className="ml-2 text-red-600">(missing)</span>}
+                        {hasDuplicateChosenKey && <span className="ml-2 text-red-600">(duplicate)</span>}
+                        {hasInvalidLength && <span className="ml-2 text-red-600">(invalid length)</span>}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-2 py-1 text-xs">
+                    {onLockOT || onUnlockOT ? (
+                      <>
+                          {isLocked ? (
+                          <button
+                            className={`text-xs px-1 py-0.5 rounded ${colors.lockedBtn}`}
+                            onClick={() => onUnlockOT && onUnlockOT(row.pt)}
+                            title={`Unlock ${row.pt}`}
+                            aria-label={`Unlock ${row.pt}`}
+                            aria-pressed={true}
+                          >
+                            <img src={padlock} alt="" aria-hidden="true" className="w-3 h-3" />
+                          </button>
+                        ) : (
+                          <button
+                            className={`text-xs px-1 py-0.5 rounded ${colors.unlockedBtn}`}
+                            onClick={() => {
+                              if (!onLockOT || row.ctList.length === 0) return;
+                              if (keysPerPTMode === 'multiple') {
+                                // Lock all tokens for this character
+                                row.ctList.forEach(ct => onLockOT(row.pt, ct));
+                              } else {
+                                // Lock first token only
+                                onLockOT(row.pt, row.ctList[0]);
+                              }
+                            }}
+                            disabled={isRowError || row.ctList.length === 0}
+                            title={isRowError ? 'Fix the red error state first' : (row.ctList.length ? `Lock ${row.pt}` : 'Nothing to lock')}
+                            aria-label={isRowError ? `Cannot lock ${row.pt} while errors exist` : (row.ctList.length ? `Lock ${row.pt}` : `Nothing to lock for ${row.pt}`)}
+                            aria-pressed={false}
+                          >
+                            <img src={padlock} alt="" aria-hidden="true" className="w-3 h-3" />
+                          </button>
+                        )}
+                        {/* Highlighter icon in single mode only for conflict rows; in multi mode for unlocked rows */}
+                        {onToggleHighlightOT && !isLocked && (keysPerPTMode === 'multiple' || isRowError) ? (
+                          <button
+                            className={`ml-2 inline-flex items-center justify-center w-6 h-6 rounded ${highlightedPTChar === row.pt ? 'bg-purple-600 text-white' : 'text-purple-600 hover:bg-purple-50'}`}
+                            onClick={() => onToggleHighlightOT(row.pt)}
+                            title={`Highlight PT ${row.pt}`}
+                            aria-label={`Highlight PT ${row.pt}`}
+                            aria-pressed={highlightedPTChar === row.pt}
+                          >
+                            <img src={highlighter} alt="highlight" aria-hidden="true" className="w-3 h-3" />
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
 
-      {/* Null / Deception tokens section */}
-      {deceptionList.length > 0 && (
-        <div className="px-3 py-3 bg-purple-50 border-t border-purple-100">
-          <div className="text-sm font-medium text-purple-800 mb-2">Nulls (deception tokens)</div>
-          <div className="flex flex-wrap gap-2">
-            {deceptionList.map((t) => (
-              <span key={t} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800 border border-purple-200 font-mono">{t}</span>
-            ))}
+        {/* Null / Deception tokens section */}
+        {deceptionList.length > 0 && (
+          <div className="px-3 py-3 bg-purple-50 border-t border-purple-100">
+            <div className="text-sm font-medium text-purple-800 mb-2">Nulls (deception tokens)</div>
+            <div className="flex flex-wrap gap-2">
+              {deceptionList.map((t) => (
+                <span key={t} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800 border border-purple-200 font-mono">{t}</span>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Frequency Warning Modal */}
       {showFrequencyWarning && (
