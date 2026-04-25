@@ -10,7 +10,7 @@ A **nomenclator** is a historical cipher that combines:
 - **Nulls (deception tokens)**: meaningless tokens to confuse cryptanalysts
 
 This tool helps cryptographers and historians reconstruct the key by:
-1. Aligning plain text (OT - Originaltext) with cipher text (ZT - Ziffertext)
+1. Aligning plain text (OT - Open Text) with cipher text (ZT - Cipher Text)
 2. Suggesting mappings based on frequency analysis
 3. Allowing manual refinement through drag-and-drop and locking
 4. Supporting both delimiter-separated and fixed-length cipher formats
@@ -53,7 +53,10 @@ npm run preview  # Preview the production build
 
 ```powershell
 npm run test     # Run unit tests
+npm run test:watch
+npm run dev:test # Run app + tests in watch mode (concurrently)
 npm run lint     # Check code quality
+npm run prune    # Detect unused TypeScript exports
 ```
 
 ## Usage
@@ -75,37 +78,44 @@ npm run lint     # Check code quality
 
 ```
 src/
-├── components/         # React UI components
-│   ├── controls/       # Input controls and parsing config
-│   ├── layout/         # App layout and navigation
-│   ├── table/          # Grid components (OTCell, ZTToken, MappingTable, KeyTable)
-│   └── types.ts        # Component prop types
-├── hooks/              # Custom React hooks
-│   ├── useNomenklator.ts    # Main state orchestration
-│   ├── useParsing.ts        # ZT parsing and validation
-│   ├── useMapping.ts        # OT/ZT allocation
-│   ├── useAnalysis.ts       # Frequency analysis
-│   └── nomenclator/         # Nomenclator-specific logic (DnD, grouping, shifting)
-├── types/              # Core domain types (OTChar, ZTToken, etc.)
-├── utils/              # Utility functions
-│   ├── analyzer.ts          # Frequency analysis engine
-│   ├── allocation.ts        # Token distribution algorithm
-│   ├── columns.ts           # Grid column computation
-│   ├── parseStrategies.ts   # Parsing mode helpers
-│   ├── parse/               # Parsers (fixed, separator)
-│   └── selection/           # Auto-selection algorithms
-├── mapping/            # Manual token shifting logic
-├── pages/              # Page components
-└── main.tsx            # App entry point
+├── components/                 # UI components
+│   ├── common/                 # Modals and shared UI elements
+│   ├── controls/               # Input controls and candidate selectors
+│   ├── layout/                 # App layout and navigation
+│   ├── table/                  # PT/CT mapping grid and key table
+│   └── types.ts
+├── hooks/                      # State and domain orchestration hooks
+│   ├── nomenclator/            # Nomenclator-specific helper hooks
+│   ├── useNomenclator.ts       # Main orchestrator hook
+│   ├── useAnalysis.ts          # Analysis trigger/state
+│   ├── useParsing.ts           # Parsing and validation
+│   ├── useMapping.ts           # PT/CT allocation and mapping state
+│   └── useLocalSettings.ts     # localStorage-backed settings
+├── mapping/                    # Manual shift/mapping logic
+├── pages/                      # Route-level components
+├── types/                      # Domain types
+├── utils/                      # Analysis, allocation, parse and helper functions
+│   ├── parse/                  # Fixed-length/separator parsers
+│   ├── analyzer.ts
+│   ├── multiKeyMapping.ts
+│   └── exportKey.ts
+├── workers/                    # Web Worker(s) for analysis
+└── main.tsx                    # App entry point
+
+tests/
+├── unit/                       # Unit tests for core algorithms
+├── integration/                # End-to-end workflow-level tests
+└── helpers.ts                  # Shared test utilities
 ```
 
 ### Key Files
 
-- **[NomenklatorPage.tsx](src/pages/NomenklatorPage.tsx)**: Main page component with drag-and-drop context
+- **[NomenclatorPage.tsx](src/pages/NomenclatorPage.tsx)**: Main page component with drag-and-drop context
 - **[useNomenklator.ts](src/hooks/useNomenklator.ts)**: Central state management hook
 - **[analyzer.ts](src/utils/analyzer.ts)**: Frequency analysis and candidate scoring
 - **[MappingTable.tsx](src/components/table/MappingTable.tsx)**: Interactive OT/ZT grid
 - **[KeyTable.tsx](src/components/table/KeyTable.tsx)**: Reconstructed key display
+- **[analysis.worker.ts](src/workers/analysis.worker.ts)**: Background analysis execution to keep UI responsive
 
 ## Technologies
 
@@ -115,25 +125,11 @@ src/
 - **Tailwind CSS** for styling
 - **Vitest** for testing
 
-## Storybook (Optional)
-
-This project includes Storybook configuration for UI component development:
-
-```powershell
-# Install Storybook dependencies (if not already installed)
-npm install -D storybook @storybook/react-vite @storybook/react @storybook/addon-essentials @storybook/addon-actions @storybook/addon-interactions
-
-# Run Storybook
-npm run storybook
-
-# Build static Storybook site
-npm run build-storybook
-```
-
 ## Development Notes
 
 - **No backend**: All processing happens client-side
 - **Browser storage**: Work is auto-saved to localStorage
+- **Background analysis**: Frequency analysis runs in a Web Worker
 - **Performance**: Large texts (>1000 characters) may slow down the grid
 - **Browser compatibility**: Modern browsers with ES2020+ support
 

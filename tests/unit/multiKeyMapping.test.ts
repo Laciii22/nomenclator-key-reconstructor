@@ -58,7 +58,7 @@ describe('buildMultiKeyColumns', () => {
     expect(columns[0][7].ct).toEqual([7]);
   });
 
-  it('keeps single-token lock mismatches empty instead of forcing tentative consumption', () => {
+  it('falls back to tentative sequential consumption for single-token mismatches when lookahead cannot skip', () => {
     const ptRows = makePtRow('AHAHO');
     const ctTokens = makeCtTokens(['11', '22', '11', '33', '44']);
 
@@ -82,14 +82,15 @@ describe('buildMultiKeyColumns', () => {
     expect(aCells[1].ct).toEqual([2]);
 
     expect(hCells).toHaveLength(2);
-    expect(hCells[0].ct).toEqual([]);
+    expect(hCells[0].ct).toEqual([1]);
+    expect(hCells[0].tentative).toBe(true);
     expect(hCells[1].ct).toEqual([3]);
+    expect(hCells[1].tentative).toBeUndefined();
 
     expect(oCells).toHaveLength(1);
     expect(oCells[0].ct).toEqual([4]);
 
-    expect(deception).toHaveLength(1);
-    expect(deception[0].ct).toEqual([1]);
+    expect(deception).toHaveLength(0);
   });
 
   it('does not consume a CT group that is hard-locked for another PT char', () => {
@@ -167,7 +168,7 @@ describe('buildMultiKeyColumns', () => {
     expect(deception[1].ct).toEqual([2]);
   });
 
-  it('keeps repeated single-token lock mismatches empty until match appears', () => {
+  it('keeps repeated single-token lock mismatches tentative in strict sequential mode', () => {
     const ptRows = makePtRow('AHH');
     const ctTokens = makeCtTokens(['11', '44', '66', '22']);
 
@@ -184,26 +185,20 @@ describe('buildMultiKeyColumns', () => {
     expect(columns[0][0].pt?.ch).toBe('A');
     expect(columns[0][0].ct).toEqual([0]);
 
-    // With strict single-token pairing, first H stays empty on mismatch.
+    // In strict sequential mode (no lookahead), mismatch is consumed as tentative.
     expect(columns[0][1].pt?.ch).toBe('H');
-    expect(columns[0][1].ct).toEqual([]);
+    expect(columns[0][1].ct).toEqual([1]);
+    expect(columns[0][1].tentative).toBe(true);
 
-    // Second H also stays empty while token still mismatches.
+    // Second H is also tentative while token still mismatches.
     expect(columns[0][2].pt?.ch).toBe('H');
-    expect(columns[0][2].ct).toEqual([]);
+    expect(columns[0][2].ct).toEqual([2]);
+    expect(columns[0][2].tentative).toBe(true);
 
     // Remaining CT groups become deception.
     expect(columns[0][3].pt).toBeNull();
     expect(columns[0][3].deception).toBe(true);
-    expect(columns[0][3].ct).toEqual([1]);
-
-    expect(columns[0][4].pt).toBeNull();
-    expect(columns[0][4].deception).toBe(true);
-    expect(columns[0][4].ct).toEqual([2]);
-
-    expect(columns[0][5].pt).toBeNull();
-    expect(columns[0][5].deception).toBe(true);
-    expect(columns[0][5].ct).toEqual([3]);
+    expect(columns[0][3].ct).toEqual([3]);
   });
 
   it('keeps non-owner cell empty and maps equal-count selected token by occurrence order', () => {

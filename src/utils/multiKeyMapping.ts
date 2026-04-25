@@ -310,8 +310,8 @@ export function buildMultiKeyColumns(
           continue;
         }
 
-        // For strict single-token mapping, attempt bounded shift toward match.
-        // This keeps deterministic behavior while avoiding forced tentative consumption.
+        // For non-equal counts, attempt bounded local lookahead first.
+        // If no match is found in-range, fall back to sequential tentative consumption.
         const lookahead = allocateLockedWithLocalLookahead(
           ptChar,
           lockedTokens,
@@ -329,7 +329,8 @@ export function buildMultiKeyColumns(
           continue;
         }
 
-        rowCols.push({ pt: ptChar, ct: [] });
+        rowCols.push({ ...column, tentative: true });
+        tokenPtr += tokensConsumed;
         continue;
       }
 
