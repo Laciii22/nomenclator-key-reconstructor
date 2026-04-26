@@ -36,6 +36,16 @@ function normalizeBracketedIndices(indices: number[], max: number): number[] {
   return Array.from(set).sort((a, b) => a - b);
 }
 
+function normalizeBracketedIndicesLoose(indices: number[]): number[] {
+  const set = new Set<number>();
+  for (const idx of indices) {
+    if (!Number.isFinite(idx)) continue;
+    const normalized = Math.floor(idx);
+    if (normalized >= 0) set.add(normalized);
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
 /**
  * Hook for managing CT token parsing and validation.
  */
@@ -98,9 +108,12 @@ export function useParsing(params: {
       const next = typeof value === 'function'
         ? (value as (p: number[]) => number[])(prev)
         : value;
-      return normalizeBracketedIndices(next, ctTokens.length);
+      // Do not clamp to current ctTokens.length here.
+      // In the same event we may also update CT raw text (length changes), and eager
+      // clamping would drop valid future indices (e.g. split of a bracketed "99").
+      return normalizeBracketedIndicesLoose(next);
     });
-  }, [ctTokens.length]);
+  }, []);
 
   const effectiveCtTokens = React.useMemo(() => {
     if (!bracketedIndices.length) return ctTokens;
