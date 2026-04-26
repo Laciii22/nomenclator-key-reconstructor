@@ -68,11 +68,25 @@ export function useMapping(params: {
   // Used by extractEdgeToken to split a cell's last/first token into a standalone null cell.
   const [insertedNullAfter, setInsertedNullAfter] = React.useState<Set<number>>(new Set());
 
-  // Reset manual shifts only when the layout signature changes (PT cell count / token count / groupSize / mode)
+  // Build a stable signature of the base mapping topology.
+  // Manual shift/extract state references base flat indices, so it must be reset
+  // whenever baseColumns structure/content changes (not only token counts).
+  const baseColumnsSig = React.useMemo(() => {
+    return baseColumns
+      .map(row => row
+        .map(col => {
+          const pt = col.pt?.ch ?? 'null';
+          const dec = col.deception ? '1' : '0';
+          const ct = Array.isArray(col.ct) ? col.ct.join(',') : '';
+          return `${pt}:${dec}:${ct}`;
+        })
+        .join('|'))
+      .join('||');
+  }, [baseColumns]);
+
   const layoutSig = React.useMemo(() => {
-    const totalPtCells = ptRows.reduce((acc, r) => acc + r.filter(c => c.ch !== '').length, 0);
-    return `${ctParseMode}:${groupSize}:${totalPtCells}:${effectiveCtTokens.length}`;
-  }, [effectiveCtTokens.length, groupSize, ptRows, ctParseMode]);
+    return `${ctParseMode}:${groupSize}:${effectiveCtTokens.length}:${baseColumnsSig}`;
+  }, [baseColumnsSig, ctParseMode, effectiveCtTokens.length, groupSize]);
 
   // Reset manual shifts when the layout signature changes or mode is not fixedLength
   React.useEffect(() => {
