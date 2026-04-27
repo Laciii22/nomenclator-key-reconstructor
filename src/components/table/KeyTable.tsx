@@ -29,7 +29,7 @@ const KeyTable: React.FC<KeyTableProps & {
   onExecuteQuickAssign?: (ptPattern: string, ctToken: string) => string | null;
   bracketedIndices?: number[];
   uniqueCTTokenTexts?: { text: string; allBracketed: boolean }[];
-}> = ({ ptRows, ctTokens, keysPerPTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ctParseMode = 'separator', groupSize = 1, columns, highlightedPTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [], uniqueCTTokenTexts }) => {
+}> = ({ ptRows, ctTokens, keysPerPTMode = 'multiple', lockedKeys, onLockOT, onUnlockOT, onLockAll, selections, ctParseMode = 'separator', groupSize = 1, columns, highlightedPTChar, onToggleHighlightOT, onQuickAssign, onExecuteQuickAssign, bracketedIndices = [], uniqueCTTokenTexts, isBusy = false }) => {
   // Use shared columns if provided; otherwise fallback to previous behavior for compatibility
   const colsForMode = useMemo(() => {
     if (columns && columns.length) return columns as SharedColumns;
@@ -272,7 +272,7 @@ const KeyTable: React.FC<KeyTableProps & {
             </div>
             <button
               onClick={handleQuickAssign}
-              disabled={!quickPtPattern || !quickCtToken}
+              disabled={!quickPtPattern || !quickCtToken || isBusy}
               className="px-3 py-1 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               title="Merge and assign PT pattern to CT token"
             >
@@ -303,7 +303,7 @@ const KeyTable: React.FC<KeyTableProps & {
             <button
               className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               onClick={() => onLockAll && onLockAll(bulkLocks)}
-              disabled={hasError}
+              disabled={hasError || isBusy}
               title={hasError ? 'Fix errors first (multiple keys / lock mismatch / empty CT)' : 'Lock all PT characters → CT according to table'}
             >
               Lock all
@@ -383,6 +383,7 @@ const KeyTable: React.FC<KeyTableProps & {
                           <button
                             className={`text-xs px-1 py-0.5 rounded ${colors.lockedBtn}`}
                             onClick={() => onUnlockOT && onUnlockOT(row.pt)}
+                            disabled={isBusy}
                             title={`Unlock ${row.pt}`}
                             aria-label={`Unlock ${row.pt}`}
                             aria-pressed={true}
@@ -402,7 +403,7 @@ const KeyTable: React.FC<KeyTableProps & {
                                 onLockOT(row.pt, row.ctList[0]);
                               }
                             }}
-                            disabled={isRowError || row.ctList.length === 0}
+                            disabled={isBusy || isRowError || row.ctList.length === 0}
                             title={isRowError ? 'Fix the red error state first' : (row.ctList.length ? `Lock ${row.pt}` : 'Nothing to lock')}
                             aria-label={isRowError ? `Cannot lock ${row.pt} while errors exist` : (row.ctList.length ? `Lock ${row.pt}` : `Nothing to lock for ${row.pt}`)}
                             aria-pressed={false}
@@ -444,6 +445,7 @@ const KeyTable: React.FC<KeyTableProps & {
             </div>
           </div>
         )}
+
       </div>
 
       {/* Frequency Warning Modal */}

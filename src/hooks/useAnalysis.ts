@@ -284,6 +284,7 @@ export function useAnalysis(params: {
   }, [dispatchAnalysisRequest, setSelections]);
 
   const refreshAnalysisPreserve = React.useCallback(() => {
+    setIsAnalyzing(true);
     dispatchAnalysisRequest((sorted) => {
       if (!isMountedRef.current) return;
       setCandidatesByChar(sorted);
@@ -317,6 +318,10 @@ export function useAnalysis(params: {
         }
         return prev;
       });
+      setIsAnalyzing(false);
+    }, () => {
+      if (!isMountedRef.current) return;
+      setIsAnalyzing(false);
     });
   }, [dispatchAnalysisRequest, setSelections]);
 

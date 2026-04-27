@@ -112,6 +112,7 @@ export function useNomenclator() {
   }, []);
 
   const [pendingAutoRefresh, setPendingAutoRefresh] = useState(false);
+  const [isRefreshQueued, setIsRefreshQueued] = useState(false);
   const isDraggingRef = useRef(false);
 
   // Status / warnings
@@ -709,11 +710,13 @@ export function useNomenclator() {
   });
 
   const { debounced: debouncedRefresh, cancel: cancelRefreshDebounce } = useDebouncedCallback(() => {
+    setIsRefreshQueued(false);
     refreshAnalysisPreserve();
   }, 180);
 
   const refreshAnalysisPreserveDebounced = useCallback(() => {
     if (!analysisDone) return;
+    setIsRefreshQueued(true);
     debouncedRefresh();
   }, [analysisDone, debouncedRefresh]);
 
@@ -721,6 +724,7 @@ export function useNomenclator() {
     if (!analysisDone) return;
     // Prevent expensive auto-refresh while user edits long raw inputs.
     cancelRefreshDebounce();
+    setIsRefreshQueued(false);
     setPendingAutoRefresh(false);
     setAnalysisDone(false);
   }, [analysisDone, cancelRefreshDebounce, setAnalysisDone]);
@@ -742,6 +746,7 @@ export function useNomenclator() {
   });
 
   const onLockOT = useCallback((pt: string, val: string) => {
+    if (analysisDone) setIsRefreshQueued(true);
     setLockedKeys(prev => {
       if (keysPerPTMode === 'multiple') {
         // In multi-key mode, add to array
@@ -752,9 +757,10 @@ export function useNomenclator() {
       // Single-key mode: replace
       return { ...prev, [pt]: val };
     });
-  }, [keysPerPTMode]);
+  }, [analysisDone, keysPerPTMode]);
 
   const onUnlockOT = useCallback((pt: string, specificToken?: string) => {
+    if (analysisDone) setIsRefreshQueued(true);
     setLockedKeys(prev => {
       if (keysPerPTMode === 'multiple' && specificToken) {
         // In multi-key mode, remove specific token
@@ -772,7 +778,7 @@ export function useNomenclator() {
       delete c[pt];
       return c;
     });
-  }, [keysPerPTMode]);
+  }, [analysisDone, keysPerPTMode]);
   // drag behavior intentionally disabled in simplified mode
 
   // uniqueCTTokenTexts comes from parsing hook
@@ -1184,12 +1190,13 @@ export function useNomenclator() {
     bracketWarning,
     analysisDone,
     isAnalyzing,
+    isRefreshQueued,
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
     shouldDeferSelectionMappingPreview,
     hasPendingMappingPreviewUpdate,
-  }), [analysisDone, isAnalyzing, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices]);
+  }), [analysisDone, isAnalyzing, isRefreshQueued, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices]);
 
   /** Derived data structures used to render tables/selectors. */
   const derived = useMemo(() => ({

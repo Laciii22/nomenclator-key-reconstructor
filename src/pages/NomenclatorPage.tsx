@@ -71,6 +71,7 @@ const NomenclatorPage: React.FC = () => {
     bracketWarning,
     analysisDone,
     isAnalyzing,
+    isRefreshQueued,
     selectionError,
     mergeAllPrompt,
     highlightedPTChar,
@@ -181,7 +182,7 @@ const NomenclatorPage: React.FC = () => {
     ? 'Updating mapping...'
     : pendingRunAnalysis
       ? 'Preparing analysis...'
-      : isAnalyzing
+      : (isAnalyzing || isRefreshQueued)
         ? 'Analyzing...'
         : isAppBusy
           ? (appBusyLabel ?? 'Applying changes...')
@@ -478,9 +479,11 @@ const NomenclatorPage: React.FC = () => {
           );
         })()}
         {uiBusyLabel && (
-          <div className="mb-3 inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
-            <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" aria-hidden="true" />
-            {uiBusyLabel}
+          <div className="fixed left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+            <div className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white/95 px-4 py-2 text-sm font-medium text-blue-700 shadow-lg backdrop-blur-[1px]">
+              <span className="w-4 h-4 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" aria-hidden="true" />
+              {uiBusyLabel}
+            </div>
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start lg:items-stretch">
@@ -688,6 +691,7 @@ const NomenclatorPage: React.FC = () => {
                     <KeyTable
                       ptRows={ptRows}
                       ctTokens={effectiveCtTokens}
+                      isBusy={isAnalyzing || isRefreshQueued}
                       keysPerPTMode={keysPerPTMode}
                       lockedKeys={lockedKeys}
                       selections={selections}
@@ -775,14 +779,6 @@ const NomenclatorPage: React.FC = () => {
                   activeNullInsertedAfterBaseFlatIndex={activeNullInsertedAfterBaseFlatIndex}
                   activeCtSourceCellCount={activeCtSourceCellCount}
                 />
-                {isGridBusy && (
-                  <div className="absolute inset-0 z-10 bg-white/65 backdrop-blur-[1px] rounded-md flex items-center justify-center pointer-events-none">
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-blue-200 bg-white text-blue-700 text-xs font-medium shadow-sm">
-                      <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin" aria-hidden="true" />
-                      Updating mapping...
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
       </div>

@@ -36,6 +36,8 @@ export type KeyTableProps = {
   highlightedPTChar?: string | null;
   /** Callback to toggle highlighting on an PT character */
   onToggleHighlightOT?: (ch: string) => void;
+  /** Shows local loading overlay when key operations trigger re-analysis */
+  isBusy?: boolean;
 };
 
 /**
