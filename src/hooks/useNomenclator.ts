@@ -181,7 +181,7 @@ export function useNomenclator() {
 
   const applySelectionsToMappingPreview = useCallback(() => {
     setAppliedSelectionsForMapping(selections);
-  }, [selections]);
+  }, [selections, setAppliedSelectionsForMapping]);
 
   React.useEffect(() => {
     if (!shouldDeferSelectionMappingPreview) {
@@ -194,7 +194,7 @@ export function useNomenclator() {
     if (Object.keys(selections).length === 0 && Object.keys(appliedSelectionsForMapping).length > 0) {
       setAppliedSelectionsForMapping({});
     }
-  }, [appliedSelectionsForMapping, selections, shouldDeferSelectionMappingPreview]);
+  }, [appliedSelectionsForMapping, selections, setAppliedSelectionsForMapping, shouldDeferSelectionMappingPreview]);
 
   const countMergeableOccurrences = useCallback((groups: PTChar[], pattern: string) => {
     // Normalize to single-key format for this helper
@@ -628,7 +628,7 @@ export function useNomenclator() {
     };
     // Run the actual analysis
     runAnalysisCore();
-  }, [ptRaw, parsing, keysPerPTMode, customPtGroups, runAnalysisCore]);
+  }, [ptRaw, parsing, keysPerPTMode, customPtGroups, fixedLengthTrackedBracketTexts, runAnalysisCore]);
 
   /**
    * Reset to state before Run Analysis was clicked.
@@ -669,7 +669,7 @@ export function useNomenclator() {
     // Reset manual shifting state for fixed-length mode
     mapping.setManualPtCounts(null);
     setAppliedSelectionsForMapping({});
-  }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
+  }, [parsing, setPtRaw, setKeysPerPTMode, setLockedKeys, setSelections, setCustomPtGroups, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping, setAppliedSelectionsForMapping]);
 
   /**
    * Clear all persisted data and reset the entire application to defaults.
@@ -692,7 +692,7 @@ export function useNomenclator() {
     mapping.setManualPtCounts(null);
     preAnalysisStateRef.current = null;
     setAppliedSelectionsForMapping({});
-  }, [parsing, setPtRaw, setKeysPerPTMode, setCustomPtGroups, setLockedKeys, setSelections, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping]);
+  }, [parsing, setPtRaw, setKeysPerPTMode, setCustomPtGroups, setLockedKeys, setSelections, setMergeAllPrompt, setHighlightedPTChar, setSelectionError, mapping, setAppliedSelectionsForMapping]);
 
   // Derived status: pure computation, no effect-based state sync.
   const { klamacStatus, statusMessage, bracketWarning } = useNomenclatorStatus({
@@ -706,7 +706,6 @@ export function useNomenclator() {
     effectiveCtTokens,
     ctParseMode,
     fixedLength,
-    bracketedIndices,
   });
 
   const { debounced: debouncedRefresh, cancel: cancelRefreshDebounce } = useDebouncedCallback(() => {
@@ -757,7 +756,7 @@ export function useNomenclator() {
       // Single-key mode: replace
       return { ...prev, [pt]: val };
     });
-  }, [analysisDone, keysPerPTMode]);
+  }, [analysisDone, keysPerPTMode, setLockedKeys]);
 
   const onUnlockOT = useCallback((pt: string, specificToken?: string) => {
     if (analysisDone) setIsRefreshQueued(true);
@@ -778,7 +777,7 @@ export function useNomenclator() {
       delete c[pt];
       return c;
     });
-  }, [analysisDone, keysPerPTMode]);
+  }, [analysisDone, keysPerPTMode, setLockedKeys]);
   // drag behavior intentionally disabled in simplified mode
 
   // uniqueCTTokenTexts comes from parsing hook
@@ -1196,7 +1195,7 @@ export function useNomenclator() {
     highlightedPTChar,
     shouldDeferSelectionMappingPreview,
     hasPendingMappingPreviewUpdate,
-  }), [analysisDone, isAnalyzing, isRefreshQueued, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices]);
+  }), [analysisDone, isAnalyzing, isRefreshQueued, bracketWarning, bracketedIndices, candidatesByChar, highlightedPTChar, klamacStatus, lockedKeys, mergeAllPrompt, selectionError, selections, statusMessage, setBracketedIndices, setLockedKeys, setSelections, shouldDeferSelectionMappingPreview, hasPendingMappingPreviewUpdate]);
 
   /** Derived data structures used to render tables/selectors. */
   const derived = useMemo(() => ({

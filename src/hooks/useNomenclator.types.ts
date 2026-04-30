@@ -1,3 +1,4 @@
+import type { SetStateAction } from 'react';
 import type { SelectionMap, PTChar } from '../types/domain';
 
 /**
@@ -11,9 +12,9 @@ export type NomenclatorSelectionState = {
 };
 
 export type NomenclatorSelectionAction =
-  | { type: 'setLockedKeys'; value: React.SetStateAction<Record<string, string | string[]>> }
-  | { type: 'setSelections'; value: React.SetStateAction<SelectionMap> }
-  | { type: 'setAppliedSelectionsForMapping'; value: React.SetStateAction<SelectionMap> }
+  | { type: 'setLockedKeys'; value: SetStateAction<Record<string, string | string[]>> }
+  | { type: 'setSelections'; value: SetStateAction<SelectionMap> }
+  | { type: 'setAppliedSelectionsForMapping'; value: SetStateAction<SelectionMap> }
   | { type: 'applySelectionLocks'; newLocks: Record<string, string | string[]> };
 
 /**

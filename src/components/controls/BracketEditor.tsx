@@ -44,9 +44,6 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
   onClear,
   lockedKeys,
 }) => {
-  if (ctTokens.length === 0 || !analysisDone) return null;
-  const bracketedCount = uniqueCTTokenTexts.filter(t => t.allBracketed).length;
-
   const lockedTexts = React.useMemo(() => {
     const set = new Set<string>();
     if (!lockedKeys) return set;
@@ -56,6 +53,9 @@ const BracketEditor: React.FC<BracketEditorProps> = ({
     }
     return set;
   }, [lockedKeys]);
+
+  if (ctTokens.length === 0 || !analysisDone) return null;
+  const bracketedCount = uniqueCTTokenTexts.filter(t => t.allBracketed).length;
 
   return (
     <div className="border rounded-lg p-3 border-purple-200 bg-purple-50/50">

@@ -262,7 +262,7 @@ const NomenclatorPage: React.FC = () => {
       setIsMappingPreviewUpdatedFlash(false);
       mappingPreviewFlashTimerRef.current = null;
     }, 1200);
-  }, [applySelectionsToMappingPreview, hasPendingMappingPreviewUpdate]);
+  }, [applySelectionsToMappingPreview, hasPendingMappingPreviewUpdate, mappingPreviewFlashTimerRef, setIsMappingPreviewUpdatedFlash]);
 
   React.useEffect(() => {
     return () => {
@@ -270,7 +270,7 @@ const NomenclatorPage: React.FC = () => {
         window.clearTimeout(mappingPreviewFlashTimerRef.current);
       }
     };
-  }, []);
+  }, [mappingPreviewFlashTimerRef]);
 
   const activeDragInfo = React.useMemo(() => {
     const data = (activeDrag?.data?.current ?? {}) as DragData;
@@ -411,7 +411,7 @@ const NomenclatorPage: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHelpOpen, isFrequencyOpen, onClearPersistenceClick]);
+  }, [isHelpOpen, isFrequencyOpen, onClearPersistenceClick, setIsFrequencyOpen, setIsHelpOpen]);
 
   return (
     <AppLayout

@@ -1,6 +1,5 @@
 ﻿import { useMemo } from 'react';
-import type { CTToken } from '../types/domain';
-import type { PTChar } from '../types/domain';
+import type { CTToken, PTChar } from '../types/domain';
 
 interface UseNomenclatorStatusParams {
   klamacStatusFromParse: 'none' | 'needsNull' | 'ok' | 'invalid';
@@ -12,7 +11,6 @@ interface UseNomenclatorStatusParams {
   effectiveCtTokens: CTToken[];
   ctParseMode: 'separator' | 'fixedLength';
   fixedLength: number;
-  bracketedIndices: number[];
   storageWarning?: string | null;
 }
 

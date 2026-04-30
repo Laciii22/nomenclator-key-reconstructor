@@ -135,7 +135,7 @@ export function useAnalysis(params: {
     }
 
     return result;
-  }, [columns, effectiveCtTokens, fixedLength, gridTokenSet, keysPerPTMode, ctParseMode]);
+  }, [columns, effectiveCtTokens, gridTokenSet, keysPerPTMode, ctParseMode]);
 
   /**
    * Shared worker dispatch: builds logical tokens, posts the analysis request,
@@ -262,7 +262,7 @@ export function useAnalysis(params: {
         settle('Failed to start analysis.');
       }
     },
-    [augmentCandidatesWithCurrentMapping, columns, effectiveCtTokens, fixedLength, keysPerPTMode, lockedKeys, ptRows, ctParseMode, getWorker, gridTokenSet],
+    [augmentCandidatesWithCurrentMapping, columns, effectiveCtTokens, fixedLength, keysPerPTMode, lockedKeys, ptRows, ctParseMode, getWorker, gridTokenSet, _workerFactory],
   );
 
   const runAnalysis = React.useCallback(() => {
