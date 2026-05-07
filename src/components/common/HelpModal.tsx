@@ -18,7 +18,7 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-const userGuidePdfUrl = new URL('../../../docs/user_guide.pdf', import.meta.url).href;
+const userGuidePdfUrl = new URL('../../../docs-guide/user_guide.pdf', import.meta.url).href;
 
 /**
  * Help modal with comprehensive usage documentation.

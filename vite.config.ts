@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
+    //TODO to bude base 'nomenclator/blabla' podla toho co bude korenovy adresar
     rollupOptions: {
       output: {
         manualChunks(id) {
