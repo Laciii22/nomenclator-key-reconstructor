@@ -186,7 +186,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold">•</span>
-              <span><strong>Esc</strong>: close an open modal, or clear saved data when no modal is open.</span>
+              <span><strong>Esc</strong>: clear saved data when no modal is open.</span>
             </li>
           </ul>
         </section>
