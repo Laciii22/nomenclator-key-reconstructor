@@ -185,7 +185,6 @@ export function useLocalSettings(initial?: Partial<LocalSettings>) {
       } else {
         setStorageWarning('Saving settings failed. Changes may not persist after refresh.');
       }
-      console.warn('Failed to save settings to localStorage');
     }
   }, [settings]);
 

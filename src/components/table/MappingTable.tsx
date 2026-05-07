@@ -37,13 +37,6 @@ function MappingTable(props: MappingTableProps & MappingTableExtraProps) {
 
 		// Fallback: columns prop was not provided. Prefer passing precomputed
 		// `columns` from useMapping for accuracy and to avoid duplicate work.
-		if (import.meta.env.DEV) {
-			console.warn(
-				'[MappingTable] No precomputed columns provided; falling back to internal computation. '
-				+ 'Pass `columns` from useMapping for best performance and accuracy.'
-			);
-		}
-
 		// Fallback: normalize multi-key to single-key for buildShiftOnlyColumns
 		const normalizedLocks = normalizeLocks(lockedKeys);
 		const normalizedSelections: Record<string, string | null> = {};

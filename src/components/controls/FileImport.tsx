@@ -53,7 +53,6 @@ const FileImport: React.FC<FileImportProps> = ({
         }
       } catch (err) {
         setError('Failed to read file');
-        console.error('File read error:', err);
       } finally {
         setIsLoading(false);
         // Reset input so same file can be loaded again
