@@ -1,6 +1,6 @@
 # Nomenclator Key Reconstructor
 
-A React + TypeScript application for semi-automatic reconstruction of nomenclator cipher keys from paired plain text (OT) and cipher text (ZT).
+A React + TypeScript application for semi-automatic reconstruction of nomenclator cipher keys from paired plain text (PT) and cipher text (CT).
 
 ## What is a Nomenclator?
 
@@ -10,7 +10,7 @@ A **nomenclator** is a historical cipher that combines:
 - **Nulls (deception tokens)**: meaningless tokens to confuse cryptanalysts
 
 This tool helps cryptographers and historians reconstruct the key by:
-1. Aligning plain text (OT - Open Text) with cipher text (ZT - Cipher Text)
+1. Aligning plain text (PT - Plain text) with cipher text (CT - Cipher Text)
 2. Suggesting mappings based on frequency analysis
 3. Allowing manual refinement through drag-and-drop and locking
 4. Supporting both delimiter-separated and fixed-length cipher formats
@@ -18,7 +18,7 @@ This tool helps cryptographers and historians reconstruct the key by:
 ## Features
 
 - **Flexible parsing**: Handle both separated tokens (e.g., `123:456:789`) and fixed-length tokens (e.g., `123456789` with length 3)
-- **Frequency analysis**: Automatic suggestions based on OT↔ZT frequency correlation
+- **Frequency analysis**: Automatic suggestions based on PT↔CT frequency correlation
 - **Interactive grid**: Drag-and-drop tokens, lock confirmed mappings, highlight errors
 - **Deception handling**: Mark and exclude null tokens from analysis
 - **Local persistence**: Auto-save work in browser localStorage
@@ -61,16 +61,16 @@ npm run prune    # Detect unused TypeScript exports
 
 ## Usage
 
-1. **Enter plain text (OT)**: Type or paste the deciphered text in the OT textarea
-2. **Enter cipher text (ZT)**: Paste cipher tokens in the ZT textarea
+1. **Enter plain text (PT)**: Type or paste the deciphered text in the PT textarea
+2. **Enter cipher text (CT)**: Paste cipher tokens in the CT textarea
 3. **Choose parsing mode**:
    - **Separator**: For tokens like `12:34:56` (choose delimiter)
    - **Fixed-length**: For tokens like `123456` (specify character count per token)
 4. **Run analysis**: Click "Run analysis" to get frequency-based suggestions
-5. **Review mappings**: Check the key table for suggested OT→ZT pairs
+5. **Review mappings**: Check the key table for suggested PT→CT pairs
 6. **Lock confident mappings**: Click the lock icon on cells you've verified
 7. **Handle mismatches**:
-   - If ZT has extra tokens, mark them as deception (bracket icon)
+   - If CT has extra tokens, mark them as deception (bracket icon)
    - If counts don't match, verify your inputs
 8. **Refine manually**: Drag tokens between cells or use candidate selectors
 
@@ -113,7 +113,7 @@ tests/
 - **[NomenclatorPage.tsx](src/pages/NomenclatorPage.tsx)**: Main page component with drag-and-drop context
 - **[useNomenklator.ts](src/hooks/useNomenklator.ts)**: Central state management hook
 - **[analyzer.ts](src/utils/analyzer.ts)**: Frequency analysis and candidate scoring
-- **[MappingTable.tsx](src/components/table/MappingTable.tsx)**: Interactive OT/ZT grid
+- **[MappingTable.tsx](src/components/table/MappingTable.tsx)**: Interactive PT/CT grid
 - **[KeyTable.tsx](src/components/table/KeyTable.tsx)**: Reconstructed key display
 - **[analysis.worker.ts](src/workers/analysis.worker.ts)**: Background analysis execution to keep UI responsive
 
